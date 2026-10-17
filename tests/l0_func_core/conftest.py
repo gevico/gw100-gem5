@@ -1,18 +1,18 @@
+"""L0：func-core 的 C 接口经 ctypes 与 numpy golden 逐位比对。"""
+
 import ctypes
-import sys
 from pathlib import Path
 
 import pytest
 
-HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parents[1] / "sw"))
-LIB_PATH = HERE.parent / "build" / "libacisfc.so"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+LIB_PATH = REPO_ROOT / "gem5-ext" / "func-core" / "build" / "libacisfc.so"
 
 
 @pytest.fixture(scope="session")
 def fc():
     if not LIB_PATH.exists():
-        pytest.fail(f"找不到 {LIB_PATH}，请先在 func-core 目录运行 make")
+        pytest.fail(f"找不到 {LIB_PATH}，请先运行 make -C gem5-ext/func-core")
     lib = ctypes.CDLL(str(LIB_PATH))
     lib.acis_f32_to_f16.argtypes = [ctypes.c_float]
     lib.acis_f32_to_f16.restype = ctypes.c_uint16
