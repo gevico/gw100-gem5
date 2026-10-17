@@ -1,0 +1,12 @@
+Import('*')
+
+SimObject('ComputeTile.py', sim_objects=[
+    'AcisFunctionalUnit', 'AcisVectorEngine', 'AcisDmaEngine', 'AcisTileController'])
+
+Source('functional_unit.cc')
+Source('vector/vector_engine.cc')
+Source('dma/dma_engine.cc')
+Source('controller/tile_controller.cc')
+
+DebugFlag('AcisUnit', "ACIS 功能单元的指令执行")
+DebugFlag('AcisCtrl', "ACIS Tile 控制器的指令分发")

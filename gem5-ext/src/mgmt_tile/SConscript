@@ -1,0 +1,6 @@
+Import('*')
+
+SimObject('MgmtTile.py', sim_objects=['AcisDispatcher'])
+Source('dispatcher.cc')
+
+DebugFlag('AcisDispatch', "ACIS 管理 Tile 的命令处理与指令派发")
