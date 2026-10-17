@@ -1,9 +1,15 @@
-"""v0 指令的 golden 参考实现（numpy），语义与 func-core 一致，但独立实现。
+"""
+@file  golden.py
+@brief v0 指令的 numpy golden 参考实现
+
+语义与 func-core 一致，但独立实现。
 
 规则（SPEC-240 草案）：
 - 只要输入或输出有浮点类型，就先把输入舍入到 FP32，按 FP32 运算，再舍入到目的类型；
 - 否则按整数运算，结果饱和到目的类型；
 - max / min 遇到 NaN 时结果为 NaN。
+
+@see SPEC-240
 """
 
 import numpy as np

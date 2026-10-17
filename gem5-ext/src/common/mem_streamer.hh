@@ -1,5 +1,6 @@
 /**
- * 功能单元访存的两个基础件。
+ * @file  mem_streamer.hh
+ * @brief 功能单元访存的基础件：UnitPort 与 MemStreamer
  *
  * UnitPort：功能单元的请求端口，可被多个 MemStreamer 共用，按先后顺序发送，处理重试，
  *           并把响应交还给发出请求的 MemStreamer。

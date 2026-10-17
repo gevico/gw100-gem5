@@ -1,4 +1,8 @@
-"""全部测试的公共配置：标记为 gem5 的用例在 gem5 不可用时自动跳过。
+"""
+@file  conftest.py
+@brief 全部测试的公共配置
+
+标记为 gem5 的用例在 gem5 不可用时自动跳过。
 
 导入路径（gem5-ext/sw）和 gem5 标记在仓库根目录的 pytest.ini 中声明。
 """

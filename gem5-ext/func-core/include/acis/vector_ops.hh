@@ -1,6 +1,11 @@
 /**
+ * @file  vector_ops.hh
+ * @brief 向量引擎指令的功能语义（VEC_BINARY / VEC_SCALAR）
+ *
  * 向量引擎指令的功能语义，作用在紧密排列的缓冲区上。
  * 广播和步长由调用方在读数据时展开（见 acis::byteRuns），这里只做逐元素运算。
+ *
+ * @see SPEC-220
  */
 
 #ifndef __ACIS_FC_VECTOR_OPS_HH__

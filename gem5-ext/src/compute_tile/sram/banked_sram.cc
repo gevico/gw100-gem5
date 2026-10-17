@@ -1,3 +1,10 @@
+/**
+ * @file  banked_sram.cc
+ * @brief BankedSram 的实现
+ *
+ * @see SPEC-200
+ */
+
 #include "src/compute_tile/sram/banked_sram.hh"
 
 #include <algorithm>

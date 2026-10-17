@@ -1,10 +1,14 @@
-"""从 spec-src/arch_params.yaml 读出全局地址映射和 Tile 编号（SPEC-110 草案）。
+"""
+@file  addrmap.py
+@brief 从 arch_params 读出地址映射和 Tile 编号
 
 Compute Tile 按行优先编号：第 0 行从左到右是 0..3，第 1 行是 4..7，依此类推。
 
 SRAM 有两种地址：
 - 本地窗口（local_sram_base 起）：张量指令里使用，指"执行这条指令的 Tile"的 SRAM；
 - 全局窗口（tile_sram_base + id × tile_sram_stride 起）：后门加载/读回、跨 Tile 访问时使用。
+
+@see SPEC-110
 """
 
 from functools import lru_cache

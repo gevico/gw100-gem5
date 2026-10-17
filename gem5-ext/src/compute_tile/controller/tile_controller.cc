@@ -1,3 +1,10 @@
+/**
+ * @file  tile_controller.cc
+ * @brief TileController 的实现
+ *
+ * @see SPEC-200, SPEC-230
+ */
+
 #include "src/compute_tile/controller/tile_controller.hh"
 
 #include "base/logging.hh"

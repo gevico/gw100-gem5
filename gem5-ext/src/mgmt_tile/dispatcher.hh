@@ -1,5 +1,8 @@
 /**
- * 管理 Tile 的派发器（SPEC-330 / SPEC-400 最小子集）。
+ * @file  dispatcher.hh
+ * @brief 管理 Tile 的派发器：寄存器、doorbell 与集中派发
+ *
+ * v0 实现 SPEC-330 / SPEC-400 的最小子集。
  *
  * 流程：Host 写 CMD_ADDR 和 DOORBELL -> 用 DMA 读命令记录 -> 读程序 -> 按程序顺序把
  * 指令经指令通道下发给 tile_mask 指定的 Compute Tile -> 所有收到 END 的 Tile 报告完成后，
@@ -8,6 +11,8 @@
  * 指令通道（arch_params: mgmt_tile.inst_channel）：每条指令占用通道
  * ceil(128 / bytes_per_cycle) 个周期，广播给多个 Tile 只占用一次，到达还要再加 latency。
  * 目标 Tile 的队列没有空位时，派发暂停，等任一 Tile 退休指令后再继续。
+ *
+ * @see SPEC-330, SPEC-400
  */
 
 #ifndef __ACIS_MGMT_TILE_DISPATCHER_HH__

@@ -1,5 +1,6 @@
 /**
- * Compute Tile 内的共享 SRAM（SPEC-200）：多端口、分 bank。
+ * @file  banked_sram.hh
+ * @brief Compute Tile 内多端口、分 bank 的共享 SRAM
  *
  * 时序模型：
  * - 地址按 bankBytes 交织到 numBanks 个 bank；一个请求占用它覆盖的每个 bank 一个周期；
@@ -7,6 +8,8 @@
  * - 请求的开始时刻 = max(到达时刻, 端口空闲时刻, 所覆盖 bank 的空闲时刻)，
  *   响应在开始后 latency 个周期返回。bank 冲突表现为开始时刻被推迟。
  * 数据存储和后门（功能）访问由 AbstractMemory 提供。
+ *
+ * @see SPEC-200
  */
 
 #ifndef __ACIS_COMPUTE_TILE_SRAM_BANKED_SRAM_HH__

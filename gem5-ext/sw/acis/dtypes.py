@@ -1,4 +1,11 @@
-"""张量数据与设备字节格式之间的转换，规则与 func-core/numerics 一致（SPEC-240 草案）。"""
+"""
+@file  dtypes.py
+@brief 张量数据与设备字节格式之间的转换
+
+规则与 func-core/numerics 一致。
+
+@see SPEC-240
+"""
 
 import numpy as np
 

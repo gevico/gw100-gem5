@@ -1,4 +1,11 @@
-"""测试框架自身：测试包格式和结果比对。不需要 gem5。"""
+"""
+@file  test_harness.py
+@brief 测试框架自检：测试包格式和结果比对
+
+不需要 gem5。
+
+@see MAN-060
+"""
 
 import json
 

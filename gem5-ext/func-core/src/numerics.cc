@@ -1,3 +1,10 @@
+/**
+ * @file  numerics.cc
+ * @brief numerics.hh 的实现
+ *
+ * @see SPEC-240
+ */
+
 #include "acis/numerics.hh"
 
 #include <cmath>

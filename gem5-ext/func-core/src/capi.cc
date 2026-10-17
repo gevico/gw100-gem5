@@ -1,5 +1,7 @@
 /**
- * 供 Python（ctypes）调用的 C 接口，只用于 L0 测试：
+ * @file  capi.cc
+ * @brief 供 L0 测试经 ctypes 调用的 C 接口
+ *
  * 用 numpy 写的 golden 与这里的 C++ 实现逐位比对。gem5 模型不使用这些函数。
  */
 

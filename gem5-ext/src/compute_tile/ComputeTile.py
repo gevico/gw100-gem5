@@ -1,3 +1,10 @@
+"""
+@file  ComputeTile.py
+@brief Compute Tile 功能单元与 Tile 控制器的 SimObject 声明
+
+@see SPEC-200
+"""
+
 from m5.objects.ClockedObject import ClockedObject
 from m5.params import *
 from m5.proxy import *

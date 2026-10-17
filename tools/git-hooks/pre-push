@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""推送前检查分支命名，并拦住对受保护分支的直接推送（CONTRIBUTING.md §2）。
+"""
+@file  pre-push
+@brief 推送前检查分支命名，并拦住对受保护分支的直接推送
+
+规则见 CONTRIBUTING.md §2。
 
 仓库维护者执行已评审通过的合并时，可设 ACIS_MAINTAINER_PUSH=1 放行受保护分支。
 托管平台上线后，应以平台的分支保护为准，本钩子只做本地提醒。

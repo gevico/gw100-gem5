@@ -1,3 +1,10 @@
+/**
+ * @file  test_host.cc
+ * @brief TestHost 的实现
+ *
+ * @see SPEC-400
+ */
+
 #include "src/testhost/test_host.hh"
 
 #include <cstring>

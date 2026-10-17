@@ -1,5 +1,6 @@
 /**
- * Tile 控制器（SPEC-200 / 230）：接收管理 Tile 下发的张量指令，分发到各功能单元的队列。
+ * @file  tile_controller.hh
+ * @brief Tile 控制器：接收张量指令，换算本地地址后分发到各功能单元
  *
  * - DMA_COPY、VEC_*、MATMUL 分别进入 DMA、向量引擎、矩阵引擎的队列；同一单元内按序执行，
  *   不同单元之间乱序，依赖关系由同步计数器表达。
@@ -8,6 +9,8 @@
  * - 队列空位通过 reserve() 预留：派发器在指令发出时预留，指令到达时占用。
  * - 指令到达时先做 Tile 相对地址换算：落在本地窗口内的操作数地址改成本 Tile SRAM
  *   的全局地址，功能单元只看到全局地址。
+ *
+ * @see SPEC-200, SPEC-230
  */
 
 #ifndef __ACIS_COMPUTE_TILE_CONTROLLER_TILE_CONTROLLER_HH__

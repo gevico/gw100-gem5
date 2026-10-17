@@ -1,9 +1,14 @@
 /**
- * 向量引擎（SPEC-220）。v0 实现 VEC_BINARY、VEC_SCALAR。
+ * @file  vector_engine.hh
+ * @brief Compute Tile 的向量引擎
+ *
+ * v0 实现 VEC_BINARY、VEC_SCALAR。
  *
  * 时序：读操作数（并行）-> 计算 ceil(元素数 / lanes) + 流水线延迟 个周期 -> 写结果。
  * v0 三个阶段依次进行；按块流水重叠留待后续版本（见 MAN-060）。
  * 向量引擎只能访问本 Tile 的 SRAM。
+ *
+ * @see SPEC-220
  */
 
 #ifndef __ACIS_COMPUTE_TILE_VECTOR_VECTOR_ENGINE_HH__

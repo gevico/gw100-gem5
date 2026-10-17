@@ -1,9 +1,15 @@
-"""运行一个算子测试包（由 sw/acis/harness.py 生成）。
+"""
+@file  run_op.py
+@brief 运行一个算子测试包
+
+测试包由 sw/acis/harness.py 生成。
 
 用法：
     gem5.opt [--debug-flags=AcisDispatch,AcisCtrl,AcisUnit] gem5-ext/configs/run_op.py <测试包目录>
 
 测试包目录里应有 package.json，内容包括架构参数、加载/读回列表、命令记录地址等。
+
+@see MAN-050
 """
 
 import argparse

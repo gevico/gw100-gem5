@@ -1,4 +1,9 @@
-"""L0：func-core 的 C 接口经 ctypes 与 numpy golden 逐位比对。"""
+"""
+@file  conftest.py
+@brief L0 测试的公共配置：加载 func-core 的 C 接口
+
+func-core 的 C 接口经 ctypes 与 numpy golden 逐位比对。
+"""
 
 import ctypes
 from pathlib import Path

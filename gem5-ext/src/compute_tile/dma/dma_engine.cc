@@ -1,3 +1,10 @@
+/**
+ * @file  dma_engine.cc
+ * @brief DmaEngine 的实现
+ *
+ * @see SPEC-250, SPEC-320
+ */
+
 #include "src/compute_tile/dma/dma_engine.hh"
 
 #include "base/logging.hh"

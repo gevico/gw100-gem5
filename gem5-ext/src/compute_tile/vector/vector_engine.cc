@@ -1,3 +1,10 @@
+/**
+ * @file  vector_engine.cc
+ * @brief VectorEngine 的实现
+ *
+ * @see SPEC-220
+ */
+
 #include "src/compute_tile/vector/vector_engine.hh"
 
 #include "base/intmath.hh"
