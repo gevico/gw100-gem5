@@ -1,0 +1,4 @@
+Import('*')
+
+SimObject('BankedSram.py', sim_objects=['AcisBankedSram'])
+Source('banked_sram.cc')
