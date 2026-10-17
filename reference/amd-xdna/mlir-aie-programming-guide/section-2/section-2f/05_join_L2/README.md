@@ -1,0 +1,45 @@
+<!---//===- README.md ---------------------------------------*- Markdown -*-===//
+//
+// Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//-->
+
+# Join in L2
+
+The design in [join_L2.py](./join_L2.py) has three Workers where each one sends `8xi32` pieces of data to L2 via one of three ObjectFifos. There, the data is joined together into `24xi32` tensors based on the offsets for each ObjectFifo. The data is then sent out to external memory using `of_out`.
+
+<img src="../../../assets/JoinL2.svg" height=200 width="700">
+
+```python
+# Dataflow with ObjectFifos
+# Output
+of_offsets = [8 * worker for worker in range(n_workers)]
+
+of_out = ObjectFifo(tile24_ty, name="out")
+of_outs = (
+    of_out.prod().join(
+        of_offsets,
+        obj_types=[tile8_ty] * n_workers,
+        names=[f"out{worker}" for worker in range(n_workers)],
+    )
+)
+```
+
+All Workers are running the same process of acquiring one object from their respective input ObjectFifos to produce, writing `1` to all of its entries, and releasing the object.
+
+This design is combined with the previous [distribute](../04_distribute_L2/distribute_L2.py) design to achieve a full data movement from external memory to the AIE array and back. The resulting code is available in [distribute_and_join_L2.py](./distribute_and_join_L2.py), wrapped in `@iron.jit` so a single command JIT-compiles and runs it on the attached NPU:
+```bash
+python3 distribute_and_join_L2.py
+python3 distribute_and_join_L2.py --dev npu --emit-mlir > aie.mlir
+python3 join_L2.py --dev npu --emit-mlir > aie_join.mlir
+```
+
+The `# To/from AIE-array data movement` section of the design code is described in detail in [Section 2d](../../section-2d/).
+
+> **NOTE:**  The design in [distribute_and_join_L2.py](./distribute_and_join_L2.py) takes [ext_to_core_L2](../03_external_mem_to_core_L2/) and distributes smaller pieces of the input data to three Workers. This pattern is typically used when the input data is too large for a single core's memory module and needs to be processed in smaller chunks, the result of which is then joined together to produce the final output.
+
+Other examples containing this data movement pattern are available in the [programming_examples](../../../../programming_examples/). A notable one is [vector_exp](../../../../programming_examples/basic/vector_exp/).
+
+-----
+[Prev](../04_distribute_L2/) &middot; [Top](..) &middot; [Next](../../section-2g/)
