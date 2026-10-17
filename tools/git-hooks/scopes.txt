@@ -1,0 +1,45 @@
+# 提交信息 scope 清单（唯一来源，commit-msg 钩子读取本文件）。
+# 每行：scope  说明。NNN 表示三位数字，例如 spec-NNN 可写成 spec-110。
+# 新增组件时先在这里登记，和组件代码放在同一个提交里。
+
+# ---- 架构与规格（spec-src/）
+arch-params   spec-src/arch_params.yaml 的参数
+isa           spec-src/isa/、tools/isagen/ 及其生成物
+addrmap       地址空间与地址映射（SPEC-110）
+hdi           Host-Device 接口：命令记录、完成记录、管理 Tile 寄存器（SPEC-400）
+
+# ---- gem5 模型（gem5-ext/）
+func-core     gem5-ext/func-core：数值规则、指令编解码、地址换算、运算核心
+ct-sram       Compute Tile 的 SRAM
+ct-sync       Compute Tile 的同步单元
+ct-ve         向量引擎
+ct-me         矩阵引擎
+ct-dma        Compute Tile 的 DMA
+ct-ctrl       Tile 控制器
+mgmt          管理 Tile、派发器
+mem-tile      Memory Tile：DRAM 控制器与 DRAM 时序
+noc           片上网络
+pcie          PCIe Tile 与 Host 通路
+testhost      TestHost（测试平台，不是硬件）
+common        gem5-ext/src/common 下的公共件
+configs       gem5-ext/configs：芯片搭建与运行脚本
+
+# ---- 软件工具与测试（gem5-ext/sw/、gem5-ext/tests/）
+asm           汇编器
+golden        golden 参考实现
+harness       测试框架
+tests         测试用例（L0 ~ L4）
+
+# ---- 文档与资料
+docs          仓库级文档：README、CLAUDE.md、CONTRIBUTING.md 等
+spec-NNN      某一份 SPEC，例如 spec-110
+man-NNN       某一份手册，例如 man-060
+doc-NNN       某一份总体文档，例如 doc-001
+adr-NNN       某一条架构决策记录
+reference     reference/ 调研资料
+tools         tools/ 下的其他工具，例如 ref2md
+
+# ---- 工程
+build         构建系统、Dockerfile、依赖
+gem5          gem5 子模块指针与 gem5-ext/patches/
+git           仓库配置、钩子、.gitignore、.gitattributes

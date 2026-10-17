@@ -1,0 +1,142 @@
+#!/usr/bin/env python3
+"""检查提交信息是否符合 CONTRIBUTING.md §3。
+
+启用：git config core.hooksPath tools/git-hooks
+只用标准库；fixup!/squash!/amend! 提交只检查格式不检查 scope，合并前会被压缩掉。
+"""
+
+import re
+import subprocess
+import sys
+import unicodedata
+from pathlib import Path
+
+TYPES = ("feat", "fix", "perf", "refactor", "style", "test", "docs", "spec",
+         "build", "ci", "chore", "revert", "exp")
+MAX_WIDTH = 72
+MAX_SCOPES = 2
+SCOPES_FILE = Path(__file__).resolve().parent / "scopes.txt"
+
+HEADER_RE = re.compile(
+    r"^(?P<type>[a-z]+)\((?P<scope>[^()]*)\)(?P<bang>!)?: (?P<subject>.*)$")
+TRAILER_RE = re.compile(r"^[A-Za-z][A-Za-z-]*: \S")
+IDEALIZATION_RE = re.compile(
+    r"^(add|remove|update) #\d+(, (add|remove|update) #\d+)*$")
+SCISSORS = "------------------------ >8 ------------------------"
+
+
+def width(s):
+    """显示宽度：全角/宽字符算 2 列，组合字符算 0 列。"""
+    w = 0
+    for ch in s:
+        if unicodedata.combining(ch):
+            continue
+        w += 2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1
+    return w
+
+
+def load_scopes():
+    exact, patterns = set(), []
+    for line in SCOPES_FILE.read_text(encoding="utf-8").splitlines():
+        line = line.split("#", 1)[0].strip()
+        if not line:
+            continue
+        name = line.split()[0]
+        if "NNN" in name:
+            patterns.append(re.compile("^" + re.escape(name).replace("NNN", r"\d{3}") + "$"))
+        else:
+            exact.add(name)
+    return exact, patterns
+
+
+def current_branch():
+    r = subprocess.run(["git", "symbolic-ref", "--quiet", "--short", "HEAD"],
+                       capture_output=True, text=True)
+    return r.stdout.strip() if r.returncode == 0 else ""
+
+
+def clean(raw):
+    lines = []
+    for line in raw.splitlines():
+        if SCISSORS in line:
+            break
+        if line.startswith("#"):
+            continue
+        lines.append(line.rstrip())
+    while lines and not lines[-1]:
+        lines.pop()
+    while lines and not lines[0]:
+        lines.pop(0)
+    return lines
+
+
+def check(lines, branch):
+    errs = []
+    if not lines:
+        return ["提交信息为空"]
+    header = lines[0]
+    if header.startswith("Merge "):
+        return ["不使用合并提交：请用 git rebase 同步 main（CONTRIBUTING.md §2）"]
+
+    fixup = re.match(r"^(fixup|squash|amend)! ", header)
+    target = header[fixup.end():] if fixup else header
+    if width(target) > MAX_WIDTH:
+        errs.append(f"标题行 {width(target)} 列，超过 {MAX_WIDTH} 列（汉字算 2 列）")
+
+    m = HEADER_RE.match(target)
+    if not m:
+        errs.append("标题格式应为 <类型>(<scope>)[!]: <标题>，例如 "
+                    "'fix(ct-dma): 暂存缓冲满时反压读方'")
+    elif not fixup:
+        typ, scopes, bang, subject = m["type"], m["scope"], m["bang"], m["subject"]
+        if typ not in TYPES:
+            errs.append(f"未知类型 '{typ}'，可选：{', '.join(TYPES)}")
+        if typ == "exp" and not branch.startswith("exp/"):
+            errs.append("exp 类型的提交只能出现在 exp/* 分支上")
+        names = [s.strip() for s in scopes.split(",")] if scopes else []
+        if not names or any(not s for s in names):
+            errs.append("scope 必填，多个用英文逗号分隔")
+        elif len(names) > MAX_SCOPES:
+            errs.append(f"scope 最多 {MAX_SCOPES} 个；涉及更多组件请拆分提交")
+        else:
+            exact, patterns = load_scopes()
+            for s in names:
+                if s not in exact and not any(p.match(s) for p in patterns):
+                    errs.append(f"未登记的 scope '{s}'，见 tools/git-hooks/scopes.txt")
+        if not subject.strip() or subject != subject.strip():
+            errs.append("标题不能为空，冒号后只空一格，末尾不留空格")
+        elif subject[-1] in "。.！!；;，,":
+            errs.append("标题末尾不加标点")
+        if bang and not any(re.match(r"^BREAKING[ -]CHANGE: \S", l) for l in lines[1:]):
+            errs.append("带 ! 的破坏性改动必须有 'BREAKING CHANGE: <迁移说明>' 脚注")
+
+    if len(lines) > 1 and lines[1]:
+        errs.append("标题行和正文之间要空一行")
+    for i, line in enumerate(lines[1:], start=2):
+        if (width(line) > MAX_WIDTH and not line.startswith(("    ", "\t"))
+                and "://" not in line and not TRAILER_RE.match(line)):
+            errs.append(f"第 {i} 行 {width(line)} 列，超过 {MAX_WIDTH} 列"
+                        "（代码和日志请缩进 4 格，链接不受限）")
+        if line.startswith("Idealization:"):
+            value = line.split(":", 1)[1].strip()
+            if not IDEALIZATION_RE.match(value):
+                errs.append("Idealization 脚注格式应为 'add #N'、'remove #N' 或 "
+                            "'update #N'，多项用 ', ' 分隔")
+    return errs
+
+
+def main():
+    raw = Path(sys.argv[1]).read_text(encoding="utf-8")
+    errs = check(clean(raw), current_branch())
+    if errs:
+        print("提交信息不符合 CONTRIBUTING.md §3：", file=sys.stderr)
+        for e in errs:
+            print(f"  - {e}", file=sys.stderr)
+        print("原信息已保存在 .git/COMMIT_EDITMSG，可用 git commit -e -F "
+              ".git/COMMIT_EDITMSG 修改后重新提交。", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

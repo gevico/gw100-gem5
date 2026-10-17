@@ -1,0 +1,53 @@
+#!/usr/bin/env python3
+"""推送前检查分支命名，并拦住对受保护分支的直接推送（CONTRIBUTING.md §2）。
+
+仓库维护者执行已评审通过的合并时，可设 ACIS_MAINTAINER_PUSH=1 放行受保护分支。
+托管平台上线后，应以平台的分支保护为准，本钩子只做本地提醒。
+"""
+
+import os
+import re
+import sys
+
+TYPES = ("feat", "fix", "perf", "refactor", "style", "test", "docs", "spec",
+         "build", "ci", "chore", "revert", "exp")
+WORK_RE = re.compile(r"^(" + "|".join(TYPES) + r")/[a-z0-9][a-z0-9.-]*$")
+RELEASE_RE = re.compile(r"^release/[a-z0-9-]+-v\d+\.\d+$")
+PROTECTED = re.compile(r"^(main|release/.+)$")
+ZERO = "0" * 40
+
+
+def main():
+    errs = []
+    maintainer = os.environ.get("ACIS_MAINTAINER_PUSH") == "1"
+    for line in sys.stdin:
+        parts = line.split()
+        if len(parts) != 4:
+            continue
+        local_ref, local_sha, remote_ref, _ = parts
+        if not remote_ref.startswith("refs/heads/"):
+            continue  # 标签等其他引用不检查
+        branch = remote_ref[len("refs/heads/"):]
+        deleting = local_sha == ZERO
+        if PROTECTED.match(branch):
+            if not maintainer:
+                errs.append(f"'{branch}' 是受保护分支，只能经评审后由维护者合并"
+                            "（设 ACIS_MAINTAINER_PUSH=1 放行）")
+            elif deleting:
+                errs.append(f"不能删除受保护分支 '{branch}'")
+            if branch != "main" and not RELEASE_RE.match(branch):
+                errs.append(f"发布分支名应形如 release/spec-v0.5，收到 '{branch}'")
+            continue
+        if not deleting and not WORK_RE.match(branch):
+            errs.append(f"分支名 '{branch}' 不合规：应为 <类型>/<scope>-<简述>，"
+                        "全小写、用连字符，例如 fix/ct-dma-backpressure")
+    if errs:
+        print("推送被拒绝（CONTRIBUTING.md §2）：", file=sys.stderr)
+        for e in errs:
+            print(f"  - {e}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
