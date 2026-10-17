@@ -1,0 +1,12 @@
+# gem5-ext 的入口。编译方式：在 gem5 目录执行
+#   scons EXTRAS=<仓库根目录>/gem5-ext build/NULL/gem5.opt -j6
+# gem5 会遍历本目录下所有 SConscript；名为 build 的子目录会被跳过。
+
+Import('*')
+
+# 功能核心库不依赖 gem5，源码直接编进 gem5 可执行文件
+env.Append(CPPPATH=Dir('func-core/include').srcnode())
+
+Source('func-core/src/numerics.cc')
+Source('func-core/src/inst.cc')
+Source('func-core/src/vector_ops.cc')
