@@ -1,0 +1,9 @@
+# 文本文件统一用 LF
+* text=auto eol=lf
+
+# 二进制资料
+*.pdf binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.so  binary
