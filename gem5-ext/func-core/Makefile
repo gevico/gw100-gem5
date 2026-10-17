@@ -1,0 +1,21 @@
+# 功能核心库的独立构建，只用于 L0 测试（gem5 内的构建见 gem5-ext/SConscript）。
+#   make            生成 build/libacisfc.so
+#   make test       运行 L0 测试（需要仓库根目录的 .venv）
+
+CXX ?= c++
+CXXFLAGS ?= -std=c++17 -O2 -Wall -Wextra -Werror -fPIC
+SRCS := src/numerics.cc src/inst.cc src/vector_ops.cc
+HDRS := $(wildcard include/acis/*.hh)
+PYTHON ?= ../../.venv/bin/python
+
+build/libacisfc.so: $(SRCS) src/capi.cc $(HDRS)
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -Iinclude -shared -o $@ $(SRCS) src/capi.cc
+
+test: build/libacisfc.so
+	$(PYTHON) -m pytest -q tests
+
+clean:
+	rm -rf build
+
+.PHONY: test clean
