@@ -1,0 +1,11 @@
+# 构建上下文裁剪：只保留 gem5 源码
+**/.git
+**/.gitignore
+**/build
+**/*.pyc
+**/__pycache__
+**/*.o
+**/*.d
+.DS_Store
+Dockerfile
+.dockerignore
