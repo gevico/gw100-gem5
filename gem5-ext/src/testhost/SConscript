@@ -1,0 +1,4 @@
+Import('*')
+
+SimObject('TestHost.py', sim_objects=['AcisTestHost'])
+Source('test_host.cc')
