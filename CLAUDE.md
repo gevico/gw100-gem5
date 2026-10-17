@@ -28,7 +28,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - `src/`：SimObject，按硬件组件分目录。`compute_tile/` 下有 sram、sync、vector、dma、controller；另有 `mgmt_tile/`（派发器）、`testhost/`、`common/`（`MemStreamer`：把字节段拆成请求并跟踪完成前缀）。
   - `configs/`：`chip.py` 按 arch_params 搭建整芯片，`run_op.py` 运行一个测试包，`lpddr5x.py` 是由 LPDDR5-6400 派生的近似时序。
   - `sw/acis/`：汇编器 `asm.py`、numpy golden `golden.py`、地址映射 `addrmap.py`，以及测试框架 `harness.py`（生成测试包 → 调 gem5 → 比对 golden）。
-  - `tests/`：L1 及以上的测试。标记为 `gem5` 的用例在没有 gem5 时自动跳过。
+- `tests/`：全部测试，与被测代码分开，按验证层次分目录：`l0_func_core/`（func-core 与 golden 逐位比对）、`l1_inst/`（端到端指令测试）、`harness/`（测试框架自检）；以后的 L2~L4 也放在这里。标记为 `gem5` 的用例在没有 gem5 时自动跳过。导入路径和标记在根目录的 `pytest.ini` 里声明。
 - `.venv/`：仓库级 Python 3.12 环境（numpy、pyyaml、pytest，见 `requirements-dev.txt`），用于 L0/L1 测试和代码生成。
 - 仓库根目录是 git 仓库，默认分支为 `main`。贡献规范见 `CONTRIBUTING.md`，钩子在 `tools/git-hooks/`，scope 清单在 `tools/git-hooks/scopes.txt`。
 
@@ -61,9 +61,10 @@ docker run --rm -v "$PWD:$PWD" -v acis-ccache:/home/gem5/.ccache -w "$PWD/gem5" 
 uv venv --python 3.12 .venv && uv pip install --python .venv/bin/python -r requirements-dev.txt
 .venv/bin/python tools/isagen/gen.py            # 由 isa-v0.yaml 重新生成 isa_defs
 .venv/bin/python tools/isagen/gen.py --check    # 只检查生成物是否最新
-make -C gem5-ext/func-core test                 # L0：功能核心与 numpy golden 逐位对比
-.venv/bin/python -m pytest gem5-ext/tests -v    # L1：端到端算子测试（自动在 gem5-slim 容器里跑 gem5）
-.venv/bin/python -m pytest gem5-ext/tests/l1_inst/test_vec_ops.py -k bias -s   # 单个用例
+make -C gem5-ext/func-core                      # 编出 L0 测试用的 libacisfc.so
+.venv/bin/python -m pytest                      # 全部测试：L0 + harness 自检 + L1（L1 自动在容器里跑 gem5）
+make -C gem5-ext/func-core test                 # 只跑 L0
+.venv/bin/python -m pytest tests/l1_inst/test_vec_ops.py -k bias -s   # 单个用例
 ```
 
 - 本机已有可执行的 gem5 时，设 `GEM5_BIN=<路径>` 绕过 Docker；用 `ACIS_GEM5_IMAGE` 指定镜像，默认取本机已有的 `gem5-slim` 或 `gem5-dev`。
@@ -71,7 +72,7 @@ make -C gem5-ext/func-core test                 # L0：功能核心与 numpy gol
   - 多播指令用 `t.local(shape, dtype)` 分配 SRAM，这是本地窗口地址；
   - 后门 `load` / `expect` 本地张量时，要用 `tile=` 指明是哪个 Tile；
   - 跨 Tile 访问用 `t.sram(tile, ...)`，这是全局地址。
-- 每个测试包写在 `gem5-ext/build/op-tests/<用例名>/`，里面有 `package.json`、`gem5.log`、`result.json`、`m5out/stats.txt`。
+- 每个测试包写在仓库根目录的 `build/op-tests/<用例名>/`，里面有 `package.json`、`gem5.log`、`result.json`、`m5out/stats.txt`。
 - 调试时给 `OpTest.run(debug_flags=[...])` 传 `AcisDispatch`、`AcisCtrl`、`AcisUnit`。
 - Docker 构建 gem5 很占磁盘。宿主机磁盘曾经满到 98%，导致 Docker Desktop 的镜像存储报 `input/output error`。构建前至少留出约 40 GB 空闲空间。
 

@@ -4,8 +4,8 @@ __pycache__/
 .pytest_cache/
 .venv/
 
-# 构建产物与测试输出（gem5 自己的 build/ 由 gem5 子模块的 .gitignore 管理）
-gem5-ext/build/
+# 构建产物与测试输出（/build/ 是测试包；gem5 自己的 build/ 由子模块的 .gitignore 管理）
+/build/
 gem5-ext/func-core/build/
 
 # 系统与编辑器

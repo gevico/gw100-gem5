@@ -42,7 +42,7 @@ REPO_ROOT = addrmap.REPO_ROOT
 GEM5_DIR = REPO_ROOT / "gem5"
 RUN_OP = REPO_ROOT / "gem5-ext" / "configs" / "run_op.py"
 DEFAULT_GEM5_BIN = GEM5_DIR / "build" / "NULL" / "gem5.opt"
-DEFAULT_OUT_DIR = REPO_ROOT / "gem5-ext" / "build" / "op-tests"
+DEFAULT_OUT_DIR = REPO_ROOT / "build" / "op-tests"
 
 # Host 内存窗口内的固定布局
 CMD_OFFSET = 0x0

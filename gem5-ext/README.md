@@ -21,7 +21,7 @@
 
 ## 一次算子测试的流程
 
-1. `sw/acis/harness.py` 的 `OpTest` 分配张量、用 `asm.py` 写程序、用 `golden.py` 算期望值，然后生成测试包 `build/op-tests/<名字>/package.json`。
+1. `sw/acis/harness.py` 的 `OpTest` 分配张量、用 `asm.py` 写程序、用 `golden.py` 算期望值，然后在仓库根目录生成测试包 `build/op-tests/<名字>/package.json`。用例本身放在仓库根目录的 `tests/`。
 2. `configs/run_op.py` 读测试包，由 `chip.py` 搭建芯片，挂上 `AcisTestHost`。
 3. TestHost 后门加载输入、程序和命令记录，然后写 `CMD_ADDR`、敲 `DOORBELL`，并轮询完成记录。
 4. 派发器取命令记录和程序并校验，包括每个目标 Tile 上的本地地址是否越界。之后按 tile_mask 下发指令：一条多播指令只占用一次指令通道。各 Tile 控制器收到指令后，先把本地窗口地址换算成本 Tile SRAM 的全局地址，再交给功能单元。所有 Tile 执行完 END 后，派发器写回完成记录。

@@ -225,14 +225,15 @@ BREAKING CHANGE: 汇编器和编译器按新的 imm 编码生成指令；isa 升
 
 ```sh
 .venv/bin/python tools/isagen/gen.py --check   # 生成物是否最新
-make -C gem5-ext/func-core test                # L0
-.venv/bin/python -m pytest gem5-ext/tests      # harness 自检 + L1（需要已编译的 gem5）
+make -C gem5-ext/func-core                     # 编出 L0 测试用的 libacisfc.so
+.venv/bin/python -m pytest                     # 全部测试：L0 + harness 自检 + L1（L1 需要已编译的 gem5）
 ```
 
 改了 `gem5-ext/src/` 或 SimObject 的 Python 参数之后，先重新构建 gem5。命令见 `CLAUDE.md`。
 
 测试要求：
 
+- 测试统一放在仓库根目录的 `tests/`，按验证层次分目录（`l0_func_core/`、`l1_inst/` 等），不放进被测代码的目录。
 - 新指令要同时有 L0 用例（func-core 与 golden 逐位比对）和 L1 用例（端到端）。
 - 修 bug 要先写一个能复现问题的测试。
 - 改了时序模型，要附上 L2 微基准或手算对比的结果，偏差在 ±5% 以内。暂时做不到的，在合并请求里说明原因。
