@@ -138,6 +138,7 @@ tools/ref2md/.venv/bin/python tools/ref2md/convert.py --force a.pdf  # 强制重
   - L3 交叉验证：对比解析模型、Garnet、DRAMSys；
   - L4 外部锚点：复现 M100 的 decode 数据，以及 Tenstorrent 报告里的 GEMV 和 DRAM 带宽现象。
 - **代码风格**：`gem5-ext/` 里的 C++ 和 Python 遵循 gem5 的规范（见 `gem5/AGENTS.md`：4 空格缩进，每行 79 列，clang-format / Black）。
+- **新建源文件时**，先复制 `tools/templates/` 里的模板，按 `CONTRIBUTING.md` §7.1 写文件头（Doxygen 风格的 `@file`、`@brief`、`@see`；不写作者、日期、版权）。pre-commit 钩子会检查。
 
 ## 架构基线
 
