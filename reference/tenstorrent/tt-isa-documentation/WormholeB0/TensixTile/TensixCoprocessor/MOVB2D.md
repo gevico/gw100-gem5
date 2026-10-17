@@ -1,0 +1,141 @@
+# `MOVB2D` (Move rows from `SrcB` to `Dst`, with optional broadcasting)
+
+**Summary:** Move one row of datums from `SrcB` to `Dst`, or move an aligned block of four rows of datums from `SrcB` to `Dst`, or broadcast one row of `SrcB` to an aligned block of eight rows of `Dst`. Furthermore, within each row, there can optionally be broadcasting of column 0 to all columns. To bridge the gap between [`SrcB` data types](SrcASrcB.md#data-types) and [`Dst` data types](Dst.md#data-types), TF32 / BF16 in `SrcB` can be converted to FP32 in `Dst`, and any of BF16 / FP16 / Integer "8" in `SrcB` can be passed through unchanged to `Dst`. If used with care, software can also use a pair of `MOVB2D` instructions to lanewise combine two spans of 16-bit data in `SrcB` to form a single span of 32-bit data in `Dst`.
+
+**Backend execution unit:** [Matrix Unit (FPU)](MatrixUnit.md)
+
+## Syntax
+
+```c
+TT_MOVB2D(/* bool */ UseDst32bLo,
+          /* u6 */ SrcRow,
+          /* u2 */ AddrMod,
+        ((/* bool */ Move4Rows) << 2) +
+        ((/* bool */ Broadcast1RowTo8) << 1) +
+          /* bool */ BroadcastCol0,
+          /* u10 */ DstRow)
+```
+
+## Encoding
+
+![](../../../Diagrams/Out/Bits32_MOVB2D.svg)
+
+## Functional model
+
+This instruction will, if necessary, spend time waiting at the Wait Gate before being dispatched to the Matrix Unit (FPU):
+
+```c
+while (SrcB[MatrixUnit.SrcBBank].AllowedClient != MatrixUnit) {
+  wait;
+}
+```
+
+Once dispatched to the Matrix Unit (FPU):
+```c
+uint1_t StateID = ThreadConfig[CurrentThread].CFG_STATE_ID_StateID;
+auto& ConfigState = Config[StateID];
+
+// Determine the data formats.
+// This is not a documentation typo; SrcAFmt really is used.
+uint4_t SrcAFmt = ConfigState.ALU_FORMAT_SPEC_REG_SrcA_override ? ConfigState.ALU_FORMAT_SPEC_REG_SrcA_val : ConfigState.ALU_FORMAT_SPEC_REG0_SrcA;
+uint4_t SrcBFmt = ConfigState.ALU_FORMAT_SPEC_REG_SrcB_override ? ConfigState.ALU_FORMAT_SPEC_REG_SrcB_val : ConfigState.ALU_FORMAT_SPEC_REG1_SrcB;
+if ((TTArchitecture == Blackhole) && !ThreadConfig[CurrentThread].DISABLE_IMPLIED_SRCA_FMT_Base) {
+  SrcAFmt = ImpliedSrcBFmt[MatrixUnit.SrcBBank];
+}
+if ((TTArchitecture == Blackhole) && !ThreadConfig[CurrentThread].DISABLE_IMPLIED_SRCB_FMT_Base) {
+  SrcBFmt = ImpliedSrcBFmt[MatrixUnit.SrcBBank];
+}
+bool Use8bExponent;
+bool UseDst32b;
+if (ThreadConfig[CurrentThread].FP16A_FORCE_Enable) {
+  UnsupportedFunctionality(); // No known usage, confidence in specification below is weak
+  if (TTArchitecture == Wormhole) {
+    SrcBFmt = FP16;
+  }
+  Use8bExponent = false;
+  UseDst32b = false;
+} else {
+  if ((TTArchitecture == Blackhole) && ConfigState.ALU_ACC_CTRL_Fp32_enabled) {
+    // On Blackhole, MOV[DBG][A,B]2D pretend that SrcAFmt is TF32 whenever fp32 accumulation
+    // is enabled, so that the move writes 32-bit Dst datums at 32-bit Dst addresses (matching
+    // what the rest of Dst is using). Wormhole lacks this, so on Wormhole a move with fp32
+    // accumulation enabled and SrcAFmt != TF32 writes a 16-bit datum at a 16-bit Dst address.
+    SrcAFmt = TF32;
+  }
+  if (ConfigState.ALU_ACC_CTRL_Fp32_enabled || ConfigState.ALU_ACC_CTRL_INT8_math_enabled) {
+    // Note that ALU_ACC_CTRL_INT8_math_enabled does _not_ cause 32-bit Dst datums to be
+    // written, even though integer "32" math elsewhere uses 32-bit Dst datums.
+    Use8bExponent = true;
+  } else if (SrcAFmt in {FP32, TF32, BF16, BFP8, BFP4, BFP2, INT32, INT16}) {
+    Use8bExponent = true;
+  } else {
+    Use8bExponent = false;
+  }
+  UseDst32b = (SrcAFmt == TF32);
+}
+bool FlushDenormals = !ConfigState.ALU_ACC_CTRL_Zero_Flag_disabled_src;
+
+if ((UseDst32b || UseDst32bLo) != (ConfigState.ALU_ACC_CTRL_Fp32_enabled ||
+                                   ConfigState.ALU_ACC_CTRL_INT8_math_enabled)) {
+  UndefinedBehavior(); // DstRowValid update addressing is incorrect in this case
+}
+
+// Determine the row range.
+unsigned NumRows;
+DstRow += ThreadConfig[CurrentThread].DEST_TARGET_REG_CFG_MATH_Offset;
+DstRow += RWCs[CurrentThread].Dst + ConfigState.DEST_REGW_BASE_Base;
+SrcRow += RWCs[CurrentThread].SrcB;
+if (Broadcast1RowTo8) {
+  NumRows = 8;
+  DstRow &= 0x3f8;
+  SrcRow &= 0x3f;
+} else if (Move4Rows) {
+  NumRows = 4;
+  DstRow &= 0x3fc;
+  SrcRow &= 0x3c;
+} else {
+  NumRows = 1;
+  DstRow &= 0x3ff;
+  SrcRow &= 0x3f;
+}
+
+// Actually copy the row(s).
+for (; NumRows; --NumRows, ++DstRow, SrcRow += !Broadcast1RowTo8) {
+  for (unsigned Column = 0; Column < 16; ++Column) {
+    if (LaneConfig[Column / 2].BLOCK_DEST_MOV.Bit[Column & 1]) continue;
+    uint19_t SrcBVal = SrcB[MatrixUnit.SrcBBank][SrcRow][BroadcastCol0 ? 0 : Column];
+    if (FlushDenormals && !(SrcBVal & 0xff)) SrcBVal = 0;
+    SrcBVal = TruncateSrc(SrcBVal, SrcBFmt);
+    uint16_t Val16b = Use8bExponent ? RemoveLowMantissa(SrcBVal) : RemoveHighExponent(SrcBVal);
+    if (UseDst32b) {
+      if (UseDst32bLo) {
+        UndefinedBehavior(); // Write data will be corrupted on Blackhole (HW erratum TEN-4245); Wormhole behavior is unlikely to be useful
+      }
+      uint16_t LowMantissa = ((SrcBVal >> 8) & 7) << 13; // The bits removed by RemoveLowMantissa.
+      // Dst holds TF32 as Sign,HiMan(7b),Exp(8b),LoMan(3b),Zeros(13b)
+      // This is compatible with Dst FP32, where Zeros extends LoMan.
+      Dst32b[DstRow][Column] = (uint32_t(Val16b) << 16) | LowMantissa;
+    } else if (UseDst32bLo) {
+      // This is unlikely to be useful, unless software is deliberately
+      // packing two bf16 or fp16 values into 32 bits and storing them in Dst32b.
+      // To store a pair of 16b values, first use MOVB2D with SrcAFmt=TF32 to
+      // store the high 16b, then use MOVB2D with SrcAFmt!=TF32 and
+      // UseDst32bLo=true to store the low 16b. If the first MOVB2D uses any other
+      // SrcAFmt, then a mixture of Dst16b and Dst32b accesses will occur, which
+      // can be made to work, but software needs to really know what it is doing.
+      Dst32b[DstRow][Column] = (Dst32b[DstRow][Column] & 0xffff0000) | Val16b;
+    } else {
+      // Dst holds BF16 as Sign,Man(7b),Exp(8b)
+      // Dst holds FP16 as Sign,Man(10b),Exp(5b)
+      Dst16b[DstRow][Column] = Val16b;
+    }
+  }
+}
+
+// Advance the RWCs.
+ApplyAddrMod(AddrMod);
+```
+
+## Instruction scheduling
+
+If `MOVB2D` is used, then for the next three cycles, software should avoid reading from the region of `Dst` which was written to. To partially enforce this, if a thread presents an instruction from the following list (regardless of where in `Dst` it might access), hardware will automatically stall the thread for an appropriate number of cycles: `MOVD2A`, `MOVD2B`, `ELWMUL`, `MVMUL`, `DOTPV`, `GMPOOL`, `GAPOOL`, `MFCONV3S1`, `CONV3S1`, `MPOOL3S1`, `APOOL3S1`, `CONV3S2`, `MPOOL3S2`, `APOOL3S2`.

@@ -1,0 +1,148 @@
+<svg version="1.1" width="561" height="279" xmlns="http://www.w3.org/2000/svg"><rect width="561" height="279" rx="5" stroke="transparent" fill="white"/><rect x="75.5" y="5.5" width="60" height="26" stroke="transparent" fill="#ffd6d6"/>
+<text x="105" y="18" text-anchor="middle" dominant-baseline="middle" font-family="monospace">AA</text>
+<rect x="135.5" y="5.5" width="60" height="26" stroke="transparent" fill="#ffeed6"/>
+<text x="165" y="18" text-anchor="middle" dominant-baseline="middle" font-family="monospace">AB</text>
+<rect x="195.5" y="5.5" width="60" height="26" stroke="transparent" fill="#f6ffd6"/>
+<text x="225" y="18" text-anchor="middle" dominant-baseline="middle" font-family="monospace">AC</text>
+<rect x="255.5" y="5.5" width="60" height="26" stroke="transparent" fill="#ddffd6"/>
+<text x="285" y="18" text-anchor="middle" dominant-baseline="middle" font-family="monospace">AD</text>
+<rect x="315.5" y="5.5" width="60" height="26" stroke="transparent" fill="#d6ffe7"/>
+<text x="345" y="18" text-anchor="middle" dominant-baseline="middle" font-family="monospace">AE</text>
+<rect x="375.5" y="5.5" width="60" height="26" stroke="transparent" fill="#d6fdff"/>
+<text x="405" y="18" text-anchor="middle" dominant-baseline="middle" font-family="monospace">AF</text>
+<rect x="435.5" y="5.5" width="60" height="26" stroke="transparent" fill="#d6e4ff"/>
+<text x="465" y="18" text-anchor="middle" dominant-baseline="middle" font-family="monospace">AG</text>
+<rect x="75.5" y="31.5" width="60" height="26" stroke="transparent" fill="#fadada"/>
+<text x="105" y="44" text-anchor="middle" dominant-baseline="middle" font-family="monospace">BA</text>
+<rect x="135.5" y="31.5" width="60" height="26" stroke="transparent" fill="#faeeda"/>
+<text x="165" y="44" text-anchor="middle" dominant-baseline="middle" font-family="monospace">BB</text>
+<rect x="195.5" y="31.5" width="60" height="26" stroke="transparent" fill="#f3fada"/>
+<text x="225" y="44" text-anchor="middle" dominant-baseline="middle" font-family="monospace">BC</text>
+<rect x="255.5" y="31.5" width="60" height="26" stroke="transparent" fill="#e0fada"/>
+<text x="285" y="44" text-anchor="middle" dominant-baseline="middle" font-family="monospace">BD</text>
+<rect x="315.5" y="31.5" width="60" height="26" stroke="transparent" fill="#dafae8"/>
+<text x="345" y="44" text-anchor="middle" dominant-baseline="middle" font-family="monospace">BE</text>
+<rect x="375.5" y="31.5" width="60" height="26" stroke="transparent" fill="#daf9fa"/>
+<text x="405" y="44" text-anchor="middle" dominant-baseline="middle" font-family="monospace">BF</text>
+<rect x="435.5" y="31.5" width="60" height="26" stroke="transparent" fill="#dae6fa"/>
+<text x="465" y="44" text-anchor="middle" dominant-baseline="middle" font-family="monospace">BG</text>
+<rect x="75.5" y="57.5" width="60" height="26" stroke="transparent" fill="#f6dede"/>
+<text x="105" y="70" text-anchor="middle" dominant-baseline="middle" font-family="monospace">CA</text>
+<rect x="135.5" y="57.5" width="60" height="26" stroke="transparent" fill="#f6edde"/>
+<text x="165" y="70" text-anchor="middle" dominant-baseline="middle" font-family="monospace">CB</text>
+<rect x="195.5" y="57.5" width="60" height="26" stroke="transparent" fill="#f1f6de"/>
+<text x="225" y="70" text-anchor="middle" dominant-baseline="middle" font-family="monospace">CC</text>
+<rect x="255.5" y="57.5" width="60" height="26" stroke="transparent" fill="#e2f6de"/>
+<text x="285" y="70" text-anchor="middle" dominant-baseline="middle" font-family="monospace">CD</text>
+<rect x="315.5" y="57.5" width="60" height="26" stroke="transparent" fill="#def6e8"/>
+<text x="345" y="70" text-anchor="middle" dominant-baseline="middle" font-family="monospace">CE</text>
+<rect x="375.5" y="57.5" width="60" height="26" stroke="transparent" fill="#def5f6"/>
+<text x="405" y="70" text-anchor="middle" dominant-baseline="middle" font-family="monospace">CF</text>
+<rect x="435.5" y="57.5" width="60" height="26" stroke="transparent" fill="#dee7f6"/>
+<text x="465" y="70" text-anchor="middle" dominant-baseline="middle" font-family="monospace">CG</text>
+<rect x="75.5" y="83.5" width="60" height="26" stroke="transparent" fill="#f2e2e2"/>
+<text x="105" y="96" text-anchor="middle" dominant-baseline="middle" font-family="monospace">DA</text>
+<rect x="135.5" y="83.5" width="60" height="26" stroke="transparent" fill="#f2ece2"/>
+<text x="165" y="96" text-anchor="middle" dominant-baseline="middle" font-family="monospace">DB</text>
+<rect x="195.5" y="83.5" width="60" height="26" stroke="transparent" fill="#eff2e2"/>
+<text x="225" y="96" text-anchor="middle" dominant-baseline="middle" font-family="monospace">DC</text>
+<rect x="255.5" y="83.5" width="60" height="26" stroke="transparent" fill="#e5f2e2"/>
+<text x="285" y="96" text-anchor="middle" dominant-baseline="middle" font-family="monospace">DD</text>
+<rect x="315.5" y="83.5" width="60" height="26" stroke="transparent" fill="#e2f2e9"/>
+<text x="345" y="96" text-anchor="middle" dominant-baseline="middle" font-family="monospace">DE</text>
+<rect x="375.5" y="83.5" width="60" height="26" stroke="transparent" fill="#e2f2f2"/>
+<text x="405" y="96" text-anchor="middle" dominant-baseline="middle" font-family="monospace">DF</text>
+<rect x="435.5" y="83.5" width="60" height="26" stroke="transparent" fill="#e2e8f2"/>
+<text x="465" y="96" text-anchor="middle" dominant-baseline="middle" font-family="monospace">DG</text>
+<path d="M 75.5 5.5 L 555.5 5.5" stroke="black" fill="transparent" stroke-width="1"/>
+<path d="M 75.5 31.5 L 555.5 31.5" stroke="black" fill="transparent" stroke-width="1"/>
+<path d="M 75.5 57.5 L 555.5 57.5" stroke="black" fill="transparent" stroke-width="1"/>
+<path d="M 75.5 83.5 L 555.5 83.5" stroke="black" fill="transparent" stroke-width="1"/>
+<path d="M 75.5 109.5 L 555.5 109.5" stroke="black" fill="transparent" stroke-width="1"/>
+<path d="M 75.5 5.5 L 75.5 109.5" stroke="black" fill="transparent" stroke-width="1"/>
+<path d="M 135.5 5.5 L 135.5 109.5" stroke="black" fill="transparent" stroke-width="1"/>
+<path d="M 195.5 5.5 L 195.5 109.5" stroke="black" fill="transparent" stroke-width="1"/>
+<path d="M 255.5 5.5 L 255.5 109.5" stroke="black" fill="transparent" stroke-width="1"/>
+<path d="M 315.5 5.5 L 315.5 109.5" stroke="black" fill="transparent" stroke-width="1"/>
+<path d="M 375.5 5.5 L 375.5 109.5" stroke="black" fill="transparent" stroke-width="1"/>
+<path d="M 435.5 5.5 L 435.5 109.5" stroke="black" fill="transparent" stroke-width="1"/>
+<path d="M 495.5 5.5 L 495.5 109.5" stroke="black" fill="transparent" stroke-width="1"/>
+<path d="M 555.5 5.5 L 555.5 109.5" stroke="black" fill="transparent" stroke-width="1"/>
+<text x="70" y="57" text-anchor="end" dominant-baseline="middle" font-family="monospace">LReg[VC]</text>
+<path d="M 321.5 119.5 L 309.5 119.5 L 309.5 141.5 L 297.5 141.5 L 315.5 159.5 L 333.5 141.5 L 321.5 141.5 Z" stroke="transparent" fill="black" stroke-width="1"/>
+<text x="105" y="182" text-anchor="middle" dominant-baseline="middle" font-family="monospace">Bug</text>
+<rect x="135.5" y="169.5" width="60" height="26" stroke="transparent" fill="#ffd6d6"/>
+<text x="165" y="182" text-anchor="middle" dominant-baseline="middle" font-family="monospace">AA</text>
+<rect x="195.5" y="169.5" width="60" height="26" stroke="transparent" fill="#ffeed6"/>
+<text x="225" y="182" text-anchor="middle" dominant-baseline="middle" font-family="monospace">AB</text>
+<rect x="255.5" y="169.5" width="60" height="26" stroke="transparent" fill="#f6ffd6"/>
+<text x="285" y="182" text-anchor="middle" dominant-baseline="middle" font-family="monospace">AC</text>
+<rect x="315.5" y="169.5" width="60" height="26" stroke="transparent" fill="#ddffd6"/>
+<text x="345" y="182" text-anchor="middle" dominant-baseline="middle" font-family="monospace">AD</text>
+<rect x="375.5" y="169.5" width="60" height="26" stroke="transparent" fill="#d6ffe7"/>
+<text x="405" y="182" text-anchor="middle" dominant-baseline="middle" font-family="monospace">AE</text>
+<rect x="435.5" y="169.5" width="60" height="26" stroke="transparent" fill="#d6fdff"/>
+<text x="465" y="182" text-anchor="middle" dominant-baseline="middle" font-family="monospace">AF</text>
+<rect x="495.5" y="169.5" width="60" height="26" stroke="transparent" fill="#d6e4ff"/>
+<text x="525" y="182" text-anchor="middle" dominant-baseline="middle" font-family="monospace">AG</text>
+<text x="105" y="208" text-anchor="middle" dominant-baseline="middle" font-family="monospace">Bug</text>
+<rect x="135.5" y="195.5" width="60" height="26" stroke="transparent" fill="#fadada"/>
+<text x="165" y="208" text-anchor="middle" dominant-baseline="middle" font-family="monospace">BA</text>
+<rect x="195.5" y="195.5" width="60" height="26" stroke="transparent" fill="#faeeda"/>
+<text x="225" y="208" text-anchor="middle" dominant-baseline="middle" font-family="monospace">BB</text>
+<rect x="255.5" y="195.5" width="60" height="26" stroke="transparent" fill="#f3fada"/>
+<text x="285" y="208" text-anchor="middle" dominant-baseline="middle" font-family="monospace">BC</text>
+<rect x="315.5" y="195.5" width="60" height="26" stroke="transparent" fill="#e0fada"/>
+<text x="345" y="208" text-anchor="middle" dominant-baseline="middle" font-family="monospace">BD</text>
+<rect x="375.5" y="195.5" width="60" height="26" stroke="transparent" fill="#dafae8"/>
+<text x="405" y="208" text-anchor="middle" dominant-baseline="middle" font-family="monospace">BE</text>
+<rect x="435.5" y="195.5" width="60" height="26" stroke="transparent" fill="#daf9fa"/>
+<text x="465" y="208" text-anchor="middle" dominant-baseline="middle" font-family="monospace">BF</text>
+<rect x="495.5" y="195.5" width="60" height="26" stroke="transparent" fill="#dae6fa"/>
+<text x="525" y="208" text-anchor="middle" dominant-baseline="middle" font-family="monospace">BG</text>
+<text x="105" y="234" text-anchor="middle" dominant-baseline="middle" font-family="monospace">Bug</text>
+<rect x="135.5" y="221.5" width="60" height="26" stroke="transparent" fill="#f6dede"/>
+<text x="165" y="234" text-anchor="middle" dominant-baseline="middle" font-family="monospace">CA</text>
+<rect x="195.5" y="221.5" width="60" height="26" stroke="transparent" fill="#f6edde"/>
+<text x="225" y="234" text-anchor="middle" dominant-baseline="middle" font-family="monospace">CB</text>
+<rect x="255.5" y="221.5" width="60" height="26" stroke="transparent" fill="#f1f6de"/>
+<text x="285" y="234" text-anchor="middle" dominant-baseline="middle" font-family="monospace">CC</text>
+<rect x="315.5" y="221.5" width="60" height="26" stroke="transparent" fill="#e2f6de"/>
+<text x="345" y="234" text-anchor="middle" dominant-baseline="middle" font-family="monospace">CD</text>
+<rect x="375.5" y="221.5" width="60" height="26" stroke="transparent" fill="#def6e8"/>
+<text x="405" y="234" text-anchor="middle" dominant-baseline="middle" font-family="monospace">CE</text>
+<rect x="435.5" y="221.5" width="60" height="26" stroke="transparent" fill="#def5f6"/>
+<text x="465" y="234" text-anchor="middle" dominant-baseline="middle" font-family="monospace">CF</text>
+<rect x="495.5" y="221.5" width="60" height="26" stroke="transparent" fill="#dee7f6"/>
+<text x="525" y="234" text-anchor="middle" dominant-baseline="middle" font-family="monospace">CG</text>
+<text x="105" y="260" text-anchor="middle" dominant-baseline="middle" font-family="monospace">Bug</text>
+<rect x="135.5" y="247.5" width="60" height="26" stroke="transparent" fill="#f2e2e2"/>
+<text x="165" y="260" text-anchor="middle" dominant-baseline="middle" font-family="monospace">DA</text>
+<rect x="195.5" y="247.5" width="60" height="26" stroke="transparent" fill="#f2ece2"/>
+<text x="225" y="260" text-anchor="middle" dominant-baseline="middle" font-family="monospace">DB</text>
+<rect x="255.5" y="247.5" width="60" height="26" stroke="transparent" fill="#eff2e2"/>
+<text x="285" y="260" text-anchor="middle" dominant-baseline="middle" font-family="monospace">DC</text>
+<rect x="315.5" y="247.5" width="60" height="26" stroke="transparent" fill="#e5f2e2"/>
+<text x="345" y="260" text-anchor="middle" dominant-baseline="middle" font-family="monospace">DD</text>
+<rect x="375.5" y="247.5" width="60" height="26" stroke="transparent" fill="#e2f2e9"/>
+<text x="405" y="260" text-anchor="middle" dominant-baseline="middle" font-family="monospace">DE</text>
+<rect x="435.5" y="247.5" width="60" height="26" stroke="transparent" fill="#e2f2f2"/>
+<text x="465" y="260" text-anchor="middle" dominant-baseline="middle" font-family="monospace">DF</text>
+<rect x="495.5" y="247.5" width="60" height="26" stroke="transparent" fill="#e2e8f2"/>
+<text x="525" y="260" text-anchor="middle" dominant-baseline="middle" font-family="monospace">DG</text>
+<path d="M 75.5 169.5 L 555.5 169.5" stroke="black" fill="transparent" stroke-width="1"/>
+<path d="M 75.5 195.5 L 555.5 195.5" stroke="black" fill="transparent" stroke-width="1"/>
+<path d="M 75.5 221.5 L 555.5 221.5" stroke="black" fill="transparent" stroke-width="1"/>
+<path d="M 75.5 247.5 L 555.5 247.5" stroke="black" fill="transparent" stroke-width="1"/>
+<path d="M 75.5 273.5 L 555.5 273.5" stroke="black" fill="transparent" stroke-width="1"/>
+<path d="M 75.5 169.5 L 75.5 273.5" stroke="black" fill="transparent" stroke-width="1"/>
+<path d="M 135.5 169.5 L 135.5 273.5" stroke="black" fill="transparent" stroke-width="1"/>
+<path d="M 195.5 169.5 L 195.5 273.5" stroke="black" fill="transparent" stroke-width="1"/>
+<path d="M 255.5 169.5 L 255.5 273.5" stroke="black" fill="transparent" stroke-width="1"/>
+<path d="M 315.5 169.5 L 315.5 273.5" stroke="black" fill="transparent" stroke-width="1"/>
+<path d="M 375.5 169.5 L 375.5 273.5" stroke="black" fill="transparent" stroke-width="1"/>
+<path d="M 435.5 169.5 L 435.5 273.5" stroke="black" fill="transparent" stroke-width="1"/>
+<path d="M 495.5 169.5 L 495.5 273.5" stroke="black" fill="transparent" stroke-width="1"/>
+<path d="M 555.5 169.5 L 555.5 273.5" stroke="black" fill="transparent" stroke-width="1"/>
+<text x="70" y="221" text-anchor="end" dominant-baseline="middle" font-family="monospace">LReg[VD]</text>
+</svg>
