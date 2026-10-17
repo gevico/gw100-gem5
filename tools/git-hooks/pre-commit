@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+"""
+@file  pre-commit
+@brief 检查本次提交中新增的源文件是否带有合规的文件头注释
+
+规则见 CONTRIBUTING.md §7.1，模板在 tools/templates/。
+只检查新增（含复制）的 C++ 和 Python 文件，读暂存区里的内容；
+重命名、修改已有文件不检查。生成文件（前几行注明"请勿手改"）跳过。
+
+启用：git config core.hooksPath tools/git-hooks
+"""
+
+import ast
+import re
+import subprocess
+import sys
+from pathlib import PurePosixPath
+
+CXX_EXTS = {".hh", ".h", ".cc", ".cpp", ".hpp"}
+PY_EXTS = {".py"}
+SKIP_PREFIXES = ("reference/", "gem5/", "tools/templates/")
+GENERATED_MARKERS = ("请勿手改", "DO NOT EDIT")
+# 与 tools/templates/ 中占位符的开头一致
+PLACEHOLDER = re.compile(r"<(文件名|一行|可选|对应的)")
+FORBIDDEN = re.compile(r"@author|@date|copyright|spdx-license-identifier|版权",
+                       re.IGNORECASE)
+
+
+def git(*args):
+    return subprocess.run(["git", *args], capture_output=True, check=True).stdout
+
+
+def added_files():
+    out = git("diff", "--cached", "--name-only", "--diff-filter=AC", "-z")
+    return [p for p in out.decode("utf-8").split("\0") if p]
+
+
+def staged_text(path):
+    return git("show", f":{path}").decode("utf-8", errors="replace")
+
+
+def header_of_cxx(text):
+    """返回文件开头 /** ... */ 块的内容（去掉每行前导的 *），没有时返回 None。"""
+    body = text.lstrip()
+    if not body.startswith("/**"):
+        return None
+    end = body.find("*/")
+    if end < 0:
+        return None
+    lines = body[3:end].splitlines()
+    return "\n".join(re.sub(r"^\s*\*?\s?", "", l) for l in lines)
+
+
+def header_of_py(text):
+    try:
+        return ast.get_docstring(ast.parse(text), clean=True)
+    except SyntaxError as e:
+        raise ValueError(f"Python 语法错误，无法检查：{e.msg}（第 {e.lineno} 行）")
+
+
+def check_header(name, header):
+    errs = []
+    m = re.search(r"^@file\s+(\S+)\s*$", header, re.MULTILINE)
+    if not m:
+        errs.append("缺少 @file")
+    elif m.group(1) != name:
+        errs.append(f"@file 写的是 '{m.group(1)}'，应为文件名 '{name}'")
+    b = re.search(r"^@brief[ \t]+(.*\S)[ \t]*$", header, re.MULTILINE)
+    if not b:
+        errs.append("缺少 @brief，或 @brief 后没有内容")
+    elif b.group(1)[-1] in "。.":
+        errs.append("@brief 末尾不加句号")
+    if PLACEHOLDER.search(header):
+        errs.append("模板占位符没有替换")
+    if FORBIDDEN.search(header):
+        errs.append("文件头不写作者、日期、版权或许可证")
+    return errs
+
+
+def main():
+    problems = []
+    for path in added_files():
+        p = PurePosixPath(path)
+        if path.startswith(SKIP_PREFIXES) or p.suffix not in CXX_EXTS | PY_EXTS:
+            continue
+        text = staged_text(path)
+        if any(m in "\n".join(text.splitlines()[:5]) for m in GENERATED_MARKERS):
+            continue
+        try:
+            header = header_of_cxx(text) if p.suffix in CXX_EXTS else header_of_py(text)
+        except ValueError as e:
+            problems.append((path, [str(e)]))
+            continue
+        if header is None:
+            where = "文件开头的 /** ... */ 块" if p.suffix in CXX_EXTS else "模块 docstring"
+            problems.append((path, [f"缺少文件头注释（{where}）"]))
+            continue
+        errs = check_header(p.name, header)
+        if errs:
+            problems.append((path, errs))
+
+    if problems:
+        print("新增文件的文件头不符合 CONTRIBUTING.md §7.1：", file=sys.stderr)
+        for path, errs in problems:
+            for e in errs:
+                print(f"  - {path}：{e}", file=sys.stderr)
+        print("模板在 tools/templates/，复制后替换占位符。", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

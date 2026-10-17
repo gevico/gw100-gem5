@@ -6,7 +6,7 @@
 - Linux 内核的补丁规范：一个提交只做一件事，正文写清"为什么"；
 - gem5 的提交规范：标题带组件标签，每个提交都能编译通过。
 
-本文中的"必须""不得"是硬性要求。其中提交信息格式和分支命名由 `tools/git-hooks/` 里的钩子自动检查。
+本文中的"必须""不得"是硬性要求。其中新增文件的文件头、提交信息格式和分支命名由 `tools/git-hooks/` 里的钩子自动检查。
 
 ---
 
@@ -14,7 +14,7 @@
 
 ```sh
 git clone --recurse-submodules <仓库地址>     # 已经克隆的：git submodule update --init
-git config core.hooksPath tools/git-hooks     # 启用提交信息和分支命名检查（每个克隆做一次）
+git config core.hooksPath tools/git-hooks     # 启用文件头、提交信息和分支命名检查（每个克隆做一次）
 git config user.name  "<真实姓名>"
 git config user.email "<公司邮箱>"
 ```
@@ -245,6 +245,53 @@ make -C gem5-ext/func-core                     # 编出 L0 测试用的 libacisf
 - **C++ 和 Python** 遵循 gem5 的规范（`gem5/AGENTS.md`）：4 空格缩进，每行不超过 79 列，用 clang-format / Black 格式化。注释用中文，标识符用英文，注释密度与周围代码保持一致。
   - 现状：现有代码中有不少行超过 79 列，将用一个单独的 `style` 提交统一整改。整改之前，新增和修改的行就要符合要求。
 - **文档**：遵循 `docs/README.md` §7 的编写约定。参数只在单一真源中维护，文档里引用参数名，不写死数字。
+
+### 7.1 文件头注释
+
+每个**新增**的源文件都必须带文件头注释，格式参照 Doxygen。文件头的作用是让人和 agent 打开文件时，立刻知道它是什么、对应哪份规格。
+
+**适用范围**：`gem5-ext/`、`tools/`、`tests/` 下的 C++ 文件（`.hh`、`.h`、`.cc`、`.cpp`、`.hpp`）和 Python 文件（`.py`）。下列文件不要求：
+- 生成文件，前几行注明了"请勿手改"；
+- `SConscript`、`Makefile` 等构建脚本；
+- `reference/`、`gem5/` 下的第三方内容。
+
+**模板**：[`tools/templates/`](tools/templates/)。新建文件时复制对应模板，替换掉全部占位符。
+
+C++ 的文件头是文件开头的第一个 `/** ... */` 块：
+
+```cpp
+/**
+ * @file  dma_engine.hh
+ * @brief Compute Tile 的 DMA 引擎
+ *
+ * 本地口直连本 Tile SRAM，远端口接 NoC，边读边写。
+ *
+ * @see SPEC-250, SPEC-320
+ */
+```
+
+Python 的文件头是模块 docstring，字段相同；脚本的 shebang 行可以放在它前面：
+
+```python
+"""
+@file  harness.py
+@brief 算子测试框架：生成测试包、调用 gem5、读回结果并与 golden 比对
+
+@see MAN-060
+"""
+```
+
+| 字段 | 要求 |
+|---|---|
+| `@file` | 必填。只写文件名，不带路径，必须与实际文件名一致；改名时同步修改 |
+| `@brief` | 必填。一行中文，说明这个文件是什么，末尾不加句号。`.cc` 文件可以写"XXX 的实现" |
+| 详细说明 | 可选。与 `@brief` 之间空一行，写职责、关键设计取舍、与其他组件的关系、已知简化；不复述代码 |
+| `@see` | 有对应的 SPEC 或 MAN 时必填，写编号，多个用逗号分隔。纯工具或测试文件没有对应规格时可以省略 |
+
+**不写**：作者、日期、修改记录，因为 git 已经记录了这些，写在文件头里很快会过时；也不写版权和许可证声明。
+
+**检查**：`tools/git-hooks/pre-commit` 检查本次提交中新增的文件。重命名和修改已有文件不检查。
+- 现状：现有文件尚未补齐文件头，将单独提交补齐。补齐之前，修改现有文件时不强制补文件头。
 
 ---
 
