@@ -1,0 +1,404 @@
+<!-- Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
+
+# IRON Mini Tutorial
+
+> **Prerequisites:** These exercises require a physical Ryzen AI NPU (Phoenix/npu1 or Strix/npu2) with XRT installed, and the mlir-aie environment set up (see [docs/Building.md](../../Building.md)). The `@iron.jit` decorator automatically detects your hardware — no manual device selection is needed. Each exercise is run directly with `python3 <exercise>.py`.
+
+## Key Components: Workers, ObjectFifos, Runtime
+
+IRON provides a Python [API](../../python/iron/) for NPU programming.  Tile placement can be deferred (no coordinates — the compiler picks) or explicit (pin to a `Tile(col, row)`); both styles use the same `Worker` / `ObjectFifo` / `Runtime` primitives shown below.
+
+Compute code using workers:
+```python
+# Define tensor types
+data_size = 256
+data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
+
+buffer = Buffer(
+    data_ty,
+    name="buff",
+    initial_value=np.array(range(data_size), dtype=np.int32),
+)
+
+def core_fn(buff):
+    for i in range_(data_size):
+        buff[i] = buff[i] + 1
+
+# Create a worker to perform the task
+my_worker = Worker(core_fn, [buffer]) # tile can be specified: tile=Tile(1, 3)
+```
+More on the Worker in [Section 1](../section-1/README.md) of the programming guide and in the [worker.py](../../python/iron/worker.py).
+
+ObjectFifo data movement primitive:
+```python
+# Define tensor types
+data_size = 256
+data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
+
+# Dataflow with ObjectFifos
+of_in = ObjectFifo(data_ty, name="in") # default depth is 2
+```
+More on the ObjectFifo in [Section 2a](../section-2/section-2a/README.md) of the programming guide and in the [objectfifo.py](../../python/iron/dataflow/objectfifo.py).
+
+The IRON code [example](./aie2.py) in this mini tutorial details the different parts of an IRON design. More information on the Runtime in particular can be found in [Section 2d](../section-2/section-2d/README.md) of the programming guide.
+
+## <u>Exercises</u>
+1. Familiarize yourself with [exercise_1](./exercise_1/exercise_1.py). The code contains a single Worker which has an already instantiated local buffer that it sends out to external memory. Run `python3 exercise_1.py` to run the program and verify the output.
+
+2. Modify the code in [exercise_1](./exercise_1/exercise_1.py) so that the Worker receives its input data from external memory instead of using the local buffer, i.e. a passthrough.
+
+3. Modify the code in [exercise_1](./exercise_1/exercise_1.py) so that data is routed from external memory through a Mem tile and back only using ObjectFifos and without using Workers. For this, you will require the `forward()` function described in [Section 2b - Implicit Copy](../section-2/section-2b/03_Implicit_Copy/README.md) of the programming guide. Don't forget to `fill()` the input ObjectFifo with data at runtime as described in [Section 2d](../section-2/section-2d/RuntimeTasks.md).
+
+4. Modify the code in [exercise_1](./exercise_1/exercise_1.py) so that data is first routed from external memory through a Mem tile to a Worker, which performs the passthrough, then send the data back out.
+
+5. Modify the code in [exercise_1](./exercise_1/exercise_1.py) such that the output of the Worker is routed through a Mem tile.
+
+## Complex Data Movement Patterns: Broadcast, Split, Join
+
+IRON designs can be scaled to use multiple Workers easily:
+```python
+n_workers = 4
+
+# Define tensor types
+data_size = 256
+data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
+
+def core_fn(...):
+    # ...kernel code...
+
+# Create workers to perform the tasks
+workers = []
+for _ in range(n_workers):
+    workers.append(
+        Worker(core_fn, [...])
+    )
+
+def sequence(a, b, c):
+    pass
+
+rt = Runtime(sequence, [data_ty, data_ty, data_ty])
+
+Program(device, rt, workers=workers).resolve_program()
+```
+More on programming for multiple workers in [Section 2e](../section-2/section-2e/) of the programming guide.
+
+Complex data movement patterns such as broadcast, split or join are supported using the `ObjectFifo`, and in particular the `ObjectFifoHandle`s, which can be either producer or consumer handles. These are used to determine a broadcast pattern with multiple consumers.
+
+Broadcast - further documentation on the broadcast available in [Section 2b - Broadcast](../section-2/section-2b/02_Broadcast/) of the programming guide.
+```python
+n_workers = 4
+
+# Define tensor types
+data_size = 256
+data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
+
+# Dataflow with ObjectFifos
+of_in = ObjectFifo(data_ty, name="in")
+
+def core_fn(of_in):
+    # ...kernel code...
+
+# Create workers to perform the tasks
+workers = []
+for _ in range(n_workers):
+    workers.append(
+        Worker(core_fn, [of_in.cons()]) # each call to of_in.cons() returns a new ObjectFifoHandle
+    )
+```
+
+The `split()` and `join()` methods are used to create multiple output and input `ObjectFifos` respectively.
+
+Split - further documentation on the `split()` available in [Section 2b - Implicit Copy](../section-2/section-2b/03_Implicit_Copy/) of the programming guide.
+```python
+n_workers = 4
+
+# Define tensor types
+data_size = 256
+data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
+tile_size = data_size // n_workers
+tile_ty = np.ndarray[(tile_size,), np.dtype[np.int32]]
+
+# Dataflow with ObjectFifos
+of_offsets = [tile_size * worker for worker in range(n_workers)]
+
+of_in = ObjectFifo(data_ty, name="in")
+of_ins = of_in.cons().split(
+    of_offsets,
+    obj_types=[tile_ty] * n_workers,
+    names=[f"in{worker}" for worker in range(n_workers)],
+)
+
+def core_fn(of_in):
+    # ...kernel code...
+
+# Create workers to perform the tasks
+workers = []
+for worker in range(n_workers):
+    workers.append(
+        Worker(core_fn, [of_ins[worker].cons()])
+    )
+```
+
+Join - further documentation on the `join()` available in [Section 2b - Implicit Copy](../section-2/section-2b/03_Implicit_Copy/) of the programming guide.
+```python
+n_workers = 4
+
+# Define tensor types
+data_size = 256
+data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
+tile_size = data_size // n_workers
+tile_ty = np.ndarray[(tile_size,), np.dtype[np.int32]]
+
+# Dataflow with ObjectFifos
+of_offsets = [tile_size * worker for worker in range(n_workers)]
+
+of_out = ObjectFifo(data_ty, name="out")
+of_outs = of_out.prod().join(
+    of_offsets,
+    obj_types=[tile_ty] * n_workers,
+    names=[f"out{worker}" for worker in range(n_workers)],
+)
+
+def core_fn(of_out):
+    # ...kernel code...
+
+# Create workers to perform the tasks
+workers = []
+for worker in range(n_workers):
+    workers.append(
+        Worker(core_fn, [of_outs[worker].prod()])
+    )
+```
+More on the ObjectFifo data movement patterns in [Section 2b](../section-2/section-2b/README.md) of the programming guide.
+
+## <u>Exercises</u>
+1. Familiarize yourself with [exercise_2](./exercise_2/exercise_2.py). Modify the code in [exercise_2](./exercise_2/exercise_2.py) so that the input data is split between three workers and their outputs are joined before the final result is sent to external memory.
+
+2. Modify the code in [exercise_2](./exercise_2/exercise_2.py) such that the data sizes for each worker are uneven, for example: tile_sizes = [8, 24, 16].
+
+## Runtime Sequence
+
+The IRON runtime sequence is a plain Python function passed to `Runtime(sequence, fn_args)`. Leading `fn_args` entries describe buffers that will be available on the host side, and the body contains commands which describe how those buffers are moved into the AIE-array through `ObjectFifos`. The `ObjectFifoHandle`s the body fills/drains are passed as the trailing `fn_args` entries. `Worker`s are handed to the `Program` directly.
+
+```python
+data_size = 256
+data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
+
+# Dataflow with ObjectFifos
+of_in = ObjectFifo(data_ty, name="in")
+of_out = ObjectFifo(data_ty, name="out")
+
+def sequence(a_in, c_out, in_h, out_h):
+    in_h.fill(a_in)
+    out_h.drain(c_out, wait=True)
+
+rt = Runtime(
+    sequence,
+    [data_ty, data_ty, of_in.prod(), of_out.cons()],
+)
+
+Program(device, rt, workers=[my_worker]).resolve_program()
+```
+
+Up to five buffers are supported in the runtime sequence, where the fifth is typically used for trace support. This is further described in [Section 4b](../section-4/section-4b/README.md) of the programming guide.
+
+Runtime sequence commands are submitted to and executed by a dedicated command processor in order. The command processor will wait on commands that are set to `wait` until a token associated with their completion is generated. When all the commands in the runtime sequence have been executed the command processor sends an interrupt to the host processor.
+
+IRON also supports grouping of runtime transfers using `TaskGroup`s. A task is added to a group by passing `group=` to `fill`/`drain`. Transfers are submitted in sequence order and may overlap; a group does not make them start simultaneously. The group's `finish()` method waits for transfers marked `wait=True`, then frees every transfer in the group. Unwaited transfers must be dependencies of waited transfers so that their resources are not freed while still in use. Transfers without an explicit group use the default group, which finishes at the end of the sequence. See [Runtime Task Groups](../section-2/section-2d/RuntimeTasks.md#runtime-task-groups) for examples.
+
+More on the runtime sequence in [Section 2d](../section-2/section-2d/RuntimeTasks.md) of the programming guide.
+
+## <u>Exercises</u>
+
+1. Familiarize yourself with [exercise_3](./exercise_3/exercise_3.py). Right now the design does a simple passthrough, i.e. `out_C = in_A`, and a token is issued by the the `drain()` command in the runtime sequence upon its completion. Switch the places of the `fill()` and `drain()` commands and run `python3 exercise_3.py`. Observe what happens.
+
+2. Restore the code in [exercise_3](./exercise_3/exercise_3.py) to its original version. Modify the code in [exercise_3](./exercise_3/exercise_3.py) to do an addition of two input tensors from external memory, i.e `out_C = in_A + in_B`.
+
+## Runtime Parameters and Barriers
+
+IRON supports Runtime Parameters which are set and propagated to the Workers at runtime.
+```python
+n_workers = 4
+
+# Define tensor types
+data_size = 256
+data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
+
+# Runtime parameters
+rtps = []
+for i in range(n_workers):
+    rtps.append(
+        Buffer(
+            np.ndarray[(16,), np.dtype[np.int32]],
+            name=f"rtp{i}",
+            use_write_rtp=True,
+        )
+    )
+
+def core_fn(rtp):
+    runtime_parameter = rtp
+
+# Create workers to perform the tasks
+workers = []
+for worker in range(n_workers):
+    workers.append(
+        Worker(core_fn, [rtps[worker]])
+    )
+
+def sequence(a, b, c):
+    # Set runtime parameters
+    for rtp in rtps:
+        rtp[0] = 50
+        rtp[1] = 255
+        rtp[2] = 0
+
+rt = Runtime(sequence, [data_ty, data_ty, data_ty])
+```
+To ensure that RTPs are not read prematurely, `WorkerRuntimeBarriers` can be used to synchronize a Worker with the runtime sequence:
+```python
+n_workers = 4
+
+# Define tensor types
+data_size = 256
+data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
+
+# Runtime parameters
+# ...
+
+# Worker runtime barriers
+workerBarriers = []
+for _ in range(n_workers):
+    workerBarriers.append(WorkerRuntimeBarrier())
+
+def core_fn(rtp, barrier):
+    barrier.wait_for_value(1)
+    runtime_parameter = rtp
+
+# Create workers to perform the tasks
+workers = []
+for worker in range(n_workers):
+    workers.append(
+        Worker(core_fn, [rtps[worker], workerBarriers[worker]])
+    )
+
+def sequence(a, b, c):
+    # Set runtime parameters
+    for rtp in rtps:
+        rtp[0] = 50
+        rtp[1] = 255
+        rtp[2] = 0
+
+    # Then release the barriers.
+    for worker in range(n_workers):
+        workerBarriers[worker].set(1)
+
+rt = Runtime(sequence, [data_ty, data_ty, data_ty])
+```
+More on the runtime parameters and barriers in [Section 2d](../section-2/section-2d/RuntimeTasks.md) of the programming guide and in the [worker.py](../../python/iron/worker.py).
+
+## <u>Exercises</u>
+1. Familiarize yourself with [exercise_4](./exercise_4/exercise_4.py). Modify line 83 by setting: `USE_INPUT_VEC = False`. Run `python3 exercise_4.py`.
+
+2. The design fails because the Worker reads the RTP before the runtime sets it. Modify the code in [exercise_4](./exercise_4/exercise_4.py) such that the Worker uses a `WorkerRuntimeBarrier` to wait for the RTP to be set.
+
+## Advanced Topic: Data Layout Transformations
+
+AIE array DMAs can perform on-the-fly data transformations. Transformations on each dimension are expressed as a (size, stride) pair. Dimensions are given from highest to lowest:
+```python
+[(size_2, stride_2), (size_1, stride_1), (size_0, stride_0)]
+```
+
+Data layout transformations can be viewed as a way to specify to the hardware which location in the data to access next and as such it is possible to model the access pattern using a series of nested loops. For example, the transformation using the strides and sizes from above can be expressed as:
+```c
+int *buffer;
+for(int i = 0; i < size_2; i++)
+    for(int j = 0; j < size_1; j++)
+        for(int k = 0; k < size_0; k++)
+            // access/store element at/to buffer[  i * stride_2
+            //                                   + j * stride_1
+            //                                   + k * stride_0]
+```
+
+To better support DMA on-the-fly data transformations **at runtime** IRON provides [taplib](../../python/helpers/taplib/) which provides the building blocks for `Tensor Access Pattern`s (`taps`). The sizes and strides are grouped together and the dimensions should be given from highest to lowest. A buffer descriptor holds 4 dimensions; a `fill()` or `drain()` whose sizes and strides are all constant may use more, and the compiler splits the extra ones into further tasks:
+```python
+tap = TensorAccessPattern(
+    tensor_dims=(2, 3),
+    offset=0,
+    sizes=[size_1, size_0],
+    strides=[stride_1, stride_0],
+)
+```
+`taps` additionally have an offset and as such the `tensor_dims` may be smaller than the size of the original tensor.
+
+A `TensorAccessPattern` can be applied to the `fill()` and `drain()` runtime operations:
+```python
+def sequence(a_in, c_out, in_h, out_h):
+    in_h.fill(a_in, tap)
+    out_h.drain(c_out, tap, wait=True)
+
+rt = Runtime(
+    sequence,
+    [data_ty, data_ty, of_in.prod(), of_out.cons()],
+)
+
+Program(device, rt, workers=[my_worker]).resolve_program()
+```
+
+The `TensorAccessPattern` can be visualized in two ways:
+- as a heatmap showing the order that elements are accessed
+- as a heatmap showing the number of times each element in the tensor is accessed by the `TensorAccessPattern`
+
+```python
+tap.visualize(show_arrows=True, plot_access_count=True)
+```
+
+Several `taps` can be kept in a plain list, where each `tap` represents a different tile (from the tiling pattern):
+```python
+t0 = TensorAccessPattern((8, 8), offset=0, sizes=[4, 4], strides=[8, 1])
+t1 = TensorAccessPattern((8, 8), offset=4, sizes=[4, 4], strides=[8, 1])
+t2 = TensorAccessPattern((8, 8), offset=32, sizes=[4, 4], strides=[8, 1])
+
+taps = [t0, t1, t2]
+```
+The `taps` can then be used in the sequence like any list:
+```python
+for t in taps:
+```
+
+Deducing the sizes and strides for the `tap` can be challenging for the user. `taplib` addresses this with a small algebra on access patterns: `TensorAccessPattern.full(dims)` is the row-major walk over a whole tensor, and tiling, transposing, slicing and repeating are all a few operations on that walk's integers. `.tile(tile_dims)` divides a walk into a grid of equal tiles. The result is again a `TensorAccessPattern`: its leading dimensions index the grid and its trailing dimensions walk one tile, so indexing the grid dimensions picks out tiles (`tiles[i, j]` is one tile, `tiles[i]` is the `i`-th row of tiles):
+```python
+tensor_dims = (8, 8)
+tile_dims = (4, 4)
+tiles = TensorAccessPattern.full(tensor_dims).tile(tile_dims)  # 2 x 2 tiles
+print(tiles)
+print(tiles[0, 1])
+```
+```
+TensorAccessPattern([8, 8], offset=0, sizes=[2, 2, 4, 4], strides=[32, 4, 8, 1])
+TensorAccessPattern([8, 8], offset=4, sizes=[4, 4], strides=[8, 1])
+```
+Each tile is a `TensorAccessPattern`, so it goes straight to `fill()`, `drain()` or an `ObjectFifo`'s `to_stream`/`from_stream`. The whole tiling is one `TensorAccessPattern` too, so `tiles` itself walks every tile in turn and `tiles.visualize()` shows the whole tiling at once.
+
+The tiling can be refined before it is indexed, with the same operations as any other `TensorAccessPattern`: `.permute((1, 0, 2, 3))` visits tiles column by column, `.permute((0, 1, 3, 2))` walks each tile column-major, slicing (`tiles[:, 0]`) keeps a column of tiles in a single `tap`, and `.repeat(n)` walks the pattern `n` times. Other operations include `.partition(k)`, which cuts a dimension into `k` equal chunks, NumPy-style indexing (`TensorAccessPattern.full((8, 8))[2:6, ::2]`), `.T`, which reverses the dimensions, and `.coalesce()`, which reduces a walk to the fewest dimensions that visit the same elements. See the [taplib reference](../../docs/api/taplib.md) for the full API.
+
+More on `taplib` in [tiling_exploration](../../programming_examples/basic/tiling_exploration/README.md).
+
+`ObjectFifo`s can express DMA on-the-fly data transformations via their `to_stream` and `from_stream_per_cons` inputs. Each takes a `TensorAccessPattern` over one object; `.transformation_dims` shows the (size, stride) pair the DMA walks per dimension, from highest to lowest:
+```python
+tap = TensorAccessPattern.full((8, 8)).tile((4, 4))
+print(tap.transformation_dims)  # ((2, 32), (2, 4), (4, 8), (4, 1))
+of_out = ObjectFifo(data_ty, name="out", to_stream=tap)
+```
+A walk whose numbers are known can be spelled out directly, as `TensorAccessPattern((8, 8), 0, [2, 2, 4, 4], [32, 4, 8, 1])`. The DMA walks each object from its first element, so the pattern must cover the whole object at offset 0.
+
+More on the ObjectFifo data layout transformations in [Section 2c](../section-2/section-2c/README.md) of the programming guide.
+
+## <u>Exercises</u>
+1. Familiarize yourself with [exercise_5a](./exercise_5/exercise_5a/exercise_5a.py). Use a `tap` such that the data transformation performed on the input data at runtime matches the one shown in [ref_plot.png](./exercise_5/exercise_5a/ref_plot.png). Don't forget to add the `tap` to the runtime `fill()` operation. Before running the example modify line 83 to `USE_REF_VEC = False`. Run `python3 exercise_5a.py` to verify your answer.
+
+2. Replace the `tap` you added in [exercise_5a](./exercise_5/exercise_5a/exercise_5a.py) with the tiles of a tiling. For this, you will require `TensorAccessPattern.full()` and `.tile()` defined in [tap.py](../../python/helpers/taplib/tap.py). Run `python3 exercise_5a.py` to verify your answer. You can also observe the two generated plots.
+
+3. Modify the code in [exercise_5a](./exercise_5/exercise_5a/exercise_5a.py) such that the data transformations are applied directly on `of_out`, instead of at runtime. Run `python3 exercise_5a.py` to verify your answer.
+
+4. Familiarize yourself with [exercise_5b](./exercise_5/exercise_5b/exercise_5b.py). Observe how the `taps` in the list differ slightly from the one in [exercise_5a](./exercise_5/exercise_5a/exercise_5a.py). Run `python3 exercise_5b.py` and observe the two generated plots.

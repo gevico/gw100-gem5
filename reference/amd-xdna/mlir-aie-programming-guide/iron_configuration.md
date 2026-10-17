@@ -1,0 +1,487 @@
+<!---//===- README.md --------------------------*- Markdown -*-===//
+//
+// Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//-->
+
+# IRON Python Configurations
+
+There are several options that exist to configure the IRON Python programming environment.
+
+## Default IRON Tensor Class
+
+This is a variable that controls the types of [```aie.utils.NpuTensor```](../python/utils/hostruntime/tensor_class.py)s that are produced by the utility functions ```tensor```, ```ones```, etc. The available tensor implementations are [```CPUOnlyTensor```](../python/utils/hostruntime/tensor_class.py), [```XRTTensor```](../python/utils/hostruntime/xrtruntime/tensor.py), [```HRXTensor```](../python/utils/hostruntime/hrxruntime/tensor.py) and [```HSATensor```](../python/utils/hostruntime/hsaruntime/tensor.py); the last two are selected via [```NPU_RUNTIME```](#host-runtime-backend-selection-npu_runtime).
+
+By default, if ```pyxrt``` is available, the ```DEFAULT_TENSOR_CLASS``` is set to ```XRTTensor```. ```HRXTensor``` is never selected automatically: it is chosen only by setting ```NPU_RUNTIME=hrx``` explicitly (see [HRX runtime](hrx_runtime.md)). You can also set the class directly through ```set_tensor_class()```, e.g.:
+```python
+>>> import numpy as np
+>>> print(aie.utils.tensor.DEFAULT_TENSOR_CLASS.__name__)
+XRTTensor
+>>> type(iron.tensor((2, 2), np.int32))
+<class 'aie.utils.xrtruntime.tensor.XRTTensor'>
+>>> aie.utils.set_tensor_class(aie.utils.tensor.CPUOnlyTensor)
+>>> print(aie.utils.tensor.DEFAULT_TENSOR_CLASS.__name__)
+CPUOnlyTensor
+>>> type(aie.utils.tensor((2, 2), np.int32))
+<class 'aie.utils.tensor.CPUOnlyTensor'>
+```
+
+## Default IRON Device
+
+If the IRON device is not set, many designs fetch it on demand from the [`DefaultNPURuntime`](../python/utils/__init__.py) (a `CachedXRTRuntime` instance), which queries XRT for the attached NPU. Select an explicit target with `iron.set_current_device()`:
+```python
+>>> import aie.iron as iron
+>>> iron.set_current_device(iron.device.NPU1())
+>>> iron.get_current_device()
+<abc.NPU1 object at 0x722a65903a10>
+```
+
+Used as a context manager, it selects the device for the block and restores
+the previous selection on exit, also when the block raises:
+```python
+with iron.set_current_device(iron.device.NPU2Col1()):
+    my_design.compile()
+```
+
+### Cross-compiling for a different NPU
+
+The target architecture (`aie2` / `aie2p`) is part of the per-design
+cache key (see [compilation_stages.md](./compilation_stages.md)
+§Lowering — `_compute_artifact_hash` mixes `target_arch` in along with
+peano + aiecc mtimes), so `set_current_device(...)` before `.compile()`
+is enough to drive a cross-arch build.  Each arch lands in its own
+cache subdirectory, no collision with the binary for whatever NPU is
+physically attached:
+
+```python
+import aie.iron as iron
+from aie.iron.device import NPU1Col1, NPU2Col1
+
+# Same generator, two arches → two distinct cache dirs.
+for dev_cls in (NPU1Col1, NPU2Col1):
+    with iron.set_current_device(dev_cls()):
+        my_design.specialize(N=4096).compile()
+```
+
+Useful for building Strix binaries on Phoenix-only CI hosts (or vice
+versa), and for shipping pre-built xclbins for multiple NPU generations
+without needing each one attached at build time.
+
+### Arch-aware kernel introspection (`mac_dims`)
+
+Some `aie.iron.kernels` factories pick a different MMUL geometry per
+arch — `kernels.mm(int16, int16)` is `(r, s, t) = (4, 4, 4)` on AIE2
+(Phoenix) but `(4, 4, 8)` on AIE2P (Strix).  The chosen geometry is
+declared on the contract's operand layouts (`fn.contract.layouts[i].block`)
+and read back as `.mac_dims` on the returned `MatrixKernel`, with the
+matching DMA transforms as `.stream_dims`, so designs can drive their
+DMA-layout transforms from the kernel itself instead of hardcoding for one
+arch:
+
+```python
+import aie.iron as iron
+from aie.iron.device import NPU2Col1
+
+iron.set_current_device(NPU2Col1())
+mm = kernels.mm(dim_m=64, dim_k=64, dim_n=64,
+                input_dtype=np.int16, output_dtype=np.int16)
+r, s, t = mm.mac_dims
+```
+
+Set the target before constructing an arch-sensitive factory. The factory
+selects its source and MMUL geometry when it is created.
+
+The full per-arch table lives in
+[`python/iron/kernels/linalg.py`](../python/iron/kernels/linalg.py)
+(`_MM_MAC_DIMS`).  Combined with the cross-compile pattern above, the
+same generator file produces a correct binary for each arch without
+ever editing the source.
+
+## IRON Cache Location
+
+The IRON jit feature caches compiled objects in a directory defined by ```NPU_CACHE_HOME```. By default this value is the user's home directory.
+
+## aiecc Executable Override (`AIECC_PATH`)
+
+`aie.utils.config.aiecc_path()` resolves the `aiecc` executable used by JIT
+compilation: the `AIECC_PATH` environment variable first (an explicit full
+path to the `aiecc` executable), then the MLIR-AIE bin directory, then
+`PATH`. Set `AIECC_PATH` when a consumer needs to pin a specific `aiecc`
+without relying on `PATH` search order.
+
+```bash
+AIECC_PATH=/path/to/aiecc python my_script.py
+```
+
+## External Tool Overrides
+
+`aie.utils.config` resolves the external tools below from an environment
+variable first, then the bundled bin directories (MLIR-AIE's, and for the LLVM
+tools also Peano's and that of the LLVM the build was configured against), then
+`PATH`. Set a variable to pin a specific binary.
+
+| Variable | Tool | Used for |
+|----------|------|----------|
+| `AIE_XCLBINUTIL` | `xclbinutil` | Packaging an xclbin in `aiecc`, and reading a PDI out of one in `aie-hsaco`. A bare name is looked up on `PATH`; a value that resolves to nothing is an error, never a silent fallback. |
+| `AIE_OBJCOPY_PATH` | `llvm-objcopy` | Renaming symbols in compiled kernel objects, and injecting the AIE section in `aie-hsaco`. |
+| `AIE_NM_PATH` | `llvm-nm` | Listing the symbols a compiled kernel object defines. |
+| `AIE_AR_PATH` | `llvm-ar` | Bundling compiled objects into a static archive. |
+| `AIE_READOBJ_PATH` | `llvm-readobj` | Reading kernel objects for the static kernel checks. |
+
+```bash
+AIE_XCLBINUTIL=/path/to/xclbinutil aie-hsaco ...
+```
+
+## Kernel Source Override (`MLIR_AIE_KERNEL_SOURCES`)
+
+The `aie.iron.kernels` factories compile their C++ from the installed
+`include/aie_kernels/` and `aie_runtime_lib/` by default, which is the
+checkout as of its last build or install. Set `MLIR_AIE_KERNEL_SOURCES` to a
+checkout's root to compile that checkout's `aie_kernels/` and
+`aie_runtime_lib/` instead, for example to try a kernel edit against an
+installed wheel without rebuilding. `aie.utils.config.aie_kernels_dir()` and
+`aie_runtime_lib_dir()` resolve the override, the JIT cache key includes the
+tree it names, and `aie.utils.benchmark` records it with its results.
+`python -m aie.utils.compile.remarks --sources DIR` is the same override for
+that tool, and its `--baseline-sources DIR` compiles each build a second time
+from another checkout to compare the two.
+
+```bash
+MLIR_AIE_KERNEL_SOURCES=/path/to/mlir-aie python my_script.py
+```
+
+## Kernel Precompiled Header (`AIE_KERNEL_PCH`)
+
+Peano adds its intrinsics header to every kernel compile, and parsing it is a
+large share of a small kernel's compile time. A Peano kernel compile therefore
+reads that header from a precompiled header (PCH) under
+`$NPU_CACHE_HOME/pch/`, built once for each compiler and target. A kernel whose
+own macros or include directories change what the header reads, or that
+passes other compiler flags, gets a PCH of its own. The object is the one a
+plain compile builds. A compile that fails against the PCH is run again
+without it, and a PCH the compiler refuses is rebuilt by the next compile. A
+command with a relative include directory, or with an `-include` of its own,
+compiles without a PCH. Set `AIE_KERNEL_PCH=0` to compile without one.
+
+```bash
+AIE_KERNEL_PCH=0 python my_script.py
+```
+
+## IRON XRT Runtime Cache Size
+
+The `CachedXRTRuntime` caches XRT contexts to improve performance. The size of this cache can be configured using the `XRT_CONTEXT_CACHE_SIZE` environment variable. This is particularly useful in CI environments where multiple tests run in parallel and might exhaust the available NPU contexts.
+
+```bash
+export XRT_CONTEXT_CACHE_SIZE=1
+```
+
+The instruction streams it has loaded are cached apart from the contexts, up to
+`XRT_INSTS_CACHE_SIZE` of them (256 by default). They hold no hardware context,
+and a stream is released with the context it was loaded into.
+
+## IRON HRX Runtime Cache Size
+
+`HRX_EXE_CACHE_SIZE` bounds the loaded-executable cache in `CachedHRXRuntime`.
+The default is 6 on NPU1 and 16 on NPU2. Each executable holds a hardware
+context, so concurrent processes should use a smaller per-process share:
+
+```bash
+export HRX_EXE_CACHE_SIZE=2
+```
+
+`0` disables caching. Eviction does not release executables held by live kernel
+handles. `DispatchTime` designs cache the xclbin image, not per-call executables.
+
+## Dispatch-time scalar compilation
+
+`DispatchTime[T]` requires a host C++17 compiler, including with wheel
+installations, to build the host library from
+[`aiecc`'s generated C++](../tools/aiecc/README.md#parameterized-c-transaction-builders).
+`CXX` selects the compiler executable; otherwise IRON searches for `c++`,
+`g++`, then `clang++`, excluding Peano's device-toolchain directory.
+
+```bash
+CXX=/usr/bin/clang++ python my_design.py
+```
+
+Runtime headers are resolved from the installation first, with a configured
+source-tree fallback for uninstalled builds. Each dispatch calls the compiled
+library in-process; it does not launch a compiler.
+
+## Host-runtime backend selection (`NPU_RUNTIME`)
+
+IRON dispatches designs through a host runtime that consumes the `aiecc`
+artifacts. XRT and HRX load `final.xclbin` + `insts.bin`; HSA loads the PDI
+(`main.pdi`) + `insts.bin` from the same build. `NPU_RUNTIME` selects which
+backend is used:
+
+| Value | Behavior |
+|-------|----------|
+| `auto` (default) | Use XRT when `pyxrt` imports, else fall back to CPU-only tensors. Never selects HRX or HSA. |
+| `xrt` | Force the XRT backend (falls back to CPU tensors if `pyxrt` is missing). |
+| `hrx` | Force the [HRX](../python/utils/hostruntime/hrxruntime/README.md) (amdxdna / `libhrx`) backend. Errors at import if `libhrx.so` cannot be located. |
+| `hsa` | Force the [HSA/ROCR](hsa_runtime.md) backend. Errors at import if `libhsa-runtime64.so` cannot be located. |
+
+An unset value defaults to `auto`; an explicitly invalid value is a hard error
+(a typo must not silently resolve to another backend). `NPU_RUNTIME` is read
+*before* any capability probe, so a forced backend only probes itself (`hrx`
+and `hsa` never import `pyxrt`, and `xrt`/`auto` never run HRX or HSA
+discovery).
+
+```bash
+NPU_RUNTIME=hrx python my_script.py
+```
+
+`NPU_RUNTIME` is a single selector shared with the C++ example `make` flow: the
+same `NPU_RUNTIME=hrx` also builds the HRX host stack (`-DUSE_HRX=ON`) for
+`make`-driven examples (see `programming_examples/makefile-common`). The `auto`
+and `cpu` values are meaningful only to the Python flow; the build system treats
+an unset selector as `xrt`. `hsa` is a Python-flow backend only; there is no
+C++ host stack for it, so `make`-driven examples ignore it.
+
+## HRX Runtime (amdxdna) Configuration
+
+These variables apply when the HRX backend is active (`NPU_RUNTIME=hrx`). See
+the [HRX Runtime (amdxdna)](hrx_runtime.md) overview for the architecture and
+enabling instructions, and the
+[HRX runtime README](../python/utils/hostruntime/hrxruntime/README.md) for the
+full step-by-step flow.
+
+### Library discovery
+
+Python locates `libhrx` in this order (filesystem only — no `dlopen`). Explicit
+`HRX_*` hints match `FindHRX.cmake`; CMake does **not** search site-packages.
+
+| Source | Meaning |
+|--------|---------|
+| `HRX_LIBHRX` | Explicit full path to `libhrx.so` / `hrx.dll`. |
+| `LIBHRX_DIR` | Directory containing the library (e.g. set by `activate_env.sh`). |
+| pip site-packages | A package that ships `lib/libhrx.so*` or `bin/hrx.dll`. Filesystem only — the package is not imported. |
+| `HRX_DIR` | HRX install prefix (`$HRX_DIR/lib/libhrx.so`, `$HRX_DIR/include/...`). |
+| sibling / `FindHRX` roots | A sibling `hrx` checkout, `$HOME/hrx`, `/opt/hrx`, `/usr/local/hrx`, then the loader's search path. |
+
+### Runtime behavior
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `IRON_HRX_DEVICE` | auto-detect | Force the amdxdna device generation (`npu1` / `npu2`) instead of detecting it from sysfs PCI IDs. |
+| `HRX_EXE_CACHE_SIZE` | [Device-dependent](#iron-hrx-runtime-cache-size) | Max number of amdxdna executables the `CachedHRXRuntime` keeps (LRU). |
+| `IRON_HRX_TIMEOUT` | `0` (disabled) | Watchdog timeout, in seconds, bounding the wait in `hrx_stream_synchronize`. `0`, unset, or an invalid value disables the watchdog. On expiry a diagnosable error is raised (the underlying sync cannot be cancelled). |
+
+```bash
+# Force npu2, cap the executable cache, and fail a wedged sync after 30s.
+NPU_RUNTIME=hrx IRON_HRX_DEVICE=npu2 HRX_EXE_CACHE_SIZE=8 \
+  IRON_HRX_TIMEOUT=30 python my_script.py
+```
+
+## HSA/ROCR Runtime Configuration
+
+These variables apply when the HSA backend is active (`NPU_RUNTIME=hsa`). See
+[HSA Runtime (ROCR)](hsa_runtime.md) for the architecture and the full
+step-by-step flow.
+
+### Getting ROCm
+
+The recommended source is the pip wheel from
+[TheRock](https://github.com/ROCm/TheRock/blob/main/RELEASES.md), installed into
+the environment you run designs from:
+
+```bash
+pip install --index-url https://rocm.nightlies.amd.com/whl-multi-arch/ rocm
+```
+
+The base `rocm` package is enough: it pulls `rocm-sdk-core`, which carries
+`libhsa-runtime64.so` with the AIE support this backend needs. The
+`[libraries]` and `[device-gfx…]` extras are for GPU workloads and are not
+required for the NPU. Discovery finds it in site-packages with nothing to
+configure.
+
+### ROCm discovery
+
+`libhsa-runtime64.so` is located inside a ROCm *installation root*, looked for
+in three places, in this order:
+
+| Source | Meaning |
+|--------|---------|
+| `ROCM_PATH` | An explicit installation root, overriding the wheel. It names a ROCm tree, not a library file, so the same variable serves every ROCm component. |
+| pip-installed ROCm | The wheel above, whose runtime tree ships inside site-packages. |
+| System install | `/opt/rocm`. |
+
+The first root that actually contains the library wins. Both the unversioned
+`libhsa-runtime64.so` and the bare SONAME `libhsa-runtime64.so.1` are accepted:
+TheRock's runtime wheels contain no symlinks, so a pip-installed ROCm provides
+only the versioned name.
+
+> **With no wheel and no `ROCM_PATH`, a system `/opt/rocm` is what you get.** If
+> it predates AIE support, the failure surfaces later as an opaque HSA error
+> rather than a version complaint. Installing the wheel avoids this; set
+> `ROCM_PATH` only when you need a specific ROCm instead.
+
+### Runtime behavior
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `IRON_HSA_DEVICE` | auto-detect | Force the device generation (`npu1` / `npu2`) instead of detecting it from the HSA agent name. ROCR names the agent after its ISA (`aie2` = Phoenix/npu1, `aie2p` = Strix/npu2); an unrecognized name is an error rather than a guess, because a wrong generation compiles for the wrong architecture and wedges the NPU. |
+| `HSA_EXE_CACHE_SIZE` | `32` | Max number of loaded designs the `CachedHSAHostRuntime` keeps (LRU). A non-integer value is ignored, with a warning, in favour of the default. |
+| `IRON_HSA_TIMEOUT` | `0` (disabled) | Timeout, in seconds, bounding the two waits IRON itself performs: the completion-signal wait and the full-queue wait in `enqueue`. `0`, unset, or an invalid value disables it. Implemented with `hsa_signal_wait`'s own timeout, so arming it costs nothing per dispatch. On expiry a diagnosable error is raised (the underlying dispatch cannot be cancelled). **This is not a watchdog for a wedged dispatch:** ROCR's AIE doorbell submits *and blocks until completion*, so a hung dispatch stalls inside the doorbell store — before either bounded wait is reached — on an internal wait this setting cannot reach. |
+
+```bash
+# Point at a specific ROCm, force npu2, cap the cache, bound IRON's waits at 30s.
+NPU_RUNTIME=hsa ROCM_PATH=/opt/rocm-7.0 IRON_HSA_DEVICE=npu2 \
+  HSA_EXE_CACHE_SIZE=8 IRON_HSA_TIMEOUT=30 python my_script.py
+```
+
+### HSA hardware tests
+
+On a provisioned HSA NPU host, `AIE_HSA_NPU=npu1` or `npu2` enables lit's
+`hsa_npu` feature without XRT discovery. It neither installs ROCm nor overrides
+HSA device detection; finding ROCm alone does not enable tests on GPU-only hosts.
+
+```bash
+AIE_HSA_NPU=npu2 llvm-lit -sv build/test/python/npu/test_dispatch_time_scalar.py \
+  build/test/python/npu/test_hsa_dispatch.py
+```
+
+The tests select `NPU_RUNTIME=hsa`; lit forwards `ROCM_PATH`, `IRON_HSA_DEVICE`,
+and `IRON_HSA_TIMEOUT`. Coverage includes real allocation/free calls and cleanup
+after both pre- and post-publication failures.
+
+### Limitations
+
+- **Trace capture is not supported.** A design with a `trace_config` is rejected
+  up front; use `NPU_RUNTIME=xrt` for trace-enabled designs.
+- **Dispatches must be serialized.** The single in-order AIE queue and its
+  doorbell are not safe for concurrent dispatch from multiple threads (the same
+  constraint HRX documents).
+
+## Diagnostic Output and Log Level
+
+The `aie` library uses Python's standard `logging` module for all diagnostic output. Set
+`AIE_LOG_LEVEL` to control verbosity. Valid values: `DEBUG`, `INFO`, `WARNING`
+(default), `ERROR`, `CRITICAL`.
+
+```bash
+AIE_LOG_LEVEL=DEBUG python my_script.py    # show debug messages
+AIE_LOG_LEVEL=INFO python my_script.py     # show info and above
+AIE_LOG_LEVEL=ERROR python my_script.py    # errors only
+```
+
+For per-module control or routing to a file, use the `logging` API directly:
+
+```python
+import logging
+
+logging.getLogger("aie").setLevel(logging.ERROR)
+
+# Route aie logs to a file instead of the console
+handler = logging.FileHandler("aie.log")
+handler.setFormatter(logging.Formatter("%(asctime)s %(name)s %(levelname)s %(message)s"))
+logging.getLogger("aie").addHandler(handler)
+logging.getLogger("aie").propagate = False  # don't also send to root logger
+```
+
+## Helper utilities cheat-sheet
+
+The helpers most designs reach for, grouped by where they live.  Each
+has a docstring; `help(obj)` or `print(obj.__doc__)` shows it.
+
+### Host-side tensor + design construction (`aie.iron`)
+
+| Helper | What it does |
+|--------|--------------|
+| `iron.{tensor, zeros, ones, full, rand, randint, arange, zeros_like}` | Host-tensor factories (default `device="npu"`, also accept `device="cpu"`); see also [`set_tensor_class`](#default-iron-tensor-class). |
+| `iron.{In, Out, InOut, CompileTime}` | Type annotation markers for `@iron.jit` generator parameters (see [`compilation_stages.md`](./compilation_stages.md) §Appendix A). |
+| `iron.{jit, CompilableDesign, CallableDesign}` | The JIT decorator + the two design wrapper classes (`CompilableDesign` is the recipe; `CallableDesign` is the ready-to-run wrapper). |
+| `iron.ceildiv(a, b)` | Pure-integer ceiling division.  Same value on every code path; here so designs don't redefine it locally. |
+| `iron.{set_current_device, get_current_device}` | Read/write the active `Device` (see [§Default IRON Device](#default-iron-device)). |
+| `iron.kernels.*` | Pre-packaged kernel factories — `mm`, `conv2dk1`, `conv2dk3`, `passthrough`, eltwise, etc.  Each returns an `ExternalFunction` ready to bind in a `Worker`. |
+| `iron.{Buffer, Lock, Flow, TileDma, DmaChannel, Bd, Acquire, Release}` | IRON-Python peers of `ObjectFifo` for designs that want to hand-wire DMA + sync (canonical example: `programming_examples/basic/chaining_channels/`). |
+| `iron.algorithms.{transform, transform_binary, transform_parallel, for_each}` | Element-wise dataflow templates — handle `Worker` / `ObjectFifo` / `Runtime` plumbing for one-arg / two-arg / multi-column / fill-and-drain patterns. |
+| `iron.{compile_context, get_compile_arg}` | Dynamic compile-time arg injection.  See [§compile_context](#compile_context-for-nested-generator-helpers) below. |
+
+### Argparse + runtime glue (`aie.iron.device`, `aie.utils`)
+
+| Helper | What it does |
+|--------|--------------|
+| `aie.utils.hostruntime.argparse.device_from_args(args)` | Resolve an explicit parsed `args.dev` to a `Device` — collapses `from_name(args.dev, n_cols=...)` boilerplate. Returns `None` when target selection is automatic, so `run_design_cli()` can bind the attached runtime family. `n_cols="auto"` reads `args.n_cols` if present, otherwise defaults to 1. |
+| `aie.utils.DefaultNPURuntime` | Module-level `CachedXRTRuntime` instance; auto-detects NPU1 / NPU2 via XRT.  Used by `iron.tensor(..., device="npu")` and `@iron.jit` runtime binding. |
+| `aie.utils.hostruntime.argparse.{add_compile_args, add_runtime_args}` | Add the standard `--xclbin-path`/`--insts-path` and `--xclbin`/`--instr`/`-k`/`--trace_size` flags to a parser. |
+| `aie.utils.test.create_npu_kernel(opts)` | Build an `NPUKernel` (plus optional `TraceConfig`) from a parsed `argparse.Namespace`.  See `programming_examples/basic/vector_scalar_mul/test.py` for the canonical use pattern. |
+| `aie.utils.benchmark.{run_iters, print_benchmark}` | Warmup + timed iterations + summary stats.  See [section-4/section-4a/README.md](./section-4/section-4a/README.md). |
+| `aie.utils.verify.{nearly_equal, count_mismatches}` | Tolerance-aware compare for LUT / saturating / bf16 outputs that don't match exactly. |
+
+### Compile-pipeline introspection (`aie.utils.compile`)
+
+| Helper | What it does |
+|--------|--------------|
+| `aie.utils.compile.NPU_CACHE_HOME` | Cache root `Path`; defaults to `~/.npu/cache`, override with the `NPU_CACHE_HOME` env var. |
+| `aie.utils.compile.jit._dma_size_parser.parse_dma_sizes(kernel_dir)` | Per-host-arg element counts read from the entry-point `aie.runtime_sequence` in `input_with_addresses.mlir`.  Backs the [tensor-arg validation](./compilation_stages.md) in stage 5. |
+| `logging.getLogger("aie.utils.compile").setLevel(logging.DEBUG)` | Print every `clang++` / `aiecc` subprocess invocation.  See [compilation_stages.md §Watching the compile pipeline](./compilation_stages.md#watching-the-compile-pipeline). |
+
+### `compile_context` for nested generator helpers
+
+Most designs supply compile-time values via the explicit
+`CompileTime[T]`-annotated generator signature.  Some patterns — composite
+generators, helper functions reused across designs — want to inject
+values *through* a helper that doesn't take them as explicit kwargs.
+`compile_context` opens a per-thread context that `get_compile_arg`
+can read out:
+
+```python
+from aie.iron import compile_context, get_compile_arg
+
+def make_fifo_pair(line_ty):
+    # Helper has no name_prefix kwarg, but can read one from context.
+    prefix = get_compile_arg("prefix", default="")
+    return (ObjectFifo(line_ty, name=f"{prefix}in"),
+            ObjectFifo(line_ty, name=f"{prefix}out"))
+
+with compile_context(prefix="layer1_"):
+    of_in, of_out = make_fifo_pair(line_ty)        # layer1_in, layer1_out
+
+of_in, of_out = make_fifo_pair(line_ty)            # in, out (default)
+```
+
+Contexts nest — inner values shadow outer ones for the duration of the
+inner `with` block.  Implemented on top of `contextvars`, so it is
+thread- and async-safe.  `CompilableDesign.compile()` uses the same
+mechanism internally to surface the bound `CompileTime[T]` kwargs to the
+generator body.
+
+Prefer explicit `CompileTime[T]` parameters when you can; reserve
+`compile_context` for the cases where threading the value through every
+helper signature would obscure the design.
+
+## Kernel sources (`MLIR_AIE_KERNEL_SOURCES`)
+
+The kernel factories compile from the installed tree's `aie_kernels/` and
+`aie_runtime_lib/`. Point `MLIR_AIE_KERNEL_SOURCES` at a checkout to compile
+that checkout's kernel sources instead, against an otherwise-installed wheel:
+
+```bash
+MLIR_AIE_KERNEL_SOURCES=/path/to/mlir-aie python3 my_design.py
+```
+
+This is how `aie.utils.compile.remarks` reads a checkout's kernels without
+building the rest of it.
+
+## Kernel compile parallelism (`AIE_KERNEL_COMPILE_JOBS`)
+
+External kernels are compiled in parallel, one process per distinct kernel,
+defaulting to `os.cpu_count()`. Set `AIE_KERNEL_COMPILE_JOBS` to cap that — on
+a shared machine, or to serialize the build when a compiler error is easier to
+read one at a time. Values below 1 mean the default.
+
+## Peano location (`PEANO_INSTALL_DIR`)
+
+Where the Peano (`llvm-aie`) toolchain lives. Set at build time, and
+overridable here for a Peano built or installed somewhere else. When neither
+resolves to an existing directory, the install area's own copy is used.
+
+## Expected NPU for the test suite (`AIE_EXPECTED_NPU`)
+
+`npu1` or `npu2`. lit normally discovers the attached device; setting this
+asserts which one the suite is meant to run against, so a machine that comes
+up as the other generation fails loudly instead of silently skipping every
+device test.
