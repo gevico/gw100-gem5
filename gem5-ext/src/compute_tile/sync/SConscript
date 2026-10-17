@@ -1,0 +1,4 @@
+Import('*')
+
+SimObject('SyncUnit.py', sim_objects=['AcisSyncUnit'])
+Source('sync_unit.cc')
