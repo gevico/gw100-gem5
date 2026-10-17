@@ -1,4 +1,9 @@
-"""L0：向量运算的 C++ 实现与 numpy golden 逐位对比。"""
+"""
+@file  test_vector_ops.py
+@brief L0：向量运算的 C++ 实现与 numpy golden 逐位比对
+
+@see SPEC-220
+"""
 
 import ctypes
 

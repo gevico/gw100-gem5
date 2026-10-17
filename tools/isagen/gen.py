@@ -1,8 +1,14 @@
-"""根据 spec-src/isa/*.yaml 生成 gem5 侧 C++ 头文件和 Python 汇编器的定义模块。
+"""
+@file  gen.py
+@brief 根据 ISA YAML 生成 C++ 头文件和 Python 定义模块
+
+输入是 spec-src/isa/*.yaml，输出供 gem5 侧译码和 Python 汇编器使用。
 
 用法（在仓库根目录执行）：
     .venv/bin/python tools/isagen/gen.py              # 默认使用 spec-src/isa/isa-v0.yaml
     .venv/bin/python tools/isagen/gen.py --check      # 只检查生成结果是否最新，不写文件
+
+@see SPEC-230
 """
 
 import argparse

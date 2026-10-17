@@ -1,8 +1,13 @@
 /**
- * Compute Tile 的 DMA（SPEC-250 / SPEC-320）。v0 实现 DMA_COPY。
+ * @file  dma_engine.hh
+ * @brief Compute Tile 的 DMA 引擎
+ *
+ * v0 实现 DMA_COPY。
  *
  * 边读边写：读回的数据只要从头连续到齐一段，就立即写出这一段。
  * 访问本 Tile SRAM 走 local 端口，其他地址（DRAM、其他 Tile 的 SRAM）走 remote 端口。
+ *
+ * @see SPEC-250, SPEC-320
  */
 
 #ifndef __ACIS_COMPUTE_TILE_DMA_DMA_ENGINE_HH__

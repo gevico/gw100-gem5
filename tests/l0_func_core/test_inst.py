@@ -1,4 +1,9 @@
-"""L0：Python 汇编器与 C++ 译码器的编码一致性，以及张量地址展开。"""
+"""
+@file  test_inst.py
+@brief L0：汇编器与 C++ 译码器的编码一致性，以及张量地址展开
+
+@see SPEC-230
+"""
 
 import ctypes
 import itertools

@@ -1,3 +1,10 @@
+"""
+@file  TestHost.py
+@brief TestHost 的 SimObject 声明
+
+@see SPEC-400
+"""
+
 from m5.objects.ClockedObject import ClockedObject
 from m5.params import *
 from m5.proxy import *

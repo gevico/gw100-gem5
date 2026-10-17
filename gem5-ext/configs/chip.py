@@ -1,4 +1,8 @@
-"""按架构参数（arch_params 转成的 JSON）搭建整颗芯片。
+"""
+@file  chip.py
+@brief 按架构参数搭建整颗芯片
+
+输入是 arch_params 转成的 JSON。
 
 v0 的片上网络先用 gem5 的 NoncoherentXBar 代替（TODO：换成自研的 2D Mesh 模型，见 SPEC-120）。
 连接关系：
@@ -6,6 +10,8 @@ v0 的片上网络先用 gem5 的 NoncoherentXBar 代替（TODO：换成自研�
                     NoC -> 本 Tile SRAM（其他 Tile 和 TestHost 经此访问）；
                     指令中的本地窗口地址由 Tile 控制器换算成本 Tile SRAM 的全局地址
   8 个 DRAM 通道、Host 内存、派发器寄存器 -> NoC；派发器 DMA、TestHost -> NoC
+
+@see SPEC-100
 """
 
 import math

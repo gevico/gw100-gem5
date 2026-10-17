@@ -1,3 +1,10 @@
+/**
+ * @file  dispatcher.cc
+ * @brief Dispatcher 的实现
+ *
+ * @see SPEC-330, SPEC-400
+ */
+
 #include "src/mgmt_tile/dispatcher.hh"
 
 #include <cstring>

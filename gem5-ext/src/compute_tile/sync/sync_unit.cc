@@ -1,3 +1,10 @@
+/**
+ * @file  sync_unit.cc
+ * @brief SyncUnit 的实现
+ *
+ * @see SPEC-250
+ */
+
 #include "src/compute_tile/sync/sync_unit.hh"
 
 #include "base/logging.hh"

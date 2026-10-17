@@ -1,3 +1,10 @@
+"""
+@file  MgmtTile.py
+@brief 管理 Tile 派发器的 SimObject 声明
+
+@see SPEC-330, SPEC-400
+"""
+
 from m5.objects.Device import DmaDevice
 from m5.params import *
 

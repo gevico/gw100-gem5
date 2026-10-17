@@ -1,4 +1,9 @@
-"""L0：数值转换逐位对比 numpy 参考。"""
+"""
+@file  test_numerics.py
+@brief L0：数值转换与 numpy 参考逐位比对
+
+@see SPEC-240
+"""
 
 import numpy as np
 

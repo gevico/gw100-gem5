@@ -1,5 +1,6 @@
 /**
- * 把功能核心库（命名空间 ::acis，不依赖 gem5）的名字引入 gem5::acis。
+ * @file  fc.hh
+ * @brief 把功能核心库的名字引入 gem5::acis
  *
  * gem5 侧代码都在 gem5::acis 里，非限定查找不会进入顶层的 ::acis，
  * 所以这里逐个用 using 声明引入，而不用 using namespace，避免与 gem5 自身的名字

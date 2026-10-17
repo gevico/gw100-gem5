@@ -1,3 +1,10 @@
+/**
+ * @file  inst.cc
+ * @brief inst.hh 的实现
+ *
+ * @see SPEC-110, SPEC-230
+ */
+
 #include "acis/inst.hh"
 
 #include <cstring>

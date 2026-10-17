@@ -1,3 +1,10 @@
+/**
+ * @file  vector_ops.cc
+ * @brief vector_ops.hh 的实现
+ *
+ * @see SPEC-220
+ */
+
 #include "acis/vector_ops.hh"
 
 #include <cmath>

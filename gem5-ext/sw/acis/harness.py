@@ -1,4 +1,6 @@
-"""算子测试框架：生成测试包、调用 gem5、读回结果并与 golden 对比（MAN-060 草案）。
+"""
+@file  harness.py
+@brief 算子测试框架：生成测试包、调用 gem5、读回结果并与 golden 比对
 
 典型用法：
 
@@ -22,6 +24,8 @@ gem5 的位置：
 - 环境变量 GEM5_BIN 指向本机可执行文件时直接运行；
 - 否则在 Docker 镜像 ACIS_GEM5_IMAGE（默认取本机已有的 gem5-slim 或 gem5-dev）里运行
   gem5/build/NULL/gem5.opt，仓库根目录按原路径挂载进容器。
+
+@see MAN-060
 """
 
 import json

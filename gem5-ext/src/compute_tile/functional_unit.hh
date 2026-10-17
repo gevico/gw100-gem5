@@ -1,9 +1,12 @@
 /**
- * 功能单元的公共基类（SPEC-200）。
+ * @file  functional_unit.hh
+ * @brief 功能单元的公共基类
  *
  * 每个单元有自己的指令队列，单元内按序执行；执行前若指令要求等待，先向同步单元等待
  * 计数器；执行完若指令要求通知，则更新计数器，再告诉 Tile 控制器"一条指令退休了"。
  * 派生类只需实现 execute()，结束时调用 finish()。
+ *
+ * @see SPEC-200
  */
 
 #ifndef __ACIS_COMPUTE_TILE_FUNCTIONAL_UNIT_HH__

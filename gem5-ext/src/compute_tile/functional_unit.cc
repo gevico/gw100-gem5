@@ -1,3 +1,10 @@
+/**
+ * @file  functional_unit.cc
+ * @brief FunctionalUnit 的实现
+ *
+ * @see SPEC-200
+ */
+
 #include "src/compute_tile/functional_unit.hh"
 
 #include "base/logging.hh"

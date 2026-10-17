@@ -1,3 +1,10 @@
+"""
+@file  BankedSram.py
+@brief Tile SRAM 的 SimObject 声明
+
+@see SPEC-200
+"""
+
 from m5.objects.AbstractMemory import AbstractMemory
 from m5.params import *
 

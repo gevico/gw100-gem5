@@ -1,3 +1,10 @@
+"""
+@file  SyncUnit.py
+@brief 同步单元的 SimObject 声明
+
+@see SPEC-250
+"""
+
 from m5.objects.ClockedObject import ClockedObject
 from m5.params import *
 

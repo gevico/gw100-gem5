@@ -1,10 +1,14 @@
-"""L1：向量指令端到端功能正确性。
+"""
+@file  test_vec_ops.py
+@brief L1：向量指令端到端功能正确性
 
 数据路径：DRAM -> (DMA) -> Tile SRAM -> 向量引擎 -> Tile SRAM -> (DMA) -> DRAM，
 指令之间用本 Tile 的同步计数器衔接：
     c0：两次输入 DMA 各 +1，向量指令等 c0 >= 2
     c1：向量指令完成 +1，输出 DMA 等 c1 >= 1
 SRAM 操作数默认用 Tile 相对地址（本地窗口）。
+
+@see SPEC-220
 """
 
 import numpy as np

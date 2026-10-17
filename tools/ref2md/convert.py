@@ -1,4 +1,6 @@
-"""把 reference/ 下的 PDF 批量转换为同目录、同名的 Markdown 文件。
+"""
+@file  convert.py
+@brief 把 reference/ 下的 PDF 批量转换为同目录、同名的 Markdown
 
 用法（在仓库根目录执行）：
     uv venv --python 3.12 tools/ref2md/.venv

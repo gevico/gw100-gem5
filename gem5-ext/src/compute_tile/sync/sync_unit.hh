@@ -1,8 +1,12 @@
 /**
- * 同步单元（SPEC-250）：一组计数器，供功能单元之间做生产者-消费者同步。
+ * @file  sync_unit.hh
+ * @brief Tile 的同步单元：供生产者-消费者同步的一组计数器
+ *
  * - signal(c)：counter[c] += 1；
  * - wait(c, v, cb)：等到 counter[c] >= v 再调用 cb。
  * 条件满足后，回调在 latency 个周期之后执行，模拟同步的硬件延迟。
+ *
+ * @see SPEC-250
  */
 
 #ifndef __ACIS_COMPUTE_TILE_SYNC_SYNC_UNIT_HH__

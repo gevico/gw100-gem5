@@ -40,6 +40,7 @@ reference     reference/ 调研资料
 tools         tools/ 下的其他工具，例如 ref2md
 
 # ---- 工程
+treewide      横跨整个仓库的机械性改动，例如统一补文件头、统一格式化；只用于不改变行为的提交
 build         构建系统、Dockerfile、依赖
 gem5          gem5 子模块指针与 gem5-ext/patches/
 git           仓库配置、钩子、.gitignore、.gitattributes

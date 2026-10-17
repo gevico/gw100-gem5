@@ -1,3 +1,8 @@
+/**
+ * @file  mem_streamer.cc
+ * @brief UnitPort 与 MemStreamer 的实现
+ */
+
 #include "src/common/mem_streamer.hh"
 
 #include <algorithm>

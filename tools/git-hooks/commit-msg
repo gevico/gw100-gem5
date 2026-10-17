@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""检查提交信息是否符合 CONTRIBUTING.md §3。
+"""
+@file  commit-msg
+@brief 检查提交信息是否符合 CONTRIBUTING.md §3
 
 启用：git config core.hooksPath tools/git-hooks
 只用标准库；fixup!/squash!/amend! 提交只检查格式不检查 scope，合并前会被压缩掉。
