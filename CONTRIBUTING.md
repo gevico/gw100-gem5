@@ -6,7 +6,7 @@
 - Linux 内核的补丁规范：一个提交只做一件事，正文写清"为什么"；
 - gem5 的提交规范：标题带组件标签，每个提交都能编译通过。
 
-本文中的"必须""不得"是硬性要求。其中新增文件的文件头、提交信息格式和分支命名由 `tools/git-hooks/` 里的钩子自动检查。
+本文中的"必须""不得"是硬性要求。其中新增文件的文件头、提交信息格式、分支命名和 DCO 签署由 `tools/git-hooks/` 里的钩子自动检查。
 
 ---
 
@@ -14,9 +14,9 @@
 
 ```sh
 git clone --recurse-submodules <仓库地址>     # 已经克隆的：git submodule update --init
-git config core.hooksPath tools/git-hooks     # 启用文件头、提交信息和分支命名检查（每个克隆做一次）
-git config user.name  "<真实姓名>"
-git config user.email "<公司邮箱>"
+git config core.hooksPath tools/git-hooks     # 启用文件头、提交信息、分支命名和 DCO 检查（每个克隆做一次）
+git config user.name  "<姓名或账号名>"         # 不要求真实姓名；DCO 签署（§3.7）会用到这两项
+git config user.email "<邮箱>"
 ```
 
 开发环境、构建和测试命令见 `CLAUDE.md` 的"常用命令"一节。
@@ -131,7 +131,8 @@ git config user.email "<公司邮箱>"
 | `BREAKING CHANGE: <迁移说明>` | 标题带 `!` 时 |
 | `Idealization: add #N` / `remove #N` / `update #N` | 新增、消除或修改了 `gem5-ext/README.md` "理想化清单"里的条目时。多项用 `, ` 分隔 |
 | `Refs: #123` / `Closes: #123` | 关联工单时 |
-| `Co-Authored-By: 姓名 <邮箱>` | 有他人参与时。**AI 助手参与生成的提交必须写**，例如 `Co-Authored-By: Claude <noreply@anthropic.com>`。提交者对内容负全部责任 |
+| `Co-Authored-By: 姓名 <邮箱>` | 有其他人类参与时。它只说明谁参与了写作，不等于 DCO 签署。**不接受 AI 署名为共同作者**，见 §3.8 |
+| `Signed-off-by: 姓名 <邮箱>` | 进入 `main` 和 `release/*` 的每个提交都必须有，**只能由人类签署**，见 §3.7。放在脚注的最后 |
 
 ### 3.6 示例
 
@@ -170,6 +171,45 @@ spec(isa)!: 示例——VEC_SCALAR 的立即数改为 FP16
 BREAKING CHANGE: 汇编器和编译器按新的 imm 编码生成指令；isa 升到 0.3。
 ```
 
+### 3.7 DCO 签署
+
+`Signed-off-by` 表示签署者按 [Developer Certificate of Origin 1.1](https://developercertificate.org/)（DCO）作出证明：自己有权以本仓库的方式提交这份改动，并对它负责。这是有法律意义的声明，**只能由人类签署**。
+
+- **进入 `main` 和 `release/*` 的每个提交都必须至少有一个人类的 `Signed-off-by`**，姓名和邮箱与签署者的 git 身份一致。工作分支上的提交可以暂时不签，评审通过后、合并之前补签。
+- **签署身份不要求真实姓名，也不要求公司邮箱**：可以用账号名、个人邮箱等在团队内能对应到具体个人的固定身份。不得匿名，也不得用 AI 或机器人的名字。
+- **AI 不得签署 DCO。** AI 助手不得以任何名义添加 `Signed-off-by`：不能写自己的名字，也不能代人类写。AI 也不得执行会添加签署的命令，包括 `git commit -s` / `--signoff`、`git rebase --signoff`、`git cherry-pick -s`、`git am -s`。
+- **AI 参与的提交由人类审阅后签署。** AI 不署名（§3.8），也不签署；人类读过改动、愿意为它负责之后，自己添加 `Signed-off-by`。签署者对改动负全部责任，包括 AI 写的部分。
+- **补签的方法**：由人类在自己的终端里，在工作分支上执行：
+
+      git rebase --signoff main                  # 为分支上相对 main 的每个提交加上自己的签署
+      git commit --amend --signoff --no-edit     # 只签最新的一个提交
+
+脚注的顺序是先写其他脚注，最后写 `Signed-off-by`：
+
+```
+Idealization: add #9
+Co-Authored-By: 李四 <lisi@example.com>
+Signed-off-by: 张三 <zhangsan@example.com>
+```
+
+**检查**：
+- commit-msg 钩子：签署者的姓名或邮箱像 AI（含 Claude、Anthropic、Copilot、OpenAI、ChatGPT、GPT、Codex、Gemini）时拒绝；在 AI 助手的会话里提交时（例如 Claude Code 会设置 `CLAUDECODE=1`），只要带有 `Signed-off-by` 就拒绝。
+- pre-push 钩子：推送到 `main` 或 `release/*` 的提交缺少人类签署时拒绝。
+- 本地合并前手动检查：`tools/git-hooks/pre-push --check-dco main..<分支>`。
+- 钩子识别不了"AI 冒用人类姓名签署"，这一点靠本规则和评审约束。识别规则在 `tools/git-hooks/dco.py`，两个钩子共用。
+
+现状：本规则建立之前进入 `main` 的提交都没有签署。要不要补签由仓库维护者决定；补签只能由人类自己执行（`git rebase --signoff --root`）。这会改写历史，只能在推送到任何远端之前做。
+
+### 3.8 不接受 AI 署名
+
+本仓库不接受 AI 署名为作者或共同作者。提交信息和合并请求描述里，不得出现 AI 的 `Co-Authored-By`，也不得出现"Generated with Claude Code"之类的署名行。改动由提交它、签署它的人类负责。
+
+- Claude Code 默认会自动加署名，本仓库已在 `.claude/settings.json` 中关闭（`attribution` 设为空，并为旧版本设了 `includeCoAuthoredBy: false`）。这份配置入库，对所有在本仓库使用 Claude Code 的人生效；个人配置 `.claude/settings.local.json` 不入库，不得在其中重新打开署名。
+- 使用其他 AI 助手时，也要关闭它的自动署名。
+- commit-msg 钩子会拒绝 AI 的 `Co-Authored-By` 和"Generated with Claude Code"署名行，识别规则与 §3.7 共用 `tools/git-hooks/dco.py`。
+
+现状：本规则建立之前的提交信息里都带有 Claude 的 `Co-Authored-By`。要不要清理由仓库维护者决定；清理需要改写历史，只能在推送到任何远端之前做。
+
 ---
 
 ## 4. 合并请求与评审
@@ -190,6 +230,7 @@ BREAKING CHANGE: 汇编器和编译器按新的 imm 编码生成指令；isa 升
 - rebase 到最新的 `main`。
 - 整理提交历史：回应评审意见时用 `git commit --fixup=<提交>`，合并前用 `git rebase -i --autosquash` 压缩。
 - §6 列出的检查全部通过。
+- 每个提交都有人类的 `Signed-off-by`（§3.7）。缺少时，由审阅过改动的人类执行 `git rebase --signoff main` 补签，再用 `tools/git-hooks/pre-push --check-dco main..<分支>` 确认。
 - 合并方式默认用 rebase 合并，保留每个有意义的提交。如果分支里都是零碎提交，可以 squash 合并，但合并后的提交信息必须按 §3 重写。
 
 ### 4.3 评审人
