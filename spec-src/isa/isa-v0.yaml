@@ -16,8 +16,9 @@
 #   - aux_addr 同样适用这条规则。
 #
 # v0.2：引入 Tile 相对地址（编码不变）。
+# v0.3：程序头的 magic 由 "ACIS"（0x53494341，早期笔误）改为 "GW10"（0x30315747）。
 
-version: "0.2"
+version: "0.3"
 instruction_bytes: 128
 
 dtypes:            # code: 元素位宽（bit）
@@ -89,7 +90,7 @@ subops:
 
 # ---------------------------------------------------------------- 程序与 Host 接口（SPEC-400 最小子集）
 program:
-  magic: 0x53494341               # "ACIS"
+  magic: 0x30315747               # "GW10"：小端存放，前 4 个字节依次为 G W 1 0
   header_bytes: 16                # magic u32, version u16, rsv u16, num_entries u32, rsv u32
   entry_bytes: 136                # tile_mask u64 + 128 字节指令；tile_mask 第 i 位对应 Compute Tile i
 

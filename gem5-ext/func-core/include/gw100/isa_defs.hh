@@ -9,7 +9,7 @@ namespace gw100
 namespace isa
 {
 
-constexpr const char *kVersion = "0.2";
+constexpr const char *kVersion = "0.3";
 constexpr unsigned kInstBytes = 128;
 constexpr uint16_t kLocalTile = 0xffff;
 
@@ -194,7 +194,7 @@ enum class VecScalarOp : uint8_t
 
 namespace prog
 {
-constexpr uint32_t magic = 0x53494341;
+constexpr uint32_t magic = 0x30315747;
 constexpr unsigned header_bytes = 16;
 constexpr unsigned entry_bytes = 136;
 } // namespace prog

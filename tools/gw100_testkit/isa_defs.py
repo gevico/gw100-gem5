@@ -1,6 +1,6 @@
 """由 tools/isagen/gen.py 根据 spec-src/isa/isa-v0.yaml 生成，请勿手改。"""
 
-VERSION = '0.2'
+VERSION = '0.3'
 INST_BYTES = 128
 LOCAL_TILE = 0xffff
 
@@ -61,7 +61,7 @@ OPERAND_FIELDS = {
     'stride': (16, 'i32', 4),
 }
 
-PROGRAM = {'magic': 0x53494341, 'header_bytes': 16, 'entry_bytes': 136}
+PROGRAM = {'magic': 0x30315747, 'header_bytes': 16, 'entry_bytes': 136}
 MGMT_REGS = {'CMD_ADDR': 0x00, 'DOORBELL': 0x08, 'STATUS': 0x0c, 'VERSION': 0x10}
 COMMAND_RECORD = {'program_addr': (0, 'u64'), 'program_bytes': (8, 'u32'), 'flags': (12, 'u32'), 'completion_addr': (16, 'u64'), 'tag': (24, 'u64')}
 COMPLETION_RECORD = {'status': (0, 'u32'), 'tag': (8, 'u64'), 'start_tick': (16, 'u64'), 'end_tick': (24, 'u64')}
