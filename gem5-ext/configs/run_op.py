@@ -2,7 +2,7 @@
 @file  run_op.py
 @brief 运行一个算子测试包
 
-测试包由 sw/acis/harness.py 生成。
+测试包由 tools/gw100_testkit/harness.py 生成。
 
 用法：
     gem5.opt [--debug-flags=AcisDispatch,AcisCtrl,AcisUnit] gem5-ext/configs/run_op.py <测试包目录>

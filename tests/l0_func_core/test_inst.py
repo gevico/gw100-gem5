@@ -11,8 +11,8 @@ import itertools
 import numpy as np
 import pytest
 
-from acis import asm
-from acis.dtypes import elem_bits
+from gw100_testkit import asm
+from gw100_testkit.dtypes import elem_bits
 
 
 def _roundtrip(fc, raw):
@@ -129,7 +129,7 @@ def _resolve(fc, inst):
 
 
 def _opnd_addr(raw, k):
-    from acis.isa_defs import OPERAND
+    from gw100_testkit.isa_defs import OPERAND
     off = OPERAND["base"] + k * OPERAND["bytes"]
     return int.from_bytes(raw[off:off + 8], "little")
 

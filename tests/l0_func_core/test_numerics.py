@@ -7,7 +7,7 @@
 
 import numpy as np
 
-from acis.dtypes import bf16_bits_to_f32, f32_to_bf16_bits
+from gw100_testkit.dtypes import bf16_bits_to_f32, f32_to_bf16_bits
 
 SPECIALS = np.array([0.0, -0.0, 1.0, -1.0, np.inf, -np.inf, np.nan, 65504.0, 65520.0, 65519.99,
                      6.1035156e-05, 5.9604645e-08, 2.9802322e-08, 2.9802326e-08, 1e-8, 3.4e38,

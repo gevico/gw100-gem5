@@ -20,7 +20,7 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_SPEC = REPO_ROOT / "spec-src" / "isa" / "isa-v0.yaml"
 CPP_OUT = REPO_ROOT / "gem5-ext" / "func-core" / "include" / "acis" / "isa_defs.hh"
-PY_OUT = REPO_ROOT / "gem5-ext" / "sw" / "acis" / "isa_defs.py"
+PY_OUT = REPO_ROOT / "tools" / "gw100_testkit" / "isa_defs.py"
 
 UNITS = {"ctrl": "Ctrl", "dma": "Dma", "me": "Me", "ve": "Ve"}
 CPP_TYPES = {"u8": "uint8_t", "u16": "uint16_t", "u32": "uint32_t", "u64": "uint64_t",

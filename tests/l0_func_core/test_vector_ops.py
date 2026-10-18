@@ -10,9 +10,9 @@ import ctypes
 import numpy as np
 import pytest
 
-from acis import golden
-from acis.dtypes import from_bytes, quantize, to_bytes
-from acis.isa_defs import DTYPES, SUBOPS
+from gw100_testkit import golden
+from gw100_testkit.dtypes import from_bytes, quantize, to_bytes
+from gw100_testkit.isa_defs import DTYPES, SUBOPS
 
 N = 4096
 TYPE_COMBOS = [
@@ -65,7 +65,7 @@ def test_vec_binary(fc, op, ta, tb, tc):
     got = _run_binary(fc, op, a, ta, b, tb, tc)
     want = golden.vec_binary(op, a, ta, b, tb, tc)
     if tc == "BF16":  # bf16 以 uint16 存放，NaN 的低位可能不同，只比非 NaN
-        from acis.dtypes import bf16_bits_to_f32
+        from gw100_testkit.dtypes import bf16_bits_to_f32
         assert _same(bf16_bits_to_f32(got), bf16_bits_to_f32(want))
     else:
         assert _same(got, want)

@@ -13,9 +13,9 @@ SRAM 操作数默认用 Tile 相对地址（本地窗口）。
 
 import numpy as np
 import pytest
-from acis import addrmap, asm, golden
-from acis.dtypes import INT_RANGE, is_float, quantize
-from acis.harness import OpTest
+from gw100_testkit import addrmap, asm, golden
+from gw100_testkit.dtypes import INT_RANGE, is_float, quantize
+from gw100_testkit.harness import OpTest
 
 pytestmark = pytest.mark.gem5
 
