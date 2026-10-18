@@ -2,7 +2,7 @@
 @file  asm.py
 @brief 张量指令汇编器：构造并编码指令，打包成程序和命令记录
 
-编码格式全部来自生成的 isa_defs.py（源头是 spec-src/isa/isa-v0.yaml）。
+编码格式全部来自生成的 isa_defs.py（源头是 spec-src/isa/isa.yaml）。
 
 @see SPEC-230, SPEC-400
 """
