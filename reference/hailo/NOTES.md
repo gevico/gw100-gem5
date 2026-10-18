@@ -16,7 +16,7 @@
 | DS | [2026-hailo8-datasheet/](2026-hailo8-datasheet/)：Hailo-8 数据手册 Rev 1.9.2（**Hailo-10H 没有公开数据手册，只能借上一代参考**） |
 | DRV | [hailort-drivers/](hailort-drivers/)：PCIe 驱动源码，master 分支只支持 Hailo-10/15 |
 
-Hailo 文档每页都标有"Confidential and Proprietary"，只能内部参考，不能外传。
+Hailo 文档每页都标有"Confidential and Proprietary"。这些文档取自 Hailo 官网公开下载的版本，维护者已确认可以随本仓库公开（2026-10-18），见 [../README.md](../README.md) 的使用须知。
 
 ## 关键参数
 

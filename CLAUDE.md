@@ -30,7 +30,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `tools/gw100_testkit/`：**临时开发工具**，在编译器和驱动就绪之前代替它们生成算子程序、给出期望结果：汇编器 `asm.py`、numpy golden `golden.py`、数据类型转换 `dtypes.py`、地址映射 `addrmap.py`，以及测试框架 `harness.py`（生成测试包 → 调 gem5 → 比对 golden）。只供内部使用，不承诺接口稳定；驱动和编译器团队以 SPEC 和 `spec-src/` 为准，不依赖这个包，两者不一致时以 SPEC 为准。名字里带 testkit，是为了把 `gw100` 留给将来正式的 SDK。
 - `tests/`：全部测试，与被测代码分开，按验证层次分目录：`l0_func_core/`（func-core 与 golden 逐位比对）、`l1_inst/`（端到端指令测试）、`harness/`（测试框架自检）；以后的 L2~L4 也放在这里。标记为 `gem5` 的用例在没有 gem5 时自动跳过。导入路径和标记在根目录的 `pytest.ini` 里声明。
 - `.venv/`：仓库级 Python 3.12 环境（numpy、pyyaml、pytest、scons，见 `requirements-dev.txt`），用于 L0/L1 测试、代码生成和原生构建 gem5。
-- 仓库根目录是 git 仓库，默认分支为 `main`。贡献规范见 `CONTRIBUTING.md`，钩子在 `tools/git-hooks/`，scope 清单在 `tools/git-hooks/scopes.txt`。
+- 仓库根目录是 git 仓库，默认分支为 `main`；远端是公开仓库 `gevico/gw100-gem5`，`main` 只能经 PR 合入，并且需要他人批准。贡献规范见 `CONTRIBUTING.md`，钩子在 `tools/git-hooks/`，scope 清单在 `tools/git-hooks/scopes.txt`。
 
 ## 常用命令
 
@@ -196,4 +196,4 @@ tools/ref2md/.venv/bin/python tools/ref2md/convert.py --force a.pdf  # 强制重
   - GitHub 上的文档按固定 commit 下载，commit 号写进 `SOURCE_COMMIT`，不带 `.git` 目录；
   - 下载后运行 `convert.py`。
 - **网络限制**：`dl.acm.org`、`cacm.acm.org`、`docs.amd.com` 在当前网络下 TLS 握手被重置；`hailo.ai` 的文件会返回 403。可以改取官方链接在 Wayback 上的存档：`https://web.archive.org/web/<年份>id_/<原始链接>`。
-- **版权**：资料仅供内部参考。Hailo 的文档标有 Confidential，不能外传。`reference/hailo/hailort-drivers/` 是 GPL-2.0 代码，只能阅读，不能复制进我们的代码。
+- **公开与版权**：本项目是开源的，仓库公开托管在 `gevico/gw100-gem5`，允许推送到公开平台和对外分发，`reference/` 里的调研资料随仓库一起公开（2026-10-18 确认）。资料的版权仍归原作者或出版方所有，引用时注明出处。`reference/hailo/hailort-drivers/` 是 GPL-2.0 代码，只能阅读，不能复制进我们的代码。
