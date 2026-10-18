@@ -11,9 +11,9 @@ import json
 
 import numpy as np
 import pytest
-from acis import addrmap, asm
-from acis.harness import CMD_OFFSET, CPL_OFFSET, PROG_OFFSET, OpTest, RunResult
-from acis.isa_defs import COMMAND_RECORD
+from gw100_testkit import addrmap, asm
+from gw100_testkit.harness import CMD_OFFSET, CPL_OFFSET, PROG_OFFSET, OpTest, RunResult
+from gw100_testkit.isa_defs import COMMAND_RECORD
 
 
 def _small_test():
@@ -108,7 +108,7 @@ def test_local_tensor_needs_tile_for_backdoor(tmp_path):
 
 def test_gem5_runner_prefers_native(tmp_path, monkeypatch):
     """GEM5_BIN 优先；其次本平台原生构建；ACIS_GEM5_DOCKER=1 或没有原生构建时走 Docker。"""
-    from acis import harness
+    from gw100_testkit import harness
     native = tmp_path / "gem5.opt"
     native.write_text("")
     monkeypatch.setattr(harness, "NATIVE_GEM5_BIN", {"darwin": native, "linux": native})

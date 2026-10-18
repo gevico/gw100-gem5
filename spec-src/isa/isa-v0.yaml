@@ -2,7 +2,7 @@
 #
 # 由 tools/isagen/gen.py 生成：
 #   gem5-ext/func-core/include/acis/isa_defs.hh   gem5 侧译码用
-#   gem5-ext/sw/acis/isa_defs.py                  Python 汇编器用
+#   tools/gw100_testkit/isa_defs.py               Python 汇编器用
 # 修改本文件后重新运行生成器，不要手改生成的文件。
 #
 # 约定：所有多字节字段小端；指令固定 128 字节 = 32 字节头部 + 3 个 32 字节张量操作数描述符。

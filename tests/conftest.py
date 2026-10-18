@@ -4,11 +4,11 @@
 
 标记为 gem5 的用例在 gem5 不可用时自动跳过。
 
-导入路径（gem5-ext/sw）和 gem5 标记在仓库根目录的 pytest.ini 中声明。
+导入路径（tools，即 gw100_testkit 所在目录）和 gem5 标记在仓库根目录的 pytest.ini 中声明。
 """
 
 import pytest
-from acis import harness
+from gw100_testkit import harness
 
 
 def pytest_collection_modifyitems(config, items):

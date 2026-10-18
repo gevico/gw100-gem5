@@ -22,12 +22,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `tools/ref2md/`：PDF 转 Markdown 的工具（docling）。
 - `gem5/`：上游 gem5 v25.1.0.1，以 git 子模块引入，固定在 commit `f5c5a6e`（stable 分支，浅克隆）。**不要修改它**。上游的开发规范见 `gem5/AGENTS.md`。
 - `spec-src/`：单一真源。`arch_params.yaml` 是架构参数，`isa/isa-v0.yaml` 是指令编码、Host 接口记录和管理 Tile 寄存器。
-- `tools/isagen/gen.py`：由 `isa-v0.yaml` 生成 `gem5-ext/func-core/include/acis/isa_defs.hh` 和 `gem5-ext/sw/acis/isa_defs.py`。**这两个文件不要手改**，改 YAML 后重新生成。
+- `tools/isagen/gen.py`：由 `isa-v0.yaml` 生成 `gem5-ext/func-core/include/acis/isa_defs.hh` 和 `tools/gw100_testkit/isa_defs.py`。**这两个文件不要手改**，改 YAML 后重新生成。
 - `gem5-ext/`：我们的 gem5 扩展，通过 `EXTRAS` 编译进 gem5。
   - `func-core/`：不依赖 gem5 的功能核心（数值规则、指令编解码、向量运算）。gem5 的 SConscript 直接编译它的源码，同时也单独编成 `libacisfc.so`，供 L0 测试用。
   - `src/`：SimObject，按硬件组件分目录。`compute_tile/` 下有 sram、sync、vector、dma、controller；另有 `mgmt_tile/`（派发器）、`testhost/`、`common/`（`MemStreamer`：把字节段拆成请求并跟踪完成前缀）。
   - `configs/`：`chip.py` 按 arch_params 搭建整芯片，`run_op.py` 运行一个测试包，`lpddr5x.py` 是由 LPDDR5-6400 派生的近似时序。
-  - `sw/acis/`：汇编器 `asm.py`、numpy golden `golden.py`、地址映射 `addrmap.py`，以及测试框架 `harness.py`（生成测试包 → 调 gem5 → 比对 golden）。
+- `tools/gw100_testkit/`：**临时开发工具**，在编译器和驱动就绪之前代替它们生成算子程序、给出期望结果：汇编器 `asm.py`、numpy golden `golden.py`、数据类型转换 `dtypes.py`、地址映射 `addrmap.py`，以及测试框架 `harness.py`（生成测试包 → 调 gem5 → 比对 golden）。只供内部使用，不承诺接口稳定；驱动和编译器团队以 SPEC 和 `spec-src/` 为准，不依赖这个包，两者不一致时以 SPEC 为准。名字里带 testkit，是为了把 `gw100` 留给将来正式的 SDK。
 - `tests/`：全部测试，与被测代码分开，按验证层次分目录：`l0_func_core/`（func-core 与 golden 逐位比对）、`l1_inst/`（端到端指令测试）、`harness/`（测试框架自检）；以后的 L2~L4 也放在这里。标记为 `gem5` 的用例在没有 gem5 时自动跳过。导入路径和标记在根目录的 `pytest.ini` 里声明。
 - `.venv/`：仓库级 Python 3.12 环境（numpy、pyyaml、pytest，见 `requirements-dev.txt`），用于 L0/L1 测试和代码生成。
 - 仓库根目录是 git 仓库，默认分支为 `main`。贡献规范见 `CONTRIBUTING.md`，钩子在 `tools/git-hooks/`，scope 清单在 `tools/git-hooks/scopes.txt`。
