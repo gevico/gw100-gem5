@@ -22,9 +22,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `tools/ref2md/`：PDF 转 Markdown 的工具（docling）。
 - `gem5/`：上游 gem5 v25.1.0.1，以 git 子模块引入，固定在 commit `f5c5a6e`（stable 分支，浅克隆）。**不要修改它**。上游的开发规范见 `gem5/AGENTS.md`。
 - `spec-src/`：单一真源。`arch_params.yaml` 是架构参数，`isa/isa-v0.yaml` 是指令编码、Host 接口记录和管理 Tile 寄存器。
-- `tools/isagen/gen.py`：由 `isa-v0.yaml` 生成 `gem5-ext/func-core/include/acis/isa_defs.hh` 和 `tools/gw100_testkit/isa_defs.py`。**这两个文件不要手改**，改 YAML 后重新生成。
+- `tools/isagen/gen.py`：由 `isa-v0.yaml` 生成 `gem5-ext/func-core/include/gw100/isa_defs.hh` 和 `tools/gw100_testkit/isa_defs.py`。**这两个文件不要手改**，改 YAML 后重新生成。
 - `gem5-ext/`：我们的 gem5 扩展，通过 `EXTRAS` 编译进 gem5。
-  - `func-core/`：不依赖 gem5 的功能核心（数值规则、指令编解码、向量运算）。gem5 的 SConscript 直接编译它的源码，同时也单独编成 `libacisfc.so`，供 L0 测试用。
+  - `func-core/`：不依赖 gem5 的功能核心（数值规则、指令编解码、向量运算）。gem5 的 SConscript 直接编译它的源码，同时也单独编成 `libgw100fc.so`，供 L0 测试用。
   - `src/`：SimObject，按硬件组件分目录。`compute_tile/` 下有 sram、sync、vector、dma、controller；另有 `mgmt_tile/`（派发器）、`testhost/`、`common/`（`MemStreamer`：把字节段拆成请求并跟踪完成前缀）。
   - `configs/`：`chip.py` 按 arch_params 搭建整芯片，`run_op.py` 运行一个测试包，`lpddr5x.py` 是由 LPDDR5-6400 派生的近似时序。
 - `tools/gw100_testkit/`：**临时开发工具**，在编译器和驱动就绪之前代替它们生成算子程序、给出期望结果：汇编器 `asm.py`、numpy golden `golden.py`、数据类型转换 `dtypes.py`、地址映射 `addrmap.py`，以及测试框架 `harness.py`（生成测试包 → 调 gem5 → 比对 golden）。只供内部使用，不承诺接口稳定；驱动和编译器团队以 SPEC 和 `spec-src/` 为准，不依赖这个包，两者不一致时以 SPEC 为准。名字里带 testkit，是为了把 `gw100` 留给将来正式的 SDK。
@@ -73,7 +73,7 @@ ROOT=$PWD; cd gem5
 uv venv --python 3.12 .venv && uv pip install --python .venv/bin/python -r requirements-dev.txt
 .venv/bin/python tools/isagen/gen.py            # 由 isa-v0.yaml 重新生成 isa_defs
 .venv/bin/python tools/isagen/gen.py --check    # 只检查生成物是否最新
-make -C gem5-ext/func-core                      # 编出 L0 测试用的 libacisfc.so
+make -C gem5-ext/func-core                      # 编出 L0 测试用的 libgw100fc.so
 .venv/bin/python -m pytest                      # 全部测试：L0 + harness 自检 + L1（L1 自动在容器里跑 gem5）
 make -C gem5-ext/func-core test                 # 只跑 L0
 .venv/bin/python -m pytest tests/l1_inst/test_vec_ops.py -k bias -s   # 单个用例
@@ -85,7 +85,7 @@ make -C gem5-ext/func-core test                 # 只跑 L0
   - 后门 `load` / `expect` 本地张量时，要用 `tile=` 指明是哪个 Tile；
   - 跨 Tile 访问用 `t.sram(tile, ...)`，这是全局地址。
 - 每个测试包写在仓库根目录的 `build/op-tests/<用例名>/`，里面有 `package.json`、`gem5.log`、`result.json`、`m5out/stats.txt`。
-- 调试时给 `OpTest.run(debug_flags=[...])` 传 `AcisDispatch`、`AcisCtrl`、`AcisUnit`。
+- 调试时给 `OpTest.run(debug_flags=[...])` 传 `Gw100Dispatch`、`Gw100Ctrl`、`Gw100Unit`。
 - Docker 构建 gem5 很占磁盘。宿主机磁盘曾经满到 98%，导致 Docker Desktop 的镜像存储报 `input/output error`。构建前至少留出约 40 GB 空闲空间。
 
 gem5 自带的测试（详见 `gem5/AGENTS.md`）：
@@ -183,7 +183,7 @@ tools/ref2md/.venv/bin/python tools/ref2md/convert.py --force a.pdf  # 强制重
 - **时序还没有经过 L2 校准**，目前的周期数只能说明流程跑通了。初步观察：单 Tile 的 DMA 读 DRAM 只有约 16 B/周期，怀疑在途请求数（32 × 64 B）不足以覆盖 DRAM 往返延迟。
 - 配置层次：每个 Compute Tile 是一个 `SubSystem`，路径为 `system.ct[i].{sram,sync,ve,dma,ctrl}`，统计名形如 `system.ct0.ve.unit.busyTicks`。gem5 会把作为参数传入的孤儿 SimObject 收养为子对象，所以要先把子对象挂到容器上，再互相引用。
 - 编码坑：
-  - func-core 在顶层命名空间 `::acis`，gem5 侧代码在 `gem5::acis`；gem5 侧只包含 `src/common/fc.hh`，由它把需要的名字引入。
+  - func-core 在顶层命名空间 `::gw100`，gem5 侧代码在 `gem5::gw100`；gem5 侧只包含 `src/common/fc.hh`，由它把需要的名字引入。
   - DRAM 按 256 B 交织，功能访问不能跨通道，所以 TestHost 的后门访问按 64 B 对齐切分。
 
 ## 文档与资料约定

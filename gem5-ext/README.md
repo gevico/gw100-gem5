@@ -7,22 +7,22 @@
 | 目录 | SimObject / 模块 | 对应规格 | 状态（L1 = 端到端功能正确，未做时序校准） |
 |---|---|---|---|
 | `func-core/` | 数值规则、指令编解码、Tile 相对地址换算、向量运算（不依赖 gem5） | SPEC-110 / 230 / 240 | L0 通过 |
-| `src/compute_tile/sram/` | `AcisBankedSram`：多端口、分 bank 的 Tile SRAM | SPEC-200 | L1 通过 |
-| `src/compute_tile/sync/` | `AcisSyncUnit`：同步计数器 | SPEC-250 | L1 通过；跨 Tile 通知未实现 |
-| `src/compute_tile/vector/` | `AcisVectorEngine` | SPEC-220 | L1 通过；VEC_BINARY / VEC_SCALAR |
-| `src/compute_tile/dma/` | `AcisDmaEngine`：本地口直连 SRAM，远端口接 NoC | SPEC-250 / 320 | L1 通过 |
-| `src/compute_tile/controller/` | `AcisTileController`：接收指令、换算本地窗口地址、分发到各单元、处理 NOP/SYNC/END | SPEC-200 / 230 | L1 通过 |
+| `src/compute_tile/sram/` | `Gw100BankedSram`：多端口、分 bank 的 Tile SRAM | SPEC-200 | L1 通过 |
+| `src/compute_tile/sync/` | `Gw100SyncUnit`：同步计数器 | SPEC-250 | L1 通过；跨 Tile 通知未实现 |
+| `src/compute_tile/vector/` | `Gw100VectorEngine` | SPEC-220 | L1 通过；VEC_BINARY / VEC_SCALAR |
+| `src/compute_tile/dma/` | `Gw100DmaEngine`：本地口直连 SRAM，远端口接 NoC | SPEC-250 / 320 | L1 通过 |
+| `src/compute_tile/controller/` | `Gw100TileController`：接收指令、换算本地窗口地址、分发到各单元、处理 NOP/SYNC/END | SPEC-200 / 230 | L1 通过 |
 | （待建）`src/compute_tile/matrix/` | 矩阵引擎 | SPEC-210 | 未开始 |
-| `src/mgmt_tile/` | `AcisDispatcher`：寄存器、doorbell、命令记录、集中派发 | SPEC-330 / 400 | L1 通过 |
+| `src/mgmt_tile/` | `Gw100Dispatcher`：寄存器、doorbell、命令记录、集中派发 | SPEC-330 / 400 | L1 通过 |
 | （待建）`src/noc/` | 轻量 2D Mesh，支持多播；目前用 `NoncoherentXBar` 代替 | SPEC-120 | 未开始 |
 | `configs/lpddr5x.py` | LPDDR5X-8533 近似时序 | SPEC-300 | 待按 JEDEC 校准 |
-| `src/testhost/` | `AcisTestHost`：代替 Host 的测试平台，不是硬件 | — | 可用 |
+| `src/testhost/` | `Gw100TestHost`：代替 Host 的测试平台，不是硬件 | — | 可用 |
 | `src/common/` | `MemStreamer`：把字节段拆成访存请求，跟踪完成前缀 | — | 可用 |
 
 ## 一次算子测试的流程
 
 1. 仓库根目录下 `tools/gw100_testkit/harness.py` 的 `OpTest` 分配张量、用 `asm.py` 写程序、用 `golden.py` 算期望值，然后在仓库根目录生成测试包 `build/op-tests/<名字>/package.json`。用例本身放在仓库根目录的 `tests/`。
-2. `configs/run_op.py` 读测试包，由 `chip.py` 搭建芯片，挂上 `AcisTestHost`。
+2. `configs/run_op.py` 读测试包，由 `chip.py` 搭建芯片，挂上 `Gw100TestHost`。
 3. TestHost 后门加载输入、程序和命令记录，然后写 `CMD_ADDR`、敲 `DOORBELL`，并轮询完成记录。
 4. 派发器取命令记录和程序并校验，包括每个目标 Tile 上的本地地址是否越界。之后按 tile_mask 下发指令：一条多播指令只占用一次指令通道。各 Tile 控制器收到指令后，先把本地窗口地址换算成本 Tile SRAM 的全局地址，再交给功能单元。所有 Tile 执行完 END 后，派发器写回完成记录。
 5. TestHost 后门读回输出，写 `result.json`，结束仿真。harness 读回结果与 golden 比对，并解析 `m5out/stats.txt`。

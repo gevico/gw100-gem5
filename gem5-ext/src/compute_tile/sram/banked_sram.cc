@@ -14,7 +14,7 @@
 
 namespace gem5
 {
-namespace acis
+namespace gw100
 {
 
 BankedSram::SramPort::SramPort(const std::string &name, BankedSram &m, PortID id)
@@ -124,5 +124,5 @@ BankedSram::SramStats::SramStats(BankedSram &mem)
 {
 }
 
-} // namespace acis
+} // namespace gw100
 } // namespace gem5

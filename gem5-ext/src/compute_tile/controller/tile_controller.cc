@@ -9,7 +9,7 @@
 
 #include "base/logging.hh"
 #include "base/trace.hh"
-#include "debug/AcisCtrl.hh"
+#include "debug/Gw100Ctrl.hh"
 #include "sim/eventq.hh"
 #include "src/compute_tile/dma/dma_engine.hh"
 #include "src/compute_tile/functional_unit.hh"
@@ -19,7 +19,7 @@
 
 namespace gem5
 {
-namespace acis
+namespace gw100
 {
 
 TileController::TileController(const Params &p)
@@ -81,7 +81,7 @@ TileController::deliver(const TensorInst &inst)
     panic_if(reserved[i] == 0, "%s: 指令到达前没有预留队列空位", name());
     reserved[i]--;
     ctrlStats.delivered++;
-    DPRINTF(AcisCtrl, "收到 %s\n", inst.toString());
+    DPRINTF(Gw100Ctrl, "收到 %s\n", inst.toString());
     if (u == isa::Unit::Ctrl) {
         ctrlQueue.push_back(inst);
         processCtrl();
@@ -125,7 +125,7 @@ TileController::processCtrl()
             if (!allUnitsIdle())
                 return;
             ctrlStats.ends++;
-            DPRINTF(AcisCtrl, "END：本 Tile 执行完毕\n");
+            DPRINTF(Gw100Ctrl, "END：本 Tile 执行完毕\n");
             dispatcher->tileDone(_tileId);
             break;
           case isa::Opcode::SYNC:
@@ -161,5 +161,5 @@ TileController::CtrlStats::CtrlStats(TileController &c)
 {
 }
 
-} // namespace acis
+} // namespace gw100
 } // namespace gem5

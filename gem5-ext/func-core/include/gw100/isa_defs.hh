@@ -1,10 +1,10 @@
 // 由 tools/isagen/gen.py 根据 spec-src/isa/isa-v0.yaml 生成，请勿手改。
-#ifndef __ACIS_ISA_GEN_ISA_DEFS_HH__
-#define __ACIS_ISA_GEN_ISA_DEFS_HH__
+#ifndef __GW100_ISA_GEN_ISA_DEFS_HH__
+#define __GW100_ISA_GEN_ISA_DEFS_HH__
 
 #include <cstdint>
 
-namespace acis
+namespace gw100
 {
 namespace isa
 {
@@ -228,6 +228,6 @@ constexpr unsigned end_tick = 24;  // u64
 } // namespace cpl_rec
 
 } // namespace isa
-} // namespace acis
+} // namespace gw100
 
-#endif // __ACIS_ISA_GEN_ISA_DEFS_HH__
+#endif // __GW100_ISA_GEN_ISA_DEFS_HH__

@@ -14,7 +14,7 @@
 
 namespace gem5
 {
-namespace acis
+namespace gw100
 {
 
 VectorEngine::VectorEngine(const Params &p)
@@ -110,5 +110,5 @@ VectorEngine::compute()
                       [this](Addr) { return &memPort; }, [this]() { finish(); });
 }
 
-} // namespace acis
+} // namespace gw100
 } // namespace gem5

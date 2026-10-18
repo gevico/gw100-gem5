@@ -13,21 +13,21 @@
  * @see SPEC-200, SPEC-230
  */
 
-#ifndef __ACIS_COMPUTE_TILE_CONTROLLER_TILE_CONTROLLER_HH__
-#define __ACIS_COMPUTE_TILE_CONTROLLER_TILE_CONTROLLER_HH__
+#ifndef __GW100_COMPUTE_TILE_CONTROLLER_TILE_CONTROLLER_HH__
+#define __GW100_COMPUTE_TILE_CONTROLLER_TILE_CONTROLLER_HH__
 
 #include <array>
 #include <deque>
 #include <string>
 
 #include "base/statistics.hh"
-#include "params/AcisTileController.hh"
+#include "params/Gw100TileController.hh"
 #include "sim/clocked_object.hh"
 #include "src/common/fc.hh"
 
 namespace gem5
 {
-namespace acis
+namespace gw100
 {
 
 class Dispatcher;
@@ -37,7 +37,7 @@ class SyncUnit;
 class TileController : public ClockedObject
 {
   public:
-    PARAMS(AcisTileController);
+    PARAMS(Gw100TileController);
     TileController(const Params &p);
 
     void init() override;
@@ -82,7 +82,7 @@ class TileController : public ClockedObject
     } ctrlStats;
 };
 
-} // namespace acis
+} // namespace gw100
 } // namespace gem5
 
-#endif // __ACIS_COMPUTE_TILE_CONTROLLER_TILE_CONTROLLER_HH__
+#endif // __GW100_COMPUTE_TILE_CONTROLLER_TILE_CONTROLLER_HH__

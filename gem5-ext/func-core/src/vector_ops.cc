@@ -5,14 +5,14 @@
  * @see SPEC-220
  */
 
-#include "acis/vector_ops.hh"
+#include "gw100/vector_ops.hh"
 
 #include <cmath>
 #include <limits>
 
-#include "acis/numerics.hh"
+#include "gw100/numerics.hh"
 
-namespace acis
+namespace gw100
 {
 namespace fc
 {
@@ -98,4 +98,4 @@ vecScalar(isa::VecScalarOp op,
 }
 
 } // namespace fc
-} // namespace acis
+} // namespace gw100

@@ -15,21 +15,21 @@
  * @see SPEC-330, SPEC-400
  */
 
-#ifndef __ACIS_MGMT_TILE_DISPATCHER_HH__
-#define __ACIS_MGMT_TILE_DISPATCHER_HH__
+#ifndef __GW100_MGMT_TILE_DISPATCHER_HH__
+#define __GW100_MGMT_TILE_DISPATCHER_HH__
 
 #include <string>
 #include <vector>
 
 #include "base/statistics.hh"
 #include "dev/dma_device.hh"
-#include "params/AcisDispatcher.hh"
+#include "params/Gw100Dispatcher.hh"
 #include "sim/eventq.hh"
 #include "src/common/fc.hh"
 
 namespace gem5
 {
-namespace acis
+namespace gw100
 {
 
 class TileController;
@@ -37,7 +37,7 @@ class TileController;
 class Dispatcher : public DmaDevice
 {
   public:
-    PARAMS(AcisDispatcher);
+    PARAMS(Gw100Dispatcher);
     Dispatcher(const Params &p);
 
     void init() override;
@@ -110,7 +110,7 @@ class Dispatcher : public DmaDevice
     } dispStats;
 };
 
-} // namespace acis
+} // namespace gw100
 } // namespace gem5
 
-#endif // __ACIS_MGMT_TILE_DISPATCHER_HH__
+#endif // __GW100_MGMT_TILE_DISPATCHER_HH__

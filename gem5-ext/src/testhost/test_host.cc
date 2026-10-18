@@ -20,7 +20,7 @@
 
 namespace gem5
 {
-namespace acis
+namespace gw100
 {
 
 namespace
@@ -213,15 +213,15 @@ TestHost::finishRun(const uint8_t *cpl)
             << "}\n";
     }
     inform("%s: 完成，状态 %u，设备用时 %llu ticks", name(), status, end - start);
-    exitSimLoop("acis testhost done", status == 2 ? 0 : 1);
+    exitSimLoop("gw100 testhost done", status == 2 ? 0 : 1);
 }
 
 void
 TestHost::timeout()
 {
     warn("%s: 超时，命令在 %llu ticks 内没有完成", name(), timeoutTicks);
-    exitSimLoop("acis testhost timeout", 2);
+    exitSimLoop("gw100 testhost timeout", 2);
 }
 
-} // namespace acis
+} // namespace gw100
 } // namespace gem5

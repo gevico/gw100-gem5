@@ -13,21 +13,21 @@
  * @see SPEC-400
  */
 
-#ifndef __ACIS_TESTHOST_TEST_HOST_HH__
-#define __ACIS_TESTHOST_TEST_HOST_HH__
+#ifndef __GW100_TESTHOST_TEST_HOST_HH__
+#define __GW100_TESTHOST_TEST_HOST_HH__
 
 #include <string>
 #include <vector>
 
 #include "mem/packet.hh"
 #include "mem/port.hh"
-#include "params/AcisTestHost.hh"
+#include "params/Gw100TestHost.hh"
 #include "sim/clocked_object.hh"
 #include "sim/eventq.hh"
 
 namespace gem5
 {
-namespace acis
+namespace gw100
 {
 
 class TestHost : public ClockedObject
@@ -49,7 +49,7 @@ class TestHost : public ClockedObject
     enum class Phase { WriteCmdAddr, Doorbell, Polling, Finished };
 
   public:
-    PARAMS(AcisTestHost);
+    PARAMS(Gw100TestHost);
     TestHost(const Params &p);
 
     Port &getPort(const std::string &if_name, PortID idx = InvalidPortID) override;
@@ -85,7 +85,7 @@ class TestHost : public ClockedObject
     EventFunctionWrapper timeoutEvent;
 };
 
-} // namespace acis
+} // namespace gw100
 } // namespace gem5
 
-#endif // __ACIS_TESTHOST_TEST_HOST_HH__
+#endif // __GW100_TESTHOST_TEST_HOST_HH__

@@ -266,7 +266,7 @@ Signed-off-by: 张三 <zhangsan@example.com>
 
 ```sh
 .venv/bin/python tools/isagen/gen.py --check   # 生成物是否最新
-make -C gem5-ext/func-core                     # 编出 L0 测试用的 libacisfc.so
+make -C gem5-ext/func-core                     # 编出 L0 测试用的 libgw100fc.so
 .venv/bin/python -m pytest                     # 全部测试：L0 + harness 自检 + L1（L1 需要已编译的 gem5）
 ```
 

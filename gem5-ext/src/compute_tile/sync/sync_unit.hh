@@ -9,20 +9,20 @@
  * @see SPEC-250
  */
 
-#ifndef __ACIS_COMPUTE_TILE_SYNC_SYNC_UNIT_HH__
-#define __ACIS_COMPUTE_TILE_SYNC_SYNC_UNIT_HH__
+#ifndef __GW100_COMPUTE_TILE_SYNC_SYNC_UNIT_HH__
+#define __GW100_COMPUTE_TILE_SYNC_SYNC_UNIT_HH__
 
 #include <functional>
 #include <list>
 #include <vector>
 
 #include "base/statistics.hh"
-#include "params/AcisSyncUnit.hh"
+#include "params/Gw100SyncUnit.hh"
 #include "sim/clocked_object.hh"
 
 namespace gem5
 {
-namespace acis
+namespace gw100
 {
 
 class SyncUnit : public ClockedObject
@@ -30,7 +30,7 @@ class SyncUnit : public ClockedObject
   public:
     using Callback = std::function<void()>;
 
-    PARAMS(AcisSyncUnit);
+    PARAMS(Gw100SyncUnit);
     SyncUnit(const Params &p);
 
     void wait(unsigned cnt, uint32_t val, Callback cb);
@@ -61,7 +61,7 @@ class SyncUnit : public ClockedObject
     } syncStats;
 };
 
-} // namespace acis
+} // namespace gw100
 } // namespace gem5
 
-#endif // __ACIS_COMPUTE_TILE_SYNC_SYNC_UNIT_HH__
+#endif // __GW100_COMPUTE_TILE_SYNC_SYNC_UNIT_HH__

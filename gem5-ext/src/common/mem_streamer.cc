@@ -13,7 +13,7 @@
 
 namespace gem5
 {
-namespace acis
+namespace gw100
 {
 
 // ---------------------------------------------------------------- UnitPort
@@ -190,5 +190,5 @@ MemStreamer::finishIfDone()
     }
 }
 
-} // namespace acis
+} // namespace gw100
 } // namespace gem5

@@ -18,8 +18,8 @@ import math
 import re
 
 from lpddr5x import LPDDR5X_8533_1x16_BG_BL32
-from m5.objects import (AcisBankedSram, AcisDispatcher, AcisDmaEngine, AcisSyncUnit,
-                        AcisTileController, AcisVectorEngine, AddrRange, MemCtrl,
+from m5.objects import (Gw100BankedSram, Gw100Dispatcher, Gw100DmaEngine, Gw100SyncUnit,
+                        Gw100TileController, Gw100VectorEngine, AddrRange, MemCtrl,
                         NoncoherentXBar, SimpleMemory, SrcClockDomain, SubSystem, System,
                         VoltageDomain)
 
@@ -61,21 +61,21 @@ def build_chip(p, functional=True):
         base = am["tile_sram_base"] + tid * am["tile_sram_stride"]
         local = AddrRange(base, size=sram_size)
         t = SubSystem()
-        t.sram = AcisBankedSram(range=local, banks=ct["sram"]["banks"],
+        t.sram = Gw100BankedSram(range=local, banks=ct["sram"]["banks"],
                                 bank_bytes=ct["sram"]["bank_bytes"],
                                 latency=ct["sram"]["latency_cycles"])
-        t.sync = AcisSyncUnit(counters=ct["sync"]["counters"])
+        t.sync = Gw100SyncUnit(counters=ct["sync"]["counters"])
         common = dict(local_range=local, functional_compute=functional,
                       queue_depth=ct["inst_queue"]["depth_per_unit"],
                       req_bytes=ct["dma"]["request_bytes"],
                       max_outstanding=ct["dma"]["max_outstanding"])
-        t.ve = AcisVectorEngine(lanes=ct["vector_engine"]["lanes"],
+        t.ve = Gw100VectorEngine(lanes=ct["vector_engine"]["lanes"],
                                 pipeline_latency=ct["vector_engine"]["pipeline_latency_cycles"],
                                 **common)
-        t.dma = AcisDmaEngine(**common)
+        t.dma = Gw100DmaEngine(**common)
         t.ve.sync = t.sync
         t.dma.sync = t.sync
-        t.ctrl = AcisTileController(tile_id=tid,
+        t.ctrl = Gw100TileController(tile_id=tid,
                                     ctrl_queue_depth=ct["inst_queue"]["depth_per_unit"],
                                     local_window=local_window, sram_range=local)
         t.ctrl.sync = t.sync
@@ -117,7 +117,7 @@ def build_chip(p, functional=True):
 
     # ---------------------------------------------------------------- 管理 Tile
     ic = p["mgmt_tile"]["inst_channel"]
-    system.dispatcher = AcisDispatcher(pio_addr=am["mgmt_mmio_base"], controllers=[t.ctrl for t in system.ct],
+    system.dispatcher = Gw100Dispatcher(pio_addr=am["mgmt_mmio_base"], controllers=[t.ctrl for t in system.ct],
                                        inst_latency=ic["latency_cycles"],
                                        inst_bytes_per_cycle=ic["bytes_per_cycle"])
     system.dispatcher.pio = system.noc.mem_side_ports

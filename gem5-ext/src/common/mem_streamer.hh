@@ -4,13 +4,13 @@
  *
  * UnitPort：功能单元的请求端口，可被多个 MemStreamer 共用，按先后顺序发送，处理重试，
  *           并把响应交还给发出请求的 MemStreamer。
- * MemStreamer：把一个张量的字节区间（acis::ByteRun）拆成不超过 reqBytes、且不跨
+ * MemStreamer：把一个张量的字节区间（gw100::ByteRun）拆成不超过 reqBytes、且不跨
  *           reqBytes 对齐边界的请求，限制同时在途的请求数。读时把数据按逻辑顺序收进
  *           紧密排列的缓冲区；写时从缓冲区取数据。
  */
 
-#ifndef __ACIS_COMMON_MEM_STREAMER_HH__
-#define __ACIS_COMMON_MEM_STREAMER_HH__
+#ifndef __GW100_COMMON_MEM_STREAMER_HH__
+#define __GW100_COMMON_MEM_STREAMER_HH__
 
 #include <cstdint>
 #include <deque>
@@ -26,7 +26,7 @@
 
 namespace gem5
 {
-namespace acis
+namespace gw100
 {
 
 class MemStreamer;
@@ -119,7 +119,7 @@ class MemStreamer
     std::map<uint64_t, uint64_t> doneRanges;  // 前缀之后、已完成但不连续的区间
 };
 
-} // namespace acis
+} // namespace gw100
 } // namespace gem5
 
-#endif // __ACIS_COMMON_MEM_STREAMER_HH__
+#endif // __GW100_COMMON_MEM_STREAMER_HH__

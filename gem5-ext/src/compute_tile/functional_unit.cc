@@ -9,7 +9,7 @@
 
 #include "base/logging.hh"
 #include "base/trace.hh"
-#include "debug/AcisUnit.hh"
+#include "debug/Gw100Unit.hh"
 #include "sim/eventq.hh"
 #include "sim/system.hh"
 #include "src/compute_tile/controller/tile_controller.hh"
@@ -17,7 +17,7 @@
 
 namespace gem5
 {
-namespace acis
+namespace gw100
 {
 
 FunctionalUnit::FunctionalUnit(const Params &p)
@@ -57,7 +57,7 @@ void
 FunctionalUnit::begin()
 {
     startTick = curTick();
-    DPRINTF(AcisUnit, "开始 %s\n", queue.front().toString());
+    DPRINTF(Gw100Unit, "开始 %s\n", queue.front().toString());
     execute(queue.front());
 }
 
@@ -69,7 +69,7 @@ FunctionalUnit::finish()
     queue.pop_front();
     unitStats.insts++;
     unitStats.busyTicks += curTick() - startTick;
-    DPRINTF(AcisUnit, "完成 %s，耗时 %llu ticks\n", inst.toString(), curTick() - startTick);
+    DPRINTF(Gw100Unit, "完成 %s，耗时 %llu ticks\n", inst.toString(), curTick() - startTick);
 
     if (inst.sigEn) {
         panic_if(inst.sigTile != isa::kLocalTile,
@@ -91,5 +91,5 @@ FunctionalUnit::UnitStats::UnitStats(FunctionalUnit &u)
 {
 }
 
-} // namespace acis
+} // namespace gw100
 } // namespace gem5

@@ -40,7 +40,7 @@ def _data(dtype, seed):
 
 def _run_binary(fc, op, a, ta, b, tb, tc):
     out = ctypes.create_string_buffer(len(to_bytes(quantize(np.zeros(N), tc), tc)))
-    ok = fc.acis_vec_binary(SUBOPS["VEC_BINARY"][op], DTYPES[ta]["code"], to_bytes(a, ta),
+    ok = fc.gw100_vec_binary(SUBOPS["VEC_BINARY"][op], DTYPES[ta]["code"], to_bytes(a, ta),
                             DTYPES[tb]["code"], to_bytes(b, tb), DTYPES[tc]["code"], out, N)
     assert ok
     return from_bytes(out.raw, tc, (N,))
@@ -78,7 +78,7 @@ def test_vec_scalar(fc, op, ta, tc):
     a = _data(ta, 20)
     imm = 3.140625 if ta in ("FP32", "FP16", "BF16") else 7.0
     out = ctypes.create_string_buffer(len(to_bytes(quantize(np.zeros(N), tc), tc)))
-    assert fc.acis_vec_scalar(SUBOPS["VEC_SCALAR"][op], DTYPES[ta]["code"], to_bytes(a, ta),
+    assert fc.gw100_vec_scalar(SUBOPS["VEC_SCALAR"][op], DTYPES[ta]["code"], to_bytes(a, ta),
                               imm, DTYPES[tc]["code"], out, N)
     got = from_bytes(out.raw, tc, (N,))
     want = golden.vec_scalar(op, a, ta, imm, tc)

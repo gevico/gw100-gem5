@@ -11,7 +11,7 @@
 
 namespace gem5
 {
-namespace acis
+namespace gw100
 {
 
 DmaEngine::DmaEngine(const Params &p)
@@ -75,5 +75,5 @@ DmaEngine::DmaStats::DmaStats(DmaEngine &d)
 {
 }
 
-} // namespace acis
+} // namespace gw100
 } // namespace gem5

@@ -10,25 +10,25 @@
  * @see SPEC-250, SPEC-320
  */
 
-#ifndef __ACIS_COMPUTE_TILE_DMA_DMA_ENGINE_HH__
-#define __ACIS_COMPUTE_TILE_DMA_DMA_ENGINE_HH__
+#ifndef __GW100_COMPUTE_TILE_DMA_DMA_ENGINE_HH__
+#define __GW100_COMPUTE_TILE_DMA_DMA_ENGINE_HH__
 
 #include <vector>
 
 #include "base/statistics.hh"
-#include "params/AcisDmaEngine.hh"
+#include "params/Gw100DmaEngine.hh"
 #include "src/common/mem_streamer.hh"
 #include "src/compute_tile/functional_unit.hh"
 
 namespace gem5
 {
-namespace acis
+namespace gw100
 {
 
 class DmaEngine : public FunctionalUnit
 {
   public:
-    PARAMS(AcisDmaEngine);
+    PARAMS(Gw100DmaEngine);
     DmaEngine(const Params &p);
 
     Port &getPort(const std::string &if_name, PortID idx = InvalidPortID) override;
@@ -55,7 +55,7 @@ class DmaEngine : public FunctionalUnit
     } dmaStats;
 };
 
-} // namespace acis
+} // namespace gw100
 } // namespace gem5
 
-#endif // __ACIS_COMPUTE_TILE_DMA_DMA_ENGINE_HH__
+#endif // __GW100_COMPUTE_TILE_DMA_DMA_ENGINE_HH__

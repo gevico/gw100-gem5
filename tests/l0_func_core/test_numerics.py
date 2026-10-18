@@ -26,7 +26,7 @@ def _random_f32(n, seed):
 def test_f32_to_f16_matches_numpy(fc):
     xs = np.concatenate([SPECIALS, _random_f32(20000, 1)])
     want = xs.astype(np.float16).view(np.uint16)
-    got = np.array([fc.acis_f32_to_f16(float(x)) for x in xs], dtype=np.uint16)
+    got = np.array([fc.gw100_f32_to_f16(float(x)) for x in xs], dtype=np.uint16)
     nan = np.isnan(xs)
     assert np.array_equal(got[~nan], want[~nan])
     assert np.all(np.isnan(got[nan].view(np.float16)))
@@ -35,7 +35,7 @@ def test_f32_to_f16_matches_numpy(fc):
 def test_f16_to_f32_all_values(fc):
     halves = np.arange(65536, dtype=np.uint32).astype(np.uint16)
     want = halves.view(np.float16).astype(np.float32)
-    got = np.array([fc.acis_f16_to_f32(int(h)) for h in halves], dtype=np.float32)
+    got = np.array([fc.gw100_f16_to_f32(int(h)) for h in halves], dtype=np.float32)
     nan = np.isnan(want)
     assert np.array_equal(got[~nan].view(np.uint32), want[~nan].view(np.uint32))
     assert np.all(np.isnan(got[nan]))
@@ -44,9 +44,9 @@ def test_f16_to_f32_all_values(fc):
 def test_bf16_roundtrip(fc):
     xs = np.concatenate([SPECIALS, _random_f32(20000, 2)])
     want = f32_to_bf16_bits(xs)
-    got = np.array([fc.acis_f32_to_bf16(float(x)) for x in xs], dtype=np.uint16)
+    got = np.array([fc.gw100_f32_to_bf16(float(x)) for x in xs], dtype=np.uint16)
     assert np.array_equal(got, want)
-    back = np.array([fc.acis_bf16_to_f32(int(b)) for b in want], dtype=np.float32)
+    back = np.array([fc.gw100_bf16_to_f32(int(b)) for b in want], dtype=np.float32)
     ref = bf16_bits_to_f32(want)
     nan = np.isnan(ref)
     assert np.array_equal(back[~nan].view(np.uint32), ref[~nan].view(np.uint32))
