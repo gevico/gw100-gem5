@@ -34,7 +34,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 常用命令
 
-gem5 统一在 Docker 镜像里构建和运行（见 `Dockerfile` 头部注释）：
+gem5 可以在 Docker 镜像里构建（见 `Dockerfile` 头部注释），也可以在本机原生构建；测试默认直接运行本平台原生构建的版本：
 
 ```sh
 # Docker Desktop 默认只分配 8 GiB 内存，-j$(nproc) 容易 OOM，要显式限制并行度
@@ -53,7 +53,19 @@ docker run --rm -v "$PWD:$PWD" -v acis-ccache:/home/gem5/.ccache -w "$PWD/gem5" 
 ```
 
 - 第一次构建是全量的，要几十分钟：镜像里预编译的是 `/gem5/build/X86`，用不上。之后 `gem5/build/NULL` 留在宿主机上，ccache 也保存在具名卷里；只改 gem5-ext 时，增量构建约 1–2 分钟。
-- 改了 SimObject 的 Python 参数之后，也要重新构建。
+
+macOS 原生构建（变体目录 `build/NULL_DARWIN`，与容器里的 `build/NULL` 互不覆盖；首次约 10 分钟）：
+
+```sh
+uv pip install --python .venv/bin/python -r requirements-dev.txt   # 含 scons
+ROOT=$PWD; cd gem5
+../.venv/bin/scons defconfig build/NULL_DARWIN build_opts/NULL      # 只需一次
+../.venv/bin/scons build/NULL_DARWIN/gem5.opt EXTRAS="$ROOT/gem5-ext" \
+    PYTHON_CONFIG=/opt/homebrew/opt/python@3.12/bin/python3.12-config -j8
+```
+
+- 用 Homebrew 的 Python 3.12 嵌入 gem5，本机默认的 3.14 太新。Linux 主机上直接用系统的 scons 构建 `build/NULL` 即可。
+- 改了 gem5-ext 的 C++ 或 SimObject 的 Python 参数之后，要重新构建实际使用的那个版本，pytest 不会自动重建。
 
 我们自己的测试和代码生成（在仓库根目录执行）：
 
@@ -67,7 +79,7 @@ make -C gem5-ext/func-core test                 # 只跑 L0
 .venv/bin/python -m pytest tests/l1_inst/test_vec_ops.py -k bias -s   # 单个用例
 ```
 
-- 本机已有可执行的 gem5 时，设 `GEM5_BIN=<路径>` 绕过 Docker；用 `ACIS_GEM5_IMAGE` 指定镜像，默认取本机已有的 `gem5-slim` 或 `gem5-dev`。
+- harness 选择 gem5 的顺序：`GEM5_BIN` 指定的可执行文件 → 本平台原生构建（macOS 为 `build/NULL_DARWIN`，Linux 为 `build/NULL`），直接运行 → 都没有时在 Docker 里运行 `build/NULL`。设 `ACIS_GEM5_DOCKER=1` 强制走 Docker，用于和容器环境对照；`ACIS_GEM5_IMAGE` 指定镜像，默认取本机已有的 `gem5-slim` 或 `gem5-dev`。直接运行时 113 个用例约 5 秒，Docker 约 12 秒，周期数完全一致。
 - 在 `OpTest` 里写测试时：
   - 多播指令用 `t.local(shape, dtype)` 分配 SRAM，这是本地窗口地址；
   - 后门 `load` / `expect` 本地张量时，要用 `tile=` 指明是哪个 Tile；

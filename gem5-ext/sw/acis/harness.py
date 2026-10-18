@@ -20,10 +20,14 @@ SRAM 张量有两种分配方式：
 - sram(tile, shape, dtype)：该 Tile SRAM 的全局地址，用于跨 Tile 访问。
 两者共用同一个偏移分配器，所以在任何 Tile 上都不会重叠。
 
-gem5 的位置：
-- 环境变量 GEM5_BIN 指向本机可执行文件时直接运行；
-- 否则在 Docker 镜像 ACIS_GEM5_IMAGE（默认取本机已有的 gem5-slim 或 gem5-dev）里运行
-  gem5/build/NULL/gem5.opt，仓库根目录按原路径挂载进容器。
+gem5 的运行方式，按以下顺序选择：
+1. 环境变量 GEM5_BIN 指向的可执行文件，直接运行；
+2. ACIS_GEM5_DOCKER=1 时强制走 Docker（与容器环境对照时用）；
+3. 本平台原生构建的 gem5，直接运行：Linux 为 gem5/build/NULL/gem5.opt，
+   macOS 为 gem5/build/NULL_DARWIN/gem5.opt（构建命令见 CLAUDE.md）；
+4. 都没有时，在 Docker 镜像 ACIS_GEM5_IMAGE（默认取本机已有的 gem5-slim 或
+   gem5-dev）里运行 gem5/build/NULL/gem5.opt，仓库根目录按原路径挂载进容器。
+直接运行时每个用例只启动一个 gem5 进程，不再每次启动容器。
 
 @see MAN-060
 """
@@ -32,6 +36,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -45,7 +50,10 @@ from .dtypes import dense_bytes, from_bytes, is_float, to_bytes, to_float
 REPO_ROOT = addrmap.REPO_ROOT
 GEM5_DIR = REPO_ROOT / "gem5"
 RUN_OP = REPO_ROOT / "gem5-ext" / "configs" / "run_op.py"
-DEFAULT_GEM5_BIN = GEM5_DIR / "build" / "NULL" / "gem5.opt"
+# 容器里构建的是 Linux 版；各平台原生构建的 gem5 放在不同的变体目录，互不覆盖
+LINUX_GEM5_BIN = GEM5_DIR / "build" / "NULL" / "gem5.opt"
+NATIVE_GEM5_BIN = {"linux": LINUX_GEM5_BIN,
+                   "darwin": GEM5_DIR / "build" / "NULL_DARWIN" / "gem5.opt"}
 DEFAULT_OUT_DIR = REPO_ROOT / "build" / "op-tests"
 
 # Host 内存窗口内的固定布局
@@ -86,13 +94,24 @@ def _docker_image():
     return _IMAGE_CANDIDATES[0]
 
 
+def gem5_runner():
+    """返回 ("native", 可执行文件) 或 ("docker", None)，选择顺序见模块说明。"""
+    if os.environ.get("GEM5_BIN"):
+        return ("native", Path(os.environ["GEM5_BIN"]))
+    if os.environ.get("ACIS_GEM5_DOCKER") != "1":
+        native = NATIVE_GEM5_BIN.get(sys.platform)
+        if native and native.exists():
+            return ("native", native)
+    return ("docker", None)
+
+
 def gem5_available():
     """返回 (是否可用, 原因)。供测试在没有 gem5 时跳过。"""
-    native = os.environ.get("GEM5_BIN")
-    if native:
-        return (Path(native).exists(), f"GEM5_BIN={native} 不存在")
-    if not DEFAULT_GEM5_BIN.exists():
-        return (False, f"{DEFAULT_GEM5_BIN} 不存在，请先在容器里编译 NULL 版 gem5")
+    kind, binary = gem5_runner()
+    if kind == "native":
+        return (binary.exists(), f"{binary} 不存在")
+    if not LINUX_GEM5_BIN.exists():
+        return (False, f"没有本平台原生构建的 gem5，也没有容器里构建的 {LINUX_GEM5_BIN}")
     if shutil.which("docker") is None:
         return (False, "找不到 docker")
     if _docker_image().split(":")[0] not in _local_images():
@@ -106,12 +125,12 @@ def gem5_command(pkg_dir, debug_flags=None):
     if debug_flags:
         args.append(f"--debug-flags={','.join(debug_flags)}")
     args += [str(RUN_OP), str(pkg_dir)]
-    native = os.environ.get("GEM5_BIN")
-    if native:
-        return [native] + args
+    kind, binary = gem5_runner()
+    if kind == "native":
+        return [str(binary)] + args
     root = str(REPO_ROOT)
     return ["docker", "run", "--rm", "-v", f"{root}:{root}", "-w", root,
-            _docker_image(), str(DEFAULT_GEM5_BIN)] + args
+            _docker_image(), str(LINUX_GEM5_BIN)] + args
 
 
 def parse_stats(path):
