@@ -168,7 +168,7 @@ Idealization: add #5
 ```
 spec(isa)!: 示例——VEC_SCALAR 的立即数改为 FP16
 
-BREAKING CHANGE: 汇编器和编译器按新的 imm 编码生成指令；isa 升到 0.3。
+BREAKING CHANGE: 汇编器和编译器按新的 imm 编码生成指令；isa 升到下一个版本。
 ```
 
 ### 3.7 DCO 签署

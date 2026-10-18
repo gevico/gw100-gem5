@@ -127,3 +127,14 @@ def test_local_overflow_rejected():
     r = t.run()
     assert r.status == STATUS_ERROR
     assert "越出本 Tile SRAM" in (r.pkg_dir / "gem5.log").read_text(encoding="utf-8")
+
+
+def test_bad_magic_rejected():
+    """程序头的 magic 不对（例如旧格式的 "ACIS"）：派发器拒绝执行，返回出错状态。"""
+    t = OpTest("vec_bad_magic")
+    t.add(0, asm.end())
+    good = t.program.encode()
+    t.program.encode = lambda: b"ACIS" + good[4:]
+    r = t.run()
+    assert r.status == STATUS_ERROR
+    assert "magic" in (r.pkg_dir / "gem5.log").read_text(encoding="utf-8")

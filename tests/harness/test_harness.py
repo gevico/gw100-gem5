@@ -57,6 +57,7 @@ def test_package_layout(tmp_path):
     assert int.from_bytes(cmd[off:off + 8], "little") == host + PROG_OFFSET
     prog = loads[host + PROG_OFFSET]
     assert prog == t.program.encode()
+    assert prog[:4] == b"GW10"          # 程序头的 magic（ISA v0.3）
     assert len(prog) == 16 + 2 * 136
 
     dumps = {d["addr"]: d["bytes"] for d in spec["dumps"]}
