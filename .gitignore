@@ -8,6 +8,9 @@ __pycache__/
 /build/
 gem5-ext/func-core/build/
 
+# Claude Code 的个人配置（项目共享配置 .claude/settings.json 入库）
+.claude/settings.local.json
+
 # 系统与编辑器
 .DS_Store
 .idea/

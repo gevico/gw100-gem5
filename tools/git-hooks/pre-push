@@ -1,17 +1,24 @@
 #!/usr/bin/env python3
 """
 @file  pre-push
-@brief 推送前检查分支命名，并拦住对受保护分支的直接推送
+@brief 推送前检查分支命名、受保护分支和 DCO 签署
 
-规则见 CONTRIBUTING.md §2。
+规则见 CONTRIBUTING.md §2 与 §3.7。
 
-仓库维护者执行已评审通过的合并时，可设 ACIS_MAINTAINER_PUSH=1 放行受保护分支。
-托管平台上线后，应以平台的分支保护为准，本钩子只做本地提醒。
+- 仓库维护者执行已评审通过的合并时，可设 ACIS_MAINTAINER_PUSH=1 放行
+  受保护分支；推送到受保护分支的每个提交仍须有人类的 Signed-off-by。
+- 本地合并前手动检查：tools/git-hooks/pre-push --check-dco main..<分支>
+- 托管平台上线后，应以平台的分支保护为准，本钩子只做本地提醒。
 """
 
 import os
 import re
+import subprocess
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import dco  # noqa: E402
 
 TYPES = ("feat", "fix", "perf", "refactor", "style", "test", "docs", "spec",
          "build", "ci", "chore", "revert", "exp")
@@ -21,14 +28,47 @@ PROTECTED = re.compile(r"^(main|release/.+)$")
 ZERO = "0" * 40
 
 
+def unsigned_commits(rev_args):
+    """返回范围内缺少人类 Signed-off-by 的提交：[(短哈希, 标题)]。"""
+    shas = subprocess.run(["git", "rev-list", *rev_args], capture_output=True,
+                          text=True, check=True).stdout.split()
+    missing = []
+    for sha in shas:
+        msg = subprocess.run(["git", "log", "-1", "--format=%B", sha],
+                             capture_output=True, text=True, check=True).stdout
+        if not dco.human_signoffs(msg.splitlines()):
+            missing.append((sha[:7], msg.splitlines()[0] if msg else ""))
+    return missing
+
+
+def report_unsigned(missing, where):
+    lines = [f"{where}中有 {len(missing)} 个提交缺少人类的 Signed-off-by（§3.7）："]
+    lines += [f"    {sha} {subject}" for sha, subject in missing]
+    lines.append("请由审阅过改动的人类自己执行 git rebase --signoff main 补签；"
+                 "AI 不得代签")
+    return "\n".join(lines)
+
+
+def check_dco_cli(rev_range):
+    missing = unsigned_commits([rev_range])
+    if missing:
+        print(report_unsigned(missing, f"{rev_range} "), file=sys.stderr)
+        return 1
+    print(f"{rev_range}：全部提交都有人类的 Signed-off-by")
+    return 0
+
+
 def main():
+    if len(sys.argv) == 3 and sys.argv[1] == "--check-dco":
+        return check_dco_cli(sys.argv[2])
+    remote = sys.argv[1] if len(sys.argv) > 1 else "origin"
     errs = []
     maintainer = os.environ.get("ACIS_MAINTAINER_PUSH") == "1"
     for line in sys.stdin:
         parts = line.split()
         if len(parts) != 4:
             continue
-        local_ref, local_sha, remote_ref, _ = parts
+        local_ref, local_sha, remote_ref, remote_sha = parts
         if not remote_ref.startswith("refs/heads/"):
             continue  # 标签等其他引用不检查
         branch = remote_ref[len("refs/heads/"):]
@@ -41,12 +81,18 @@ def main():
                 errs.append(f"不能删除受保护分支 '{branch}'")
             if branch != "main" and not RELEASE_RE.match(branch):
                 errs.append(f"发布分支名应形如 release/spec-v0.5，收到 '{branch}'")
+            if not deleting:
+                rng = ([f"{remote_sha}..{local_sha}"] if remote_sha != ZERO
+                       else [local_sha, "--not", f"--remotes={remote}"])
+                missing = unsigned_commits(rng)
+                if missing:
+                    errs.append(report_unsigned(missing, f"推送到 '{branch}' 的提交"))
             continue
         if not deleting and not WORK_RE.match(branch):
             errs.append(f"分支名 '{branch}' 不合规：应为 <类型>/<scope>-<简述>，"
                         "全小写、用连字符，例如 fix/ct-dma-backpressure")
     if errs:
-        print("推送被拒绝（CONTRIBUTING.md §2）：", file=sys.stderr)
+        print("推送被拒绝（CONTRIBUTING.md §2、§3.7）：", file=sys.stderr)
         for e in errs:
             print(f"  - {e}", file=sys.stderr)
         return 1

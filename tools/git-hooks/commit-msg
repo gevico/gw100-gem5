@@ -5,6 +5,7 @@
 
 启用：git config core.hooksPath tools/git-hooks
 只用标准库；fixup!/squash!/amend! 提交只检查格式不检查 scope，合并前会被压缩掉。
+DCO 签署（§3.7）与 AI 署名（§3.8）的识别规则在同目录的 dco.py 中，与 pre-push 共用。
 """
 
 import re
@@ -12,6 +13,9 @@ import subprocess
 import sys
 import unicodedata
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import dco  # noqa: E402
 
 TYPES = ("feat", "fix", "perf", "refactor", "style", "test", "docs", "spec",
          "build", "ci", "chore", "revert", "exp")
@@ -127,9 +131,25 @@ def check(lines, branch):
     return errs
 
 
+def check_dco(lines, in_agent):
+    """DCO 只能由人类签署（§3.7）；不接受 AI 署名（§3.8）。"""
+    errs = [f"不接受 AI 署名：'{l}'（§3.8）" for l in dco.ai_attributions(lines)]
+    values = dco.signoffs(lines)
+    for v in values:
+        if dco.is_ai_identity(v):
+            errs.append(f"AI 不得签署 DCO：'Signed-off-by: {v}'（§3.7）")
+        elif not dco.VALID_SIGNOFF_RE.match(v):
+            errs.append(f"Signed-off-by 格式应为 '姓名 <邮箱>'，收到 '{v}'")
+    if values and in_agent:
+        errs.append("当前在 AI 助手的会话中：AI 不得添加 Signed-off-by，"
+                    "也不得代人类签署；请由人类审阅后自己签署（§3.7）")
+    return errs
+
+
 def main():
     raw = Path(sys.argv[1]).read_text(encoding="utf-8")
-    errs = check(clean(raw), current_branch())
+    lines = clean(raw)
+    errs = check(lines, current_branch()) + check_dco(lines, dco.in_agent_session())
     if errs:
         print("提交信息不符合 CONTRIBUTING.md §3：", file=sys.stderr)
         for e in errs:
