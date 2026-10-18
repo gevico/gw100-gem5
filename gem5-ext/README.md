@@ -1,6 +1,40 @@
 # gem5-ext：GW100 的 gem5 模型
 
-通过 `EXTRAS` 编译进上游 gem5（NULL 构建），不修改 `gem5/`。构建和测试命令见仓库根目录的 `CLAUDE.md`；完整的开发者指南将写成 MAN-060。
+通过 `EXTRAS` 编译进上游 gem5（NULL 构建），不修改 `gem5/`。运行测试见 [tests/README.md](../tests/README.md)；完整的开发者指南将写成 MAN-060。
+
+## 构建
+
+命令都从仓库根目录开始执行。第一次构建是全量的，要十分钟以上；之后只改 gem5-ext 时，增量构建一两分钟。改了 C++ 或 SimObject 的 Python 参数之后要重新构建，pytest 不会自动重建。
+
+macOS（变体目录 `build/NULL_DARWIN`）：
+
+```sh
+uv pip install --python .venv/bin/python -r requirements-dev.txt   # 含 scons
+ROOT=$PWD; cd gem5
+../.venv/bin/scons defconfig build/NULL_DARWIN build_opts/NULL      # 只需一次
+../.venv/bin/scons build/NULL_DARWIN/gem5.opt EXTRAS="$ROOT/gem5-ext" \
+    PYTHON_CONFIG=/opt/homebrew/opt/python@3.12/bin/python3.12-config -j8
+```
+
+用 Homebrew 的 Python 3.12 嵌入 gem5，本机默认的 3.14 太新。
+
+Linux（以 Ubuntu 24.04 为例，变体目录 `build/NULL`）：先装好 `build-essential m4 scons python3-dev`，这是 gem5 上游列出的最小依赖（`gem5/util/dockerfiles/ubuntu-24.04_min-dependencies/Dockerfile`），再执行：
+
+```sh
+ROOT=$PWD; cd gem5
+scons build/NULL/gem5.opt EXTRAS="$ROOT/gem5-ext" -j$(nproc)
+```
+
+## 建模约定
+
+建模的最高原则见 [CONTRIBUTING.md](../CONTRIBUTING.md) §5：模型是在模拟硬件，不能为了软件或测试的方便脱离实际。在此之下：
+
+- 代码全部放在 `gem5-ext/`，通过 `EXTRAS` 编进 gem5，不改 gem5 本体。确实绕不开的本体改动，做成补丁放进 `gem5-ext/patches/`，并注明原因。
+- 按张量指令粒度建模，不逐个 MAC 仿真。
+- ISA 不放进 `gem5/src/arch`：张量指令由 Tile 的 SimObject 自己译码，编码以 `spec-src/isa/isa.yaml` 为唯一来源。
+- 功能计算和时序分开：数值结果由 `func-core/` 算出，gem5 只管时序；扫大形状时可以只跑时序。
+- 片上网络计划用自研的轻量 2D Mesh，粒度是 DMA 传输，支持多播；Garnet 只用来交叉验证。目前暂时用交叉开关代替，见理想化清单第 1 项。
+- DRAM 为 LPDDR5X-8533，从 gem5 自带的 LPDDR5-6400 派生，共 8 个 x16 通道。
 
 ## 组件与规格的对应
 
@@ -19,6 +53,10 @@
 | `src/testhost/` | `Gw100TestHost`：代替 Host 的测试平台，不是硬件 | — | 可用 |
 | `src/common/` | `MemStreamer`：把字节段拆成访存请求，跟踪完成前缀 | — | 可用 |
 
+已实现的指令：NOP、END、SYNC、DMA_COPY、VEC_BINARY、VEC_SCALAR。MATMUL、VEC_UNARY、VEC_REDUCE 只定义了编码，派发器遇到会拒绝执行。跨 Tile 通知（`sig_tile`）还没实现，用到时会 panic。
+
+时序还没有经过 L2 校准，现在的周期数只能说明流程跑通了。初步观察到单 Tile 的 DMA 从 DRAM 读只有约 16 B/周期，怀疑在途请求数（32 × 64 B）不足以覆盖 DRAM 往返延迟。
+
 ## 一次算子测试的流程
 
 1. 仓库根目录下 `tools/gw100_testkit/harness.py` 的 `OpTest` 分配张量、用 `asm.py` 写程序、用 `golden.py` 算期望值，然后在仓库根目录生成测试包 `build/op-tests/<名字>/package.json`。用例本身放在仓库根目录的 `tests/`。
@@ -28,6 +66,13 @@
 5. TestHost 后门读回输出，写 `result.json`，结束仿真。harness 读回结果与 golden 比对，并解析 `m5out/stats.txt`。
 
 测量窗口是完成记录里的 `start_tick` 到 `end_tick`：从派发器收到 doorbell 开始，到最后一个 Tile 执行完 END 为止。
+
+## 开发注意
+
+- 每个 Compute Tile 是一个 `SubSystem`，路径为 `system.ct[i].{sram,sync,ve,dma,ctrl}`，统计名形如 `system.ct0.ve.unit.busyTicks`。gem5 会把作为参数传入的孤儿 SimObject 收养为子对象，所以要先把子对象挂到容器上，再互相引用。
+- func-core 在顶层命名空间 `::gw100`，gem5 侧代码在 `gem5::gw100`。gem5 侧只包含 `src/common/fc.hh`，由它把需要的名字引入。
+- DRAM 按 256 B 交织，功能访问不能跨通道，所以 TestHost 的后门访问按 64 B 对齐切分。
+- 调试开关有 `Gw100Dispatch`、`Gw100Ctrl`、`Gw100Unit`：直接运行 gem5 时用 `--debug-flags`，在测试里传给 `OpTest.run(debug_flags=[...])`。
 
 ## 理想化清单
 
