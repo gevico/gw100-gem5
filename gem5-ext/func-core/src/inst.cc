@@ -5,12 +5,12 @@
  * @see SPEC-110, SPEC-230
  */
 
-#include "acis/inst.hh"
+#include "gw100/inst.hh"
 
 #include <cstring>
 #include <sstream>
 
-namespace acis
+namespace gw100
 {
 
 namespace
@@ -255,4 +255,4 @@ TensorInst::toString() const
     return os.str();
 }
 
-} // namespace acis
+} // namespace gw100

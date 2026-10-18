@@ -5,13 +5,13 @@
  * @see SPEC-240
  */
 
-#include "acis/numerics.hh"
+#include "gw100/numerics.hh"
 
 #include <cmath>
 #include <cstring>
 #include <limits>
 
-namespace acis
+namespace gw100
 {
 namespace fc
 {
@@ -232,4 +232,4 @@ storeElem(uint8_t *buf, isa::DType t, size_t i, double v)
 }
 
 } // namespace fc
-} // namespace acis
+} // namespace gw100

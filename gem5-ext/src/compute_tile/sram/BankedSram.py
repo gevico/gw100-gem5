@@ -9,12 +9,12 @@ from m5.objects.AbstractMemory import AbstractMemory
 from m5.params import *
 
 
-class AcisBankedSram(AbstractMemory):
+class Gw100BankedSram(AbstractMemory):
     """Compute Tile 内的共享 SRAM：多端口、分 bank（SPEC-200）。"""
 
-    type = "AcisBankedSram"
+    type = "Gw100BankedSram"
     cxx_header = "src/compute_tile/sram/banked_sram.hh"
-    cxx_class = "gem5::acis::BankedSram"
+    cxx_class = "gem5::gw100::BankedSram"
 
     port = VectorResponsePort("访问端口；各功能单元和 NIU 各连一个")
     banks = Param.Unsigned(32, "bank 数")

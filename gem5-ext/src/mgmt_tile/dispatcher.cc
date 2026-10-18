@@ -13,13 +13,13 @@
 #include "base/intmath.hh"
 #include "base/logging.hh"
 #include "base/trace.hh"
-#include "debug/AcisDispatch.hh"
+#include "debug/Gw100Dispatch.hh"
 #include "mem/packet_access.hh"
 #include "src/compute_tile/controller/tile_controller.hh"
 
 namespace gem5
 {
-namespace acis
+namespace gw100
 {
 
 namespace
@@ -127,7 +127,7 @@ Dispatcher::start()
     status = Busy;
     startTick = curTick();
     dispStats.commands++;
-    DPRINTF(AcisDispatch, "doorbell：读命令记录 %#x\n", cmdAddr);
+    DPRINTF(Gw100Dispatch, "doorbell：读命令记录 %#x\n", cmdAddr);
     dmaRead(cmdAddr, isa::cmd_rec::bytes, &cmdEvent, cmdBuf);
 }
 
@@ -143,7 +143,7 @@ Dispatcher::commandFetched()
         return;
     }
     progBuf.assign(programBytes, 0);
-    DPRINTF(AcisDispatch, "读程序 %#x，%u 字节\n", programAddr, programBytes);
+    DPRINTF(Gw100Dispatch, "读程序 %#x，%u 字节\n", programAddr, programBytes);
     dmaRead(programAddr, programBytes, &progEvent, progBuf.data());
 }
 
@@ -259,7 +259,7 @@ Dispatcher::creditAvailable()
 void
 Dispatcher::tileDone(unsigned tile)
 {
-    DPRINTF(AcisDispatch, "Tile %u 完成\n", tile);
+    DPRINTF(Gw100Dispatch, "Tile %u 完成\n", tile);
     doneMask |= 1ULL << tile;
     checkComplete();
 }
@@ -286,7 +286,7 @@ Dispatcher::complete(Status st, const std::string &why)
     wr<uint64_t>(cplBuf, isa::cpl_rec::tag, tag);
     wr<uint64_t>(cplBuf, isa::cpl_rec::start_tick, startTick);
     wr<uint64_t>(cplBuf, isa::cpl_rec::end_tick, endTick);
-    DPRINTF(AcisDispatch, "完成，状态 %u，用时 %llu ticks\n", st, endTick - startTick);
+    DPRINTF(Gw100Dispatch, "完成，状态 %u，用时 %llu ticks\n", st, endTick - startTick);
     dmaWrite(completionAddr, isa::cpl_rec::bytes, &cplEvent, cplBuf);
 }
 
@@ -305,5 +305,5 @@ Dispatcher::DispStats::DispStats(Dispatcher &d)
 {
 }
 
-} // namespace acis
+} // namespace gw100
 } // namespace gem5

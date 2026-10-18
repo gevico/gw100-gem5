@@ -11,24 +11,24 @@
  * @see SPEC-220
  */
 
-#ifndef __ACIS_COMPUTE_TILE_VECTOR_VECTOR_ENGINE_HH__
-#define __ACIS_COMPUTE_TILE_VECTOR_VECTOR_ENGINE_HH__
+#ifndef __GW100_COMPUTE_TILE_VECTOR_VECTOR_ENGINE_HH__
+#define __GW100_COMPUTE_TILE_VECTOR_VECTOR_ENGINE_HH__
 
 #include <vector>
 
-#include "params/AcisVectorEngine.hh"
+#include "params/Gw100VectorEngine.hh"
 #include "src/common/mem_streamer.hh"
 #include "src/compute_tile/functional_unit.hh"
 
 namespace gem5
 {
-namespace acis
+namespace gw100
 {
 
 class VectorEngine : public FunctionalUnit
 {
   public:
-    PARAMS(AcisVectorEngine);
+    PARAMS(Gw100VectorEngine);
     VectorEngine(const Params &p);
 
     Port &getPort(const std::string &if_name, PortID idx = InvalidPortID) override;
@@ -54,7 +54,7 @@ class VectorEngine : public FunctionalUnit
     unsigned pendingReads = 0;
 };
 
-} // namespace acis
+} // namespace gw100
 } // namespace gem5
 
-#endif // __ACIS_COMPUTE_TILE_VECTOR_VECTOR_ENGINE_HH__
+#endif // __GW100_COMPUTE_TILE_VECTOR_VECTOR_ENGINE_HH__

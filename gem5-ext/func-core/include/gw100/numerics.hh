@@ -10,15 +10,15 @@
  * @see SPEC-240
  */
 
-#ifndef __ACIS_FC_NUMERICS_HH__
-#define __ACIS_FC_NUMERICS_HH__
+#ifndef __GW100_FC_NUMERICS_HH__
+#define __GW100_FC_NUMERICS_HH__
 
 #include <cstddef>
 #include <cstdint>
 
-#include "acis/isa_defs.hh"
+#include "gw100/isa_defs.hh"
 
-namespace acis
+namespace gw100
 {
 namespace fc
 {
@@ -43,6 +43,6 @@ void storeElem(uint8_t *buf, isa::DType t, size_t i, double v);
 size_t denseBytes(isa::DType t, size_t n);
 
 } // namespace fc
-} // namespace acis
+} // namespace gw100
 
-#endif // __ACIS_FC_NUMERICS_HH__
+#endif // __GW100_FC_NUMERICS_HH__

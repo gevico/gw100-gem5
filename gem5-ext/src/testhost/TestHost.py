@@ -10,12 +10,12 @@ from m5.params import *
 from m5.proxy import *
 
 
-class AcisTestHost(ClockedObject):
+class Gw100TestHost(ClockedObject):
     """测试平台：后门加载、前门启动、轮询完成、后门读回（不是硬件）。"""
 
-    type = "AcisTestHost"
+    type = "Gw100TestHost"
     cxx_header = "src/testhost/test_host.hh"
-    cxx_class = "gem5::acis::TestHost"
+    cxx_class = "gem5::gw100::TestHost"
 
     port = RequestPort("连到片上网络")
     system = Param.System(Parent.any, "所属系统")

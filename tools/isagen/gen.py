@@ -19,7 +19,7 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_SPEC = REPO_ROOT / "spec-src" / "isa" / "isa-v0.yaml"
-CPP_OUT = REPO_ROOT / "gem5-ext" / "func-core" / "include" / "acis" / "isa_defs.hh"
+CPP_OUT = REPO_ROOT / "gem5-ext" / "func-core" / "include" / "gw100" / "isa_defs.hh"
 PY_OUT = REPO_ROOT / "tools" / "gw100_testkit" / "isa_defs.py"
 
 UNITS = {"ctrl": "Ctrl", "dma": "Dma", "me": "Me", "ve": "Ve"}
@@ -34,12 +34,12 @@ def camel(name):
 def gen_cpp(spec, src_name):
     lines = [
         f"// 由 tools/isagen/gen.py 根据 {src_name} 生成，请勿手改。",
-        "#ifndef __ACIS_ISA_GEN_ISA_DEFS_HH__",
-        "#define __ACIS_ISA_GEN_ISA_DEFS_HH__",
+        "#ifndef __GW100_ISA_GEN_ISA_DEFS_HH__",
+        "#define __GW100_ISA_GEN_ISA_DEFS_HH__",
         "",
         "#include <cstdint>",
         "",
-        "namespace acis",
+        "namespace gw100",
         "{",
         "namespace isa",
         "{",
@@ -115,8 +115,8 @@ def gen_cpp(spec, src_name):
         for f in spec[rec]:
             lines.append(f"constexpr unsigned {f['name']} = {f['offset']};  // {f['type']}")
         lines += [f"}} // namespace {ns}", ""]
-    lines += ["} // namespace isa", "} // namespace acis", "",
-              "#endif // __ACIS_ISA_GEN_ISA_DEFS_HH__", ""]
+    lines += ["} // namespace isa", "} // namespace gw100", "",
+              "#endif // __GW100_ISA_GEN_ISA_DEFS_HH__", ""]
     return "\n".join(lines)
 
 

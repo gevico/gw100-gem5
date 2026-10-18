@@ -18,7 +18,7 @@ from gw100_testkit.dtypes import elem_bits
 def _roundtrip(fc, raw):
     out = ctypes.create_string_buffer(len(raw))
     err = ctypes.create_string_buffer(256)
-    ok = fc.acis_decode_roundtrip(raw, out, err, len(err))
+    ok = fc.gw100_decode_roundtrip(raw, out, err, len(err))
     assert ok, err.value.decode()
     return out.raw
 
@@ -45,7 +45,7 @@ def test_decode_rejects_bad_opcode(fc):
     raw = bytearray(asm.nop().encode())
     raw[0] = 0x7F
     err = ctypes.create_string_buffer(256)
-    assert not fc.acis_decode_roundtrip(bytes(raw), ctypes.create_string_buffer(128), err, 256)
+    assert not fc.gw100_decode_roundtrip(bytes(raw), ctypes.create_string_buffer(128), err, 256)
 
 
 def _py_runs(t):
@@ -91,14 +91,14 @@ def test_byte_runs(fc, seed):
     cap = 4096
     addrs = (ctypes.c_uint64 * cap)()
     lens = (ctypes.c_uint32 * cap)()
-    n = fc.acis_byte_runs(raw, 0, addrs, lens, cap)
+    n = fc.gw100_byte_runs(raw, 0, addrs, lens, cap)
     got = [(addrs[i], lens[i]) for i in range(n)]
     assert got == _py_runs(t)
 
 
 def _span(fc, raw, k):
     lo, hi = ctypes.c_uint64(), ctypes.c_uint64()
-    assert fc.acis_addr_span(raw, k, ctypes.byref(lo), ctypes.byref(hi))
+    assert fc.gw100_addr_span(raw, k, ctypes.byref(lo), ctypes.byref(hi))
     return lo.value, hi.value
 
 
@@ -124,7 +124,7 @@ WIN, WIN_BYTES, SRAM, SRAM_BYTES = 0xF_0000_0000, 0x100_0000, 0x10_0300_0000, 0x
 def _resolve(fc, inst):
     out = ctypes.create_string_buffer(128)
     err = ctypes.create_string_buffer(256)
-    ok = fc.acis_resolve_local(inst.encode(), out, WIN, WIN_BYTES, SRAM, SRAM_BYTES, err, 256)
+    ok = fc.gw100_resolve_local(inst.encode(), out, WIN, WIN_BYTES, SRAM, SRAM_BYTES, err, 256)
     return ok, out.raw, err.value.decode()
 
 

@@ -3,20 +3,20 @@
  * @brief 向量引擎指令的功能语义（VEC_BINARY / VEC_SCALAR）
  *
  * 向量引擎指令的功能语义，作用在紧密排列的缓冲区上。
- * 广播和步长由调用方在读数据时展开（见 acis::byteRuns），这里只做逐元素运算。
+ * 广播和步长由调用方在读数据时展开（见 gw100::byteRuns），这里只做逐元素运算。
  *
  * @see SPEC-220
  */
 
-#ifndef __ACIS_FC_VECTOR_OPS_HH__
-#define __ACIS_FC_VECTOR_OPS_HH__
+#ifndef __GW100_FC_VECTOR_OPS_HH__
+#define __GW100_FC_VECTOR_OPS_HH__
 
 #include <cstddef>
 #include <cstdint>
 
-#include "acis/isa_defs.hh"
+#include "gw100/isa_defs.hh"
 
-namespace acis
+namespace gw100
 {
 namespace fc
 {
@@ -33,6 +33,6 @@ bool vecScalar(isa::VecScalarOp op,
                isa::DType tc, uint8_t *c, size_t n);
 
 } // namespace fc
-} // namespace acis
+} // namespace gw100
 
-#endif // __ACIS_FC_VECTOR_OPS_HH__
+#endif // __GW100_FC_VECTOR_OPS_HH__

@@ -12,8 +12,8 @@
  * @see SPEC-200
  */
 
-#ifndef __ACIS_COMPUTE_TILE_SRAM_BANKED_SRAM_HH__
-#define __ACIS_COMPUTE_TILE_SRAM_BANKED_SRAM_HH__
+#ifndef __GW100_COMPUTE_TILE_SRAM_BANKED_SRAM_HH__
+#define __GW100_COMPUTE_TILE_SRAM_BANKED_SRAM_HH__
 
 #include <memory>
 #include <vector>
@@ -21,11 +21,11 @@
 #include "base/statistics.hh"
 #include "mem/abstract_mem.hh"
 #include "mem/qport.hh"
-#include "params/AcisBankedSram.hh"
+#include "params/Gw100BankedSram.hh"
 
 namespace gem5
 {
-namespace acis
+namespace gw100
 {
 
 class BankedSram : public memory::AbstractMemory
@@ -48,7 +48,7 @@ class BankedSram : public memory::AbstractMemory
     };
 
   public:
-    PARAMS(AcisBankedSram);
+    PARAMS(Gw100BankedSram);
     BankedSram(const Params &p);
 
     void init() override;
@@ -73,7 +73,7 @@ class BankedSram : public memory::AbstractMemory
     } sramStats;
 };
 
-} // namespace acis
+} // namespace gw100
 } // namespace gem5
 
-#endif // __ACIS_COMPUTE_TILE_SRAM_BANKED_SRAM_HH__
+#endif // __GW100_COMPUTE_TILE_SRAM_BANKED_SRAM_HH__

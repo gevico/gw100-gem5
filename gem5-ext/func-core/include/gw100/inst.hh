@@ -7,17 +7,17 @@
  * @see SPEC-110, SPEC-230
  */
 
-#ifndef __ACIS_FC_INST_HH__
-#define __ACIS_FC_INST_HH__
+#ifndef __GW100_FC_INST_HH__
+#define __GW100_FC_INST_HH__
 
 #include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
 
-#include "acis/isa_defs.hh"
+#include "gw100/isa_defs.hh"
 
-namespace acis
+namespace gw100
 {
 
 /** 张量操作数：base 地址 + 4 维 (size, stride)，d0 为最内层，stride 单位为字节。 */
@@ -107,6 +107,6 @@ bool resolveLocal(TensorInst &inst, const LocalWindow &w, std::string &err);
 
 const char *opcodeName(isa::Opcode op);
 
-} // namespace acis
+} // namespace gw100
 
-#endif // __ACIS_FC_INST_HH__
+#endif // __GW100_FC_INST_HH__

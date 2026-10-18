@@ -5,7 +5,7 @@
 测试包由 tools/gw100_testkit/harness.py 生成。
 
 用法：
-    gem5.opt [--debug-flags=AcisDispatch,AcisCtrl,AcisUnit] gem5-ext/configs/run_op.py <测试包目录>
+    gem5.opt [--debug-flags=Gw100Dispatch,Gw100Ctrl,Gw100Unit] gem5-ext/configs/run_op.py <测试包目录>
 
 测试包目录里应有 package.json，内容包括架构参数、加载/读回列表、命令记录地址等。
 
@@ -21,9 +21,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import m5  # noqa: E402
 from chip import build_chip  # noqa: E402
-from m5.objects import AcisTestHost, Root  # noqa: E402
+from m5.objects import Gw100TestHost, Root  # noqa: E402
 
-parser = argparse.ArgumentParser(description="运行一个 ACIS 算子测试包")
+parser = argparse.ArgumentParser(description="运行一个 GW100 算子测试包")
 parser.add_argument("package", help="测试包目录")
 args = parser.parse_args()
 
@@ -37,7 +37,7 @@ def rel(path):
 
 
 system = build_chip(pkg["arch_params"], functional=pkg.get("functional", True))
-system.testhost = AcisTestHost(
+system.testhost = Gw100TestHost(
     loads=[f"{l['addr']:#x}={rel(l['file'])}" for l in pkg["loads"]],
     dumps=[f"{d['addr']:#x}:{d['bytes']:#x}={rel(d['file'])}" for d in pkg["dumps"]],
     mgmt_base=pkg["arch_params"]["address_map"]["mgmt_mmio_base"],

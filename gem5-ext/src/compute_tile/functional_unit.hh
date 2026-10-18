@@ -9,20 +9,20 @@
  * @see SPEC-200
  */
 
-#ifndef __ACIS_COMPUTE_TILE_FUNCTIONAL_UNIT_HH__
-#define __ACIS_COMPUTE_TILE_FUNCTIONAL_UNIT_HH__
+#ifndef __GW100_COMPUTE_TILE_FUNCTIONAL_UNIT_HH__
+#define __GW100_COMPUTE_TILE_FUNCTIONAL_UNIT_HH__
 
 #include <deque>
 
 #include "base/statistics.hh"
 #include "mem/request.hh"
-#include "params/AcisFunctionalUnit.hh"
+#include "params/Gw100FunctionalUnit.hh"
 #include "sim/clocked_object.hh"
 #include "src/common/fc.hh"
 
 namespace gem5
 {
-namespace acis
+namespace gw100
 {
 
 class SyncUnit;
@@ -31,7 +31,7 @@ class TileController;
 class FunctionalUnit : public ClockedObject
 {
   public:
-    PARAMS(AcisFunctionalUnit);
+    PARAMS(Gw100FunctionalUnit);
     FunctionalUnit(const Params &p);
 
     void setController(TileController *c) { ctrl = c; }
@@ -73,7 +73,7 @@ class FunctionalUnit : public ClockedObject
     Tick waitStart = 0;
 };
 
-} // namespace acis
+} // namespace gw100
 } // namespace gem5
 
-#endif // __ACIS_COMPUTE_TILE_FUNCTIONAL_UNIT_HH__
+#endif // __GW100_COMPUTE_TILE_FUNCTIONAL_UNIT_HH__

@@ -12,7 +12,7 @@
 
 namespace gem5
 {
-namespace acis
+namespace gw100
 {
 
 SyncUnit::SyncUnit(const Params &p)
@@ -78,5 +78,5 @@ SyncUnit::SyncStats::SyncStats(SyncUnit &s)
 {
 }
 
-} // namespace acis
+} // namespace gw100
 } // namespace gem5

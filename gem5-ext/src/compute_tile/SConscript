@@ -1,12 +1,12 @@
 Import('*')
 
 SimObject('ComputeTile.py', sim_objects=[
-    'AcisFunctionalUnit', 'AcisVectorEngine', 'AcisDmaEngine', 'AcisTileController'])
+    'Gw100FunctionalUnit', 'Gw100VectorEngine', 'Gw100DmaEngine', 'Gw100TileController'])
 
 Source('functional_unit.cc')
 Source('vector/vector_engine.cc')
 Source('dma/dma_engine.cc')
 Source('controller/tile_controller.cc')
 
-DebugFlag('AcisUnit', "ACIS 功能单元的指令执行")
-DebugFlag('AcisCtrl', "ACIS Tile 控制器的指令分发")
+DebugFlag('Gw100Unit', "GW100 功能单元的指令执行")
+DebugFlag('Gw100Ctrl', "GW100 Tile 控制器的指令分发")

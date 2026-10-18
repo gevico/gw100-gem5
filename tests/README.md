@@ -13,7 +13,7 @@
 在仓库根目录运行：
 
 ```sh
-make -C gem5-ext/func-core            # 先编出 L0 用的 libacisfc.so
+make -C gem5-ext/func-core            # 先编出 L0 用的 libgw100fc.so
 .venv/bin/python -m pytest            # 全部测试；没有 gem5 时 L1 自动跳过
 ```
 
