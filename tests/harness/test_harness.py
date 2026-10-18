@@ -107,28 +107,23 @@ def test_local_tensor_needs_tile_for_backdoor(tmp_path):
     assert spec["dumps"][0]["addr"] == addrmap.tile_sram_base(7) + off
 
 
-def test_gem5_runner_prefers_native(tmp_path, monkeypatch):
-    """GEM5_BIN 优先；其次本平台原生构建；GW100_GEM5_DOCKER=1 或没有原生构建时走 Docker。"""
+def test_gem5_binary_selection(tmp_path, monkeypatch):
+    """GEM5_BIN 优先，其次是本平台原生构建；可执行文件不存在时报告不可用。"""
     from gw100_testkit import harness
     native = tmp_path / "gem5.opt"
     native.write_text("")
     monkeypatch.setattr(harness, "NATIVE_GEM5_BIN", {"darwin": native, "linux": native})
-    monkeypatch.setattr(harness, "_docker_image", lambda: "gem5-dev")
     monkeypatch.delenv("GEM5_BIN", raising=False)
-    monkeypatch.delenv("GW100_GEM5_DOCKER", raising=False)
 
-    assert harness.gem5_runner() == ("native", native)
+    assert harness.gem5_binary() == native
     assert harness.gem5_command(tmp_path)[0] == str(native)
-
-    monkeypatch.setenv("GW100_GEM5_DOCKER", "1")
-    assert harness.gem5_runner() == ("docker", None)
-    assert harness.gem5_command(tmp_path)[:2] == ["docker", "run"]
-    monkeypatch.delenv("GW100_GEM5_DOCKER")
+    assert harness.gem5_available()[0]
 
     other = tmp_path / "other.opt"
     monkeypatch.setenv("GEM5_BIN", str(other))
-    assert harness.gem5_runner() == ("native", other)
+    assert harness.gem5_binary() == other
+    assert not harness.gem5_available()[0]      # GEM5_BIN 指向的文件不存在
     monkeypatch.delenv("GEM5_BIN")
 
     native.unlink()
-    assert harness.gem5_runner() == ("docker", None)
+    assert not harness.gem5_available()[0]

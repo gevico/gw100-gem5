@@ -106,7 +106,7 @@ git config user.email "<邮箱>"
 | `style` | 只改格式，例如 clang-format、Black |
 | `test` | 只增改测试 |
 | `docs` | 手册、README、注释等文档 |
-| `build` | 构建系统、Dockerfile、依赖、gem5 子模块 |
+| `build` | 构建系统、依赖、gem5 子模块 |
 | `ci` | 持续集成配置 |
 | `chore` | 其他杂项 |
 | `revert` | 撤销之前的提交。正文写明被撤销提交的哈希和撤销原因 |
