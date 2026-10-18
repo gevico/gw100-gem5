@@ -21,8 +21,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - 每份 PDF 旁边有自动转换的同名 `.md` 和 `images/`。
 - `tools/ref2md/`：PDF 转 Markdown 的工具（docling）。
 - `gem5/`：上游 gem5 v25.1.0.1，以 git 子模块引入，固定在 commit `f5c5a6e`（stable 分支，浅克隆）。**不要修改它**。上游的开发规范见 `gem5/AGENTS.md`。
-- `spec-src/`：单一真源。`arch_params.yaml` 是架构参数，`isa/isa-v0.yaml` 是指令编码、Host 接口记录和管理 Tile 寄存器。
-- `tools/isagen/gen.py`：由 `isa-v0.yaml` 生成 `gem5-ext/func-core/include/gw100/isa_defs.hh` 和 `tools/gw100_testkit/isa_defs.py`。**这两个文件不要手改**，改 YAML 后重新生成。
+- `spec-src/`：单一真源。`arch_params.yaml` 是架构参数，`isa/isa.yaml` 是指令编码、Host 接口记录和管理 Tile 寄存器。
+- `tools/isagen/gen.py`：由 `isa.yaml` 生成 `gem5-ext/func-core/include/gw100/isa_defs.hh` 和 `tools/gw100_testkit/isa_defs.py`。**这两个文件不要手改**，改 YAML 后重新生成。
 - `gem5-ext/`：我们的 gem5 扩展，通过 `EXTRAS` 编译进 gem5。
   - `func-core/`：不依赖 gem5 的功能核心（数值规则、指令编解码、向量运算）。gem5 的 SConscript 直接编译它的源码，同时也单独编成 `libgw100fc.so`，供 L0 测试用。
   - `src/`：SimObject，按硬件组件分目录。`compute_tile/` 下有 sram、sync、vector、dma、controller；另有 `mgmt_tile/`（派发器）、`testhost/`、`common/`（`MemStreamer`：把字节段拆成请求并跟踪完成前缀）。
@@ -71,7 +71,7 @@ ROOT=$PWD; cd gem5
 
 ```sh
 uv venv --python 3.12 .venv && uv pip install --python .venv/bin/python -r requirements-dev.txt
-.venv/bin/python tools/isagen/gen.py            # 由 isa-v0.yaml 重新生成 isa_defs
+.venv/bin/python tools/isagen/gen.py            # 由 isa.yaml 重新生成 isa_defs
 .venv/bin/python tools/isagen/gen.py --check    # 只检查生成物是否最新
 make -C gem5-ext/func-core                      # 编出 L0 测试用的 libgw100fc.so
 .venv/bin/python -m pytest                      # 全部测试：L0 + harness 自检 + L1（L1 自动在容器里跑 gem5）

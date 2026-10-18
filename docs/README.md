@@ -128,7 +128,7 @@ SPEC 均由架构线负责。SPEC-400 与驱动团队联合编写，SPEC-410 与
 
 ## 5. 单一真源
 
-下列内容以机器可读文件为唯一来源，文档、gem5 模型和软件头文件都由它们生成或引用，不各自维护副本。已建立 `arch_params.yaml`（v0.1）和 `isa/isa-v0.yaml`；寄存器目前也写在 `isa-v0.yaml` 的 `mgmt_regs` 里，SystemRDL 尚未引入。
+下列内容以机器可读文件为唯一来源，文档、gem5 模型和软件头文件都由它们生成或引用，不各自维护副本。已建立 `arch_params.yaml`（v0.1）和 `isa/isa.yaml`；寄存器目前也写在 `isa.yaml` 的 `mgmt_regs` 里，SystemRDL 尚未引入。
 
 | 内容 | 源文件（`spec-src/`） | 生成物 |
 |---|---|---|

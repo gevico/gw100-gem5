@@ -1,4 +1,4 @@
-"""由 tools/isagen/gen.py 根据 spec-src/isa/isa-v0.yaml 生成，请勿手改。"""
+"""由 tools/isagen/gen.py 根据 spec-src/isa/isa.yaml 生成，请勿手改。"""
 
 VERSION = '0.3'
 INST_BYTES = 128

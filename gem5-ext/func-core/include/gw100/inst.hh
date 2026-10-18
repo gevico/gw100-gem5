@@ -2,7 +2,7 @@
  * @file  inst.hh
  * @brief 张量指令的编解码、操作数地址展开与 Tile 相对地址换算
  *
- * 编码格式见 spec-src/isa/isa-v0.yaml；字段偏移来自生成的 isa_defs.hh。
+ * 编码格式见 spec-src/isa/isa.yaml；字段偏移来自生成的 isa_defs.hh。
  *
  * @see SPEC-110, SPEC-230
  */

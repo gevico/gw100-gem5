@@ -5,7 +5,7 @@
 输入是 spec-src/isa/*.yaml，输出供 gem5 侧译码和 Python 汇编器使用。
 
 用法（在仓库根目录执行）：
-    .venv/bin/python tools/isagen/gen.py              # 默认使用 spec-src/isa/isa-v0.yaml
+    .venv/bin/python tools/isagen/gen.py              # 默认使用 spec-src/isa/isa.yaml
     .venv/bin/python tools/isagen/gen.py --check      # 只检查生成结果是否最新，不写文件
 
 @see SPEC-230
@@ -18,7 +18,7 @@ from pathlib import Path
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_SPEC = REPO_ROOT / "spec-src" / "isa" / "isa-v0.yaml"
+DEFAULT_SPEC = REPO_ROOT / "spec-src" / "isa" / "isa.yaml"
 CPP_OUT = REPO_ROOT / "gem5-ext" / "func-core" / "include" / "gw100" / "isa_defs.hh"
 PY_OUT = REPO_ROOT / "tools" / "gw100_testkit" / "isa_defs.py"
 
