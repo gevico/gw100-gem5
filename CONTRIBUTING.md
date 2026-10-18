@@ -19,7 +19,7 @@ git config user.name  "<姓名或账号名>"         # 不要求真实姓名；D
 git config user.email "<邮箱>"
 ```
 
-开发环境、构建和测试命令见 `CLAUDE.md` 的"常用命令"一节。
+构建 gem5 见 `gem5-ext/README.md`，运行测试见 `tests/README.md`。
 
 不得用 `--no-verify` 绕过钩子。钩子误判时，请修钩子，并把修复单独提交（scope 用 `git`）。
 
@@ -136,18 +136,6 @@ git config user.email "<邮箱>"
 
 ### 3.6 示例
 
-以下是真实发生过的改动：
-
-```
-fix(mem-tile): LPDDR5X 的 tCL 不再随时钟缩短
-
-从 LPDDR5-6400 派生 8533 的时序时，把 tCL 也按 6400/8533 缩短了，
-读延迟凭空少了约 5 ns。JEDEC 的 RL 以 CK 计，频率提高时 CK 数随之
-增加，纳秒值大致不变，所以 tCL 保持 21.25 ns，确切值待按 JEDEC 核对。
-
-L1 各用例变慢 20~28 个周期，结果仍与 golden 逐位一致。
-```
-
 ```
 feat(ct-ctrl,mgmt): SRAM 操作数改为 Tile 相对寻址
 
@@ -161,14 +149,6 @@ Tile 的全局地址。指令中落在本地窗口 local_sram_base 内的地址�
 测试：L0 97/97，L1 11/11。16 Tile SPMD 用例的派发条目由 80 降到 50。
 
 Idealization: add #5
-```
-
-下面这个是虚构的破坏性改动，只用来演示格式：
-
-```
-spec(isa)!: 示例——VEC_SCALAR 的立即数改为 FP16
-
-BREAKING CHANGE: 汇编器和编译器按新的 imm 编码生成指令；isa 升到下一个版本。
 ```
 
 ### 3.7 DCO 签署
@@ -192,23 +172,14 @@ Co-Authored-By: 李四 <lisi@example.com>
 Signed-off-by: 张三 <zhangsan@example.com>
 ```
 
-**检查**：
-- commit-msg 钩子：签署者的姓名或邮箱像 AI（含 Claude、Anthropic、Copilot、OpenAI、ChatGPT、GPT、Codex、Gemini）时拒绝；在 AI 助手的会话里提交时（例如 Claude Code 会设置 `CLAUDECODE=1`），只要带有 `Signed-off-by` 就拒绝。
-- pre-push 钩子：推送到 `main` 或 `release/*` 的提交缺少人类签署时拒绝。
-- 本地合并前手动检查：`tools/git-hooks/pre-push --check-dco main..<分支>`。
-- 钩子识别不了"AI 冒用人类姓名签署"，这一点靠本规则和评审约束。识别规则在 `tools/git-hooks/dco.py`，两个钩子共用。
-
-现状：本规则建立之前进入 `main` 的提交都没有签署。要不要补签由仓库维护者决定；补签只能由人类自己执行（`git rebase --signoff --root`）。这会改写历史，只能在推送到任何远端之前做。
+commit-msg 和 pre-push 钩子会拦住明显的违规（识别规则见 `tools/git-hooks/dco.py`），本地合并前可以用 `tools/git-hooks/pre-push --check-dco main..<分支>` 检查。AI 冒用人类姓名签署，钩子识别不了，靠本规则和评审约束。
 
 ### 3.8 不接受 AI 署名
 
 本仓库不接受 AI 署名为作者或共同作者。提交信息和合并请求描述里，不得出现 AI 的 `Co-Authored-By`，也不得出现"Generated with Claude Code"之类的署名行。改动由提交它、签署它的人类负责。
 
-- Claude Code 默认会自动加署名，本仓库已在 `.claude/settings.json` 中关闭（`attribution` 设为空，并为旧版本设了 `includeCoAuthoredBy: false`）。这份配置入库，对所有在本仓库使用 Claude Code 的人生效；个人配置 `.claude/settings.local.json` 不入库，不得在其中重新打开署名。
-- 使用其他 AI 助手时，也要关闭它的自动署名。
-- commit-msg 钩子会拒绝 AI 的 `Co-Authored-By` 和"Generated with Claude Code"署名行，识别规则与 §3.7 共用 `tools/git-hooks/dco.py`。
-
-现状：本规则建立之前的提交信息里都带有 Claude 的 `Co-Authored-By`。要不要清理由仓库维护者决定；清理需要改写历史，只能在推送到任何远端之前做。
+- 本仓库的 `.claude/settings.json` 已关闭 Claude Code 的自动署名，个人配置 `.claude/settings.local.json` 不得重新打开。用其他 AI 助手时，也要关闭它的自动署名。
+- commit-msg 钩子会拒绝 AI 的 `Co-Authored-By` 和"Generated with Claude Code"署名行。
 
 ---
 
@@ -235,9 +206,9 @@ Signed-off-by: 张三 <zhangsan@example.com>
 
 ### 4.3 评审人
 
-所有改动至少要有一名评审人通过。下列改动还需要相应团队评审：
+合并请求至少要有一名评审人批准。仓库 admin 合并时可以不等批准（GitHub 规则集为 admin 设置了经 PR 的豁免），但下列改动仍应先请相应团队评审：
 
-| 改动 | 必须参与评审 |
+| 改动 | 应参与评审 |
 |---|---|
 | `spec-src/isa/`、Host 接口记录、管理 Tile 寄存器 | 驱动团队、AI 编译器团队 |
 | `arch_params.yaml` 中软件可见的参数（地址映射、SRAM 容量、Tile 数等） | AI 编译器团队 |
@@ -262,15 +233,7 @@ Signed-off-by: 张三 <zhangsan@example.com>
 
 ## 6. 提交前的检查
 
-在仓库根目录执行：
-
-```sh
-.venv/bin/python tools/isagen/gen.py --check   # 生成物是否最新
-make -C gem5-ext/func-core                     # 编出 L0 测试用的 libgw100fc.so
-.venv/bin/python -m pytest                     # 全部测试：L0 + harness 自检 + L1（L1 需要已编译的 gem5）
-```
-
-改了 `gem5-ext/src/` 或 SimObject 的 Python 参数之后，先重新构建 gem5。命令见 `CLAUDE.md`。
+合并前，生成物要是最新的，全部测试要通过，命令见 `tests/README.md`。改了 `gem5-ext/src/` 或 SimObject 的 Python 参数，先重新构建 gem5，见 `gem5-ext/README.md`。
 
 测试要求：
 
@@ -290,20 +253,19 @@ make -C gem5-ext/func-core                     # 编出 L0 测试用的 libgw100
   - 交付文档命名为 `<编号>-<英文短名>.md`，例如 `docs/spec/SPEC-210-matrix-engine.md`。
   - "必须""应""可"分别对应 MUST、SHOULD、MAY，只在 SPEC 里使用；还没定的内容标 `TBD`。
   - 参数只在单一真源中维护，文档里引用参数名，不写死数字。
+  - 引用调研资料写"代号 p.N"；写进 SPEC 的数字要回 PDF 原页核对；自己推算的标"推算"，跨资料对比得出的判断标"观察"。
 - **文件名不带版本号**：不要写 `isa-v0.yaml`、`spec-v2.md` 这样的名字。历史版本由 git 记录；需要标明版本时，写在文件内的 `version` 字段里，交付时再打 git 标签（§2.4）。
 
 ### 7.1 文件头注释
 
-每个**新增**的源文件都必须带文件头注释，格式参照 Doxygen。文件头的作用是让人和 agent 打开文件时，立刻知道它是什么、对应哪份规格。
+每个**新增**的源文件都必须带 Doxygen 风格的文件头注释，让人和 agent 打开文件就知道它是什么、对应哪份规格。
 
 **适用范围**：`gem5-ext/`、`tools/`、`tests/` 下的 C++ 文件（`.hh`、`.h`、`.cc`、`.cpp`、`.hpp`）和 Python 文件（`.py`）。下列文件不要求：
 - 生成文件，前几行注明了"请勿手改"；
 - `SConscript`、`Makefile` 等构建脚本；
 - `reference/`、`gem5/` 下的第三方内容。
 
-**模板**：[`tools/templates/`](tools/templates/)。新建文件时复制对应模板，替换掉全部占位符。
-
-C++ 的文件头是文件开头的第一个 `/** ... */` 块：
+新建文件时复制 [`tools/templates/`](tools/templates/) 里的模板，替换掉全部占位符。C++ 的文件头是文件开头的第一个 `/** ... */` 块，Python 的是模块 docstring，字段相同：
 
 ```cpp
 /**
@@ -316,17 +278,6 @@ C++ 的文件头是文件开头的第一个 `/** ... */` 块：
  */
 ```
 
-Python 的文件头是模块 docstring，字段相同；脚本的 shebang 行可以放在它前面：
-
-```python
-"""
-@file  harness.py
-@brief 算子测试框架：生成测试包、调用 gem5、读回结果并与 golden 比对
-
-@see MAN-060
-"""
-```
-
 | 字段 | 要求 |
 |---|---|
 | `@file` | 必填。只写文件名，不带路径，必须与实际文件名一致；改名时同步修改 |
@@ -336,7 +287,7 @@ Python 的文件头是模块 docstring，字段相同；脚本的 shebang 行可
 
 **不写**：作者、日期、修改记录，因为 git 已经记录了这些，写在文件头里很快会过时；也不写版权和许可证声明。
 
-**检查**：`tools/git-hooks/pre-commit` 检查本次提交中新增的文件。重命名和修改已有文件不检查；改名时要同步修改 `@file`，这一点由评审把关。
+pre-commit 钩子只检查新增的文件；改名时要同步修改 `@file`，这一点由评审把关。
 
 ---
 
@@ -347,4 +298,4 @@ Python 的文件头是模块 docstring，字段相同；脚本的 shebang 行可
   - PDF 原件和转换出的图片直接入库，不用 Git LFS（2026-10-18 决定）。资料会永久留在 git 历史里，所以只收确有参考价值的资料，单个文件超过 5 MB 时，在合并请求里说明理由。
   - Hailo 的文档每页标有 Confidential。这些文档取自 Hailo 官网公开下载的版本，维护者已确认可以随仓库公开（2026-10-18）。
   - `reference/hailo/hailort-drivers/` 是 GPL-2.0 代码，只能阅读，不得把其中的代码复制进我们的代码。
-  - 新增资料的流程见 `CLAUDE.md` 的"文档与资料约定"。
+  - 新增资料的流程见 `reference/README.md` 的"新增资料的方式"。
