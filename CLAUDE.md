@@ -29,7 +29,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - `configs/`：`chip.py` 按 arch_params 搭建整芯片，`run_op.py` 运行一个测试包，`lpddr5x.py` 是由 LPDDR5-6400 派生的近似时序。
 - `tools/gw100_testkit/`：**临时开发工具**，在编译器和驱动就绪之前代替它们生成算子程序、给出期望结果：汇编器 `asm.py`、numpy golden `golden.py`、数据类型转换 `dtypes.py`、地址映射 `addrmap.py`，以及测试框架 `harness.py`（生成测试包 → 调 gem5 → 比对 golden）。只供内部使用，不承诺接口稳定；驱动和编译器团队以 SPEC 和 `spec-src/` 为准，不依赖这个包，两者不一致时以 SPEC 为准。名字里带 testkit，是为了把 `gw100` 留给将来正式的 SDK。
 - `tests/`：全部测试，与被测代码分开，按验证层次分目录：`l0_func_core/`（func-core 与 golden 逐位比对）、`l1_inst/`（端到端指令测试）、`harness/`（测试框架自检）；以后的 L2~L4 也放在这里。标记为 `gem5` 的用例在没有 gem5 时自动跳过。导入路径和标记在根目录的 `pytest.ini` 里声明。
-- `.venv/`：仓库级 Python 3.12 环境（numpy、pyyaml、pytest，见 `requirements-dev.txt`），用于 L0/L1 测试和代码生成。
+- `.venv/`：仓库级 Python 3.12 环境（numpy、pyyaml、pytest、scons，见 `requirements-dev.txt`），用于 L0/L1 测试、代码生成和原生构建 gem5。
 - 仓库根目录是 git 仓库，默认分支为 `main`。贡献规范见 `CONTRIBUTING.md`，钩子在 `tools/git-hooks/`，scope 清单在 `tools/git-hooks/scopes.txt`。
 
 ## 常用命令
@@ -48,7 +48,7 @@ scons build/X86/gem5.opt -j6                       # 在容器内执行
 # 我们的模型：不带 CPU 的 NULL 构建，外挂 gem5-ext。
 # 仓库根目录按原路径挂载进容器，这样 harness 写出的测试包路径在容器内外一致。
 # gem5-dev 与 gem5-slim 的工具链相同，哪个在本机就用哪个。
-docker run --rm -v "$PWD:$PWD" -v acis-ccache:/home/gem5/.ccache -w "$PWD/gem5" gem5-dev \
+docker run --rm -v "$PWD:$PWD" -v gw100-ccache:/home/gem5/.ccache -w "$PWD/gem5" gem5-dev \
     scons EXTRAS="$PWD/gem5-ext" build/NULL/gem5.opt -j6
 ```
 
@@ -79,7 +79,7 @@ make -C gem5-ext/func-core test                 # 只跑 L0
 .venv/bin/python -m pytest tests/l1_inst/test_vec_ops.py -k bias -s   # 单个用例
 ```
 
-- harness 选择 gem5 的顺序：`GEM5_BIN` 指定的可执行文件 → 本平台原生构建（macOS 为 `build/NULL_DARWIN`，Linux 为 `build/NULL`），直接运行 → 都没有时在 Docker 里运行 `build/NULL`。设 `ACIS_GEM5_DOCKER=1` 强制走 Docker，用于和容器环境对照；`ACIS_GEM5_IMAGE` 指定镜像，默认取本机已有的 `gem5-slim` 或 `gem5-dev`。直接运行时 113 个用例约 5 秒，Docker 约 12 秒，周期数完全一致。
+- harness 选择 gem5 的顺序：`GEM5_BIN` 指定的可执行文件 → 本平台原生构建（macOS 为 `build/NULL_DARWIN`，Linux 为 `build/NULL`），直接运行 → 都没有时在 Docker 里运行 `build/NULL`。设 `GW100_GEM5_DOCKER=1` 强制走 Docker，用于和容器环境对照；`GW100_GEM5_IMAGE` 指定镜像，默认取本机已有的 `gem5-slim` 或 `gem5-dev`。直接运行时 113 个用例约 5 秒，Docker 约 12 秒，周期数完全一致。
 - 在 `OpTest` 里写测试时：
   - 多播指令用 `t.local(shape, dtype)` 分配 SRAM，这是本地窗口地址；
   - 后门 `load` / `expect` 本地张量时，要用 `tile=` 指明是哪个 Tile；

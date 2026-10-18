@@ -5,7 +5,7 @@
 
 规则见 CONTRIBUTING.md §2 与 §3.7。
 
-- 仓库维护者执行已评审通过的合并时，可设 ACIS_MAINTAINER_PUSH=1 放行
+- 仓库维护者执行已评审通过的合并时，可设 GW100_MAINTAINER_PUSH=1 放行
   受保护分支；推送到受保护分支的每个提交仍须有人类的 Signed-off-by。
 - 本地合并前手动检查：tools/git-hooks/pre-push --check-dco main..<分支>
 - 托管平台上线后，应以平台的分支保护为准，本钩子只做本地提醒。
@@ -63,7 +63,7 @@ def main():
         return check_dco_cli(sys.argv[2])
     remote = sys.argv[1] if len(sys.argv) > 1 else "origin"
     errs = []
-    maintainer = os.environ.get("ACIS_MAINTAINER_PUSH") == "1"
+    maintainer = os.environ.get("GW100_MAINTAINER_PUSH") == "1"
     for line in sys.stdin:
         parts = line.split()
         if len(parts) != 4:
@@ -76,7 +76,7 @@ def main():
         if PROTECTED.match(branch):
             if not maintainer:
                 errs.append(f"'{branch}' 是受保护分支，只能经评审后由维护者合并"
-                            "（设 ACIS_MAINTAINER_PUSH=1 放行）")
+                            "（设 GW100_MAINTAINER_PUSH=1 放行）")
             elif deleting:
                 errs.append(f"不能删除受保护分支 '{branch}'")
             if branch != "main" and not RELEASE_RE.match(branch):

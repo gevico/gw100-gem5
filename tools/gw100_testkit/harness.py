@@ -22,10 +22,10 @@ SRAM 张量有两种分配方式：
 
 gem5 的运行方式，按以下顺序选择：
 1. 环境变量 GEM5_BIN 指向的可执行文件，直接运行；
-2. ACIS_GEM5_DOCKER=1 时强制走 Docker（与容器环境对照时用）；
+2. GW100_GEM5_DOCKER=1 时强制走 Docker（与容器环境对照时用）；
 3. 本平台原生构建的 gem5，直接运行：Linux 为 gem5/build/NULL/gem5.opt，
    macOS 为 gem5/build/NULL_DARWIN/gem5.opt（构建命令见 CLAUDE.md）；
-4. 都没有时，在 Docker 镜像 ACIS_GEM5_IMAGE（默认取本机已有的 gem5-slim 或
+4. 都没有时，在 Docker 镜像 GW100_GEM5_IMAGE（默认取本机已有的 gem5-slim 或
    gem5-dev）里运行 gem5/build/NULL/gem5.opt，仓库根目录按原路径挂载进容器。
 直接运行时每个用例只启动一个 gem5 进程，不再每次启动容器。
 
@@ -85,9 +85,9 @@ def _local_images():
 
 @lru_cache(maxsize=None)
 def _docker_image():
-    """ACIS_GEM5_IMAGE 优先；否则用本机已有的第一个候选镜像（两者工具链相同）。"""
-    if os.environ.get("ACIS_GEM5_IMAGE"):
-        return os.environ["ACIS_GEM5_IMAGE"]
+    """GW100_GEM5_IMAGE 优先；否则用本机已有的第一个候选镜像（两者工具链相同）。"""
+    if os.environ.get("GW100_GEM5_IMAGE"):
+        return os.environ["GW100_GEM5_IMAGE"]
     for image in _IMAGE_CANDIDATES:
         if image in _local_images():
             return image
@@ -98,7 +98,7 @@ def gem5_runner():
     """返回 ("native", 可执行文件) 或 ("docker", None)，选择顺序见模块说明。"""
     if os.environ.get("GEM5_BIN"):
         return ("native", Path(os.environ["GEM5_BIN"]))
-    if os.environ.get("ACIS_GEM5_DOCKER") != "1":
+    if os.environ.get("GW100_GEM5_DOCKER") != "1":
         native = NATIVE_GEM5_BIN.get(sys.platform)
         if native and native.exists():
             return ("native", native)
