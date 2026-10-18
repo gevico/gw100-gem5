@@ -107,22 +107,22 @@ def test_local_tensor_needs_tile_for_backdoor(tmp_path):
 
 
 def test_gem5_runner_prefers_native(tmp_path, monkeypatch):
-    """GEM5_BIN 优先；其次本平台原生构建；ACIS_GEM5_DOCKER=1 或没有原生构建时走 Docker。"""
+    """GEM5_BIN 优先；其次本平台原生构建；GW100_GEM5_DOCKER=1 或没有原生构建时走 Docker。"""
     from gw100_testkit import harness
     native = tmp_path / "gem5.opt"
     native.write_text("")
     monkeypatch.setattr(harness, "NATIVE_GEM5_BIN", {"darwin": native, "linux": native})
     monkeypatch.setattr(harness, "_docker_image", lambda: "gem5-dev")
     monkeypatch.delenv("GEM5_BIN", raising=False)
-    monkeypatch.delenv("ACIS_GEM5_DOCKER", raising=False)
+    monkeypatch.delenv("GW100_GEM5_DOCKER", raising=False)
 
     assert harness.gem5_runner() == ("native", native)
     assert harness.gem5_command(tmp_path)[0] == str(native)
 
-    monkeypatch.setenv("ACIS_GEM5_DOCKER", "1")
+    monkeypatch.setenv("GW100_GEM5_DOCKER", "1")
     assert harness.gem5_runner() == ("docker", None)
     assert harness.gem5_command(tmp_path)[:2] == ["docker", "run"]
-    monkeypatch.delenv("ACIS_GEM5_DOCKER")
+    monkeypatch.delenv("GW100_GEM5_DOCKER")
 
     other = tmp_path / "other.opt"
     monkeypatch.setenv("GEM5_BIN", str(other))

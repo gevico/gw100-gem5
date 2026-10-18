@@ -1,4 +1,4 @@
-# gem5-ext：ACIS 的 gem5 模型
+# gem5-ext：GW100 的 gem5 模型
 
 通过 `EXTRAS` 编译进上游 gem5（NULL 构建），不修改 `gem5/`。构建和测试命令见仓库根目录的 `CLAUDE.md`；完整的开发者指南将写成 MAN-060。
 
