@@ -36,8 +36,8 @@ spec-NNN      某一份 SPEC，例如 spec-110
 man-NNN       某一份手册，例如 man-060
 doc-NNN       某一份总体文档，例如 doc-001
 adr-NNN       某一条架构决策记录
-reference     reference/ 调研资料
-tools         tools/ 下的其他工具，例如 ref2md
+reference     reference/ 子模块指针；资料本身在 gevico/gw100-references
+tools         tools/ 下的其他工具，例如 tools/templates/ 的文件头模板
 
 # ---- 工程
 treewide      横跨整个仓库的机械性改动，例如统一补文件头、统一格式化；只用于不改变行为的提交
