@@ -3,3 +3,7 @@
 	url = https://github.com/gem5/gem5.git
 	branch = stable
 	shallow = true
+[submodule "reference"]
+	path = reference
+	url = https://github.com/gevico/gw100-references.git
+	update = none
