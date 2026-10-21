@@ -19,6 +19,13 @@ git config user.name  "<姓名或账号名>"         # 不要求真实姓名；D
 git config user.email "<邮箱>"
 ```
 
+调研资料在子模块 `reference/`（约 170 MB），默认不拉取。需要查资料、写 SPEC 时，在本克隆中开启一次，以后 `git submodule update` 会一并更新它：
+
+```sh
+git config submodule.reference.update checkout
+git submodule update --init reference
+```
+
 构建 gem5 见 `gem5-ext/README.md`，运行测试见 `tests/README.md`。
 
 不得用 `--no-verify` 绕过钩子。钩子误判时，请修钩子，并把修复单独提交（scope 用 `git`）。
@@ -294,7 +301,8 @@ pre-commit 钩子只检查新增的文件；改名时要同步修改 `@file`，�
 ## 8. 第三方代码与资料
 
 - **gem5**：以子模块方式引入，固定在 `.gitmodules` 和子模块指针记录的 commit。规则见 §3.1。
-- **调研资料（`reference/`）**：本项目是开源的，调研资料随仓库公开托管、对外分发（2026-10-18 确认）。资料的版权仍归原作者或出版方所有，引用时注明出处；新增资料只收官方或开放渠道发布的版本。
+- **调研资料（`reference/`）**：放在独立仓库 [`gevico/gw100-references`](https://github.com/gevico/gw100-references)，以子模块挂在 `reference/`（2026-10-21 拆出）。本项目是开源的，调研资料随仓库公开托管、对外分发（2026-10-18 确认）。资料的版权仍归原作者或出版方所有，引用时注明出处；新增资料只收官方或开放渠道发布的版本。
+  - 增改资料先在 `gw100-references` 合入，再在本仓库单独提交子模块指针的更新，scope 用 `reference`。
   - PDF 原件和转换出的图片直接入库，不用 Git LFS（2026-10-18 决定）。资料会永久留在 git 历史里，所以只收确有参考价值的资料，单个文件超过 5 MB 时，在合并请求里说明理由。
   - Hailo 的文档每页标有 Confidential。这些文档取自 Hailo 官网公开下载的版本，维护者已确认可以随仓库公开（2026-10-18）。
   - `reference/hailo/hailort-drivers/` 是 GPL-2.0 代码，只能阅读，不得把其中的代码复制进我们的代码。

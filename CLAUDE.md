@@ -19,7 +19,7 @@ GW100：面向端侧大模型推理的数据流架构 ASIC，以 PCIe 设备接�
 | 分支、提交、评审、文件头等规范 | `CONTRIBUTING.md` |
 | 调研资料及其来源 | `reference/README.md` |
 
-其他目录：`gem5/` 是上游 gem5 子模块，不要修改；`tools/gw100_testkit/` 是临时开发工具（汇编器、golden、测试框架），驱动和编译器团队不依赖它；`tools/isagen/` 由 `isa.yaml` 生成 `isa_defs.hh` 和 `isa_defs.py`，生成物不要手改。
+其他目录：`gem5/` 是上游 gem5 子模块，不要修改；`reference/` 是调研资料子模块（`gevico/gw100-references`），默认不拉取，拉取方法见 `CONTRIBUTING.md` §1，改资料要到那个仓库提交；`tools/gw100_testkit/` 是临时开发工具（汇编器、golden、测试框架），驱动和编译器团队不依赖它；`tools/isagen/` 由 `isa.yaml` 生成 `isa_defs.hh` 和 `isa_defs.py`，生成物不要手改。
 
 ## 必须遵守
 
