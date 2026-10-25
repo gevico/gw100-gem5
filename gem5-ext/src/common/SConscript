@@ -1,3 +1,0 @@
-Import('*')
-
-Source('mem_streamer.cc')
