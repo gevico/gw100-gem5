@@ -9,6 +9,7 @@
 #   make baremetal-build
 #   make run
 #   make format
+#   make vscode-config
 #   make clean
 
 SHELL := /bin/sh
@@ -18,11 +19,17 @@ CLANG_FORMAT ?= clang-format
 
 JOBS ?= $(shell sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)
 GEM5_TARGET := build/ARM/gem5.opt
+GEM5_CDB := build/ARM/compile_commands.json
 GEM5_EXTRAS := $(abspath gem5-ext)
 BAREMETAL_ELF := build/gw100-baremetal/hello.elf
 
+VSCODE_DIR := .vscode
+VSCODE_SETTINGS := $(VSCODE_DIR)/settings.json
+VSCODE_PROPS := $(VSCODE_DIR)/c_cpp_properties.json
+VSCODE_CDB := gem5/$(GEM5_CDB)
+
 .DEFAULT_GOAL := help
-.PHONY: all run gem-build baremetal-build clean check format help
+.PHONY: all run gem-build baremetal-build vscode-config commit-check clean check format help
 
 all: gem-build baremetal-build
 
@@ -31,13 +38,42 @@ run: gem-build baremetal-build
 		--workload baremetal --kernel $(abspath $(BAREMETAL_ELF))
 
 gem-build:
-	cd gem5 && ../.venv/bin/scons $(GEM5_TARGET) \
+	cd gem5 && ../.venv/bin/scons --ignore-style $(GEM5_TARGET) $(GEM5_CDB) \
 		EXTRAS="$(GEM5_EXTRAS)" \
 		$(if $(PYTHON_CONFIG),PYTHON_CONFIG=$(PYTHON_CONFIG),) \
 		-j$(JOBS)
 
+vscode-config: gem-build
+	@test -f $(VSCODE_CDB) || { \
+		echo "缺少 $(VSCODE_CDB)；请先运行 make gem-build"; \
+		exit 1; \
+	}
+	@mkdir -p $(VSCODE_DIR)
+	@$(PYTHON) -c 'import json, pathlib; \
+	cdb = "$${workspaceFolder}/$(VSCODE_CDB)"; \
+	sp = pathlib.Path("$(VSCODE_SETTINGS)"); \
+	s = json.loads(sp.read_text(encoding="utf-8")) if sp.exists() else {}; \
+	s["C_Cpp.default.compileCommands"] = cdb; \
+	sp.write_text(json.dumps(s, indent=4, ensure_ascii=False) + "\n", encoding="utf-8"); \
+	pp = pathlib.Path("$(VSCODE_PROPS)"); \
+	p = json.loads(pp.read_text(encoding="utf-8")) if pp.exists() else {"configurations": []}; \
+	cfg = p.setdefault("configurations", []) or [{}]; \
+	p["configurations"] = cfg; \
+	[item.__setitem__("compileCommands", cdb) for item in cfg]; \
+	pp.write_text(json.dumps(p, indent=4, ensure_ascii=False) + "\n", encoding="utf-8")'
+	@echo "已配置 VS Code：$(VSCODE_CDB)"
+
 baremetal-build:
 	$(MAKE) -C baremetal
+
+commit-check:
+	@echo "== 提交检查 =="
+	@tools/git-hooks/pre-commit
+	@tmp=$$(mktemp); \
+	trap 'rm -f "$$tmp"' EXIT; \
+	git log -1 --format=%B > "$$tmp"; \
+	tools/git-hooks/commit-msg "$$tmp"
+	@tools/git-hooks/pre-push --check-dco origin/main..HEAD
 
 clean:
 	@if [ -f baremetal/Makefile ]; then $(MAKE) -C baremetal clean; fi
@@ -85,6 +121,11 @@ check:
 	else \
 		echo "[FAIL] 缺少 baremetal/Makefile"; fail=1; \
 	fi; \
+	if [ -f $(VSCODE_CDB) ]; then \
+		echo "[OK]   $(VSCODE_CDB)"; \
+	else \
+		echo "[WARN] 还没有 $(VSCODE_CDB)；运行 make gem-build 生成"; \
+	fi; \
 	exit $$fail
 
 format:
@@ -101,8 +142,10 @@ help:
 	@echo ""
 	@echo "  all        构建 gem5 和 baremetal"
 	@echo "  run        构建 gem5 和 baremetal，并在 gem5 中运行裸机 ELF"
-	@echo "  gem-build       构建 gem5/build/ARM/gem5.opt"
+	@echo "  gem-build       构建 gem5/build/ARM/gem5.opt 和 compile_commands.json"
 	@echo "  baremetal-build 构建裸机 ELF（调用 baremetal/Makefile）"
+	@echo "  vscode-config   生成编译数据库并写入 VS Code C/C++ 配置"
+	@echo "  commit-check    检查暂存文件头、最近提交信息和 DCO"
 	@echo "  check      检查 macOS、编译工具链、Python 和目录"
 	@echo "  format     用 gem5/.clang-format 格式化 gem5-ext 的 C++ 文件"
 	@echo "  clean      清理裸机构建产物（不删 gem5/build）"
