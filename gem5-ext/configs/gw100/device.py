@@ -2,8 +2,9 @@
 @file  device.py
 @brief 创建并挂载 GW100 的 PCIe endpoint
 
-第一步只声明配置空间、BAR0 和 VERSION 寄存器；设备的
-upstream/PCI 端口由 `RealView.attachPciDevice()` 统一接好。
+第一步只声明配置空间、BAR0 和 VERSION/STATUS/CMD_ADDR/DOORBELL
+寄存器；设备的 upstream/PCI 端口由 `RealView.attachPciDevice()`
+统一接好。
 
 @see SPEC-310, SPEC-400
 """

@@ -2,8 +2,13 @@
  * @file  gw100_pci_device.hh
  * @brief GW100 的极简 PCIe endpoint
  *
- * 只实现 BAR0 的 VERSION/STATUS 读和少量寄存器写；
- * DMA、命令/完成记录后续接入。
+ * BAR0 寄存器：
+ *   0x00 VERSION   RO，当前读回 1
+ *   0x04 STATUS    RO，当前为 0
+ *   0x08 CMD_ADDR  RW，64 位
+ *   0x10 DOORBELL  RW，32 位
+ *
+ * DMA、命令/完成记录和中断后续接入。
  *
  * @see SPEC-310, SPEC-400
  */

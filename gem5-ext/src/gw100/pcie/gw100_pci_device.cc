@@ -35,6 +35,9 @@ Gw100PciDevice::readDevice(PacketPtr pkt)
       case 0x00:
         value = version;
         break;
+      case 0x04:
+        // STATUS 当前保留为 0。
+        break;
       case 0x08:
         value = cmdAddr;
         break;
