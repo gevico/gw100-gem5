@@ -2,11 +2,12 @@
 @file  gen.py
 @brief 根据 ISA YAML 生成 C++ 头文件和 Python 定义模块
 
-输入是 spec-src/isa/*.yaml，输出供 gem5 侧译码和 Python 汇编器使用。
+输入是 ISA YAML（原 spec-src/isa/*.yaml）。原 spec-src/ 已删除，
+重建前本脚本不可用；isa_defs.* 作为冻结生成物保留。
 
-用法（在仓库根目录执行）：
-    .venv/bin/python tools/isagen/gen.py              # 默认使用 spec-src/isa/isa.yaml
-    .venv/bin/python tools/isagen/gen.py --check      # 只检查生成结果是否最新，不写文件
+用法（源重建后，在仓库根目录执行）：
+    .venv/bin/python tools/isagen/gen.py <isa.yaml>
+    .venv/bin/python tools/isagen/gen.py <isa.yaml> --check
 
 @see SPEC-230
 """
@@ -18,7 +19,7 @@ from pathlib import Path
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_SPEC = REPO_ROOT / "spec-src" / "isa" / "isa.yaml"
+DEFAULT_SPEC = None
 CPP_OUT = REPO_ROOT / "gem5-ext" / "func-core" / "include" / "gw100" / "isa_defs.hh"
 PY_OUT = REPO_ROOT / "tools" / "gw100_testkit" / "isa_defs.py"
 
@@ -167,6 +168,11 @@ def main():
     parser.add_argument("spec", nargs="?", type=Path, default=DEFAULT_SPEC)
     parser.add_argument("--check", action="store_true", help="只检查生成结果是否最新")
     args = parser.parse_args()
+
+    if args.spec is None:
+        sys.exit("spec-src/ 已删除；请显式传入 ISA YAML 路径，或先重建单一真源。")
+    if not args.spec.exists():
+        sys.exit(f"ISA 源文件 {args.spec} 不存在；单一真源待重建。")
 
     spec = yaml.safe_load(args.spec.read_text(encoding="utf-8"))
     src_name = args.spec.resolve().relative_to(REPO_ROOT).as_posix()
