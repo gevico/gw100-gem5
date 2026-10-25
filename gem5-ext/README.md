@@ -32,7 +32,6 @@ scons build/NULL/gem5.opt EXTRAS="$ROOT/gem5-ext" -j$(nproc)
 - 代码全部放在 `gem5-ext/`，通过 `EXTRAS` 编进 gem5，不改 gem5 本体。确实绕不开的本体改动，做成补丁放进 `gem5-ext/patches/`，并注明原因。
 - 按张量指令粒度建模，不逐个 MAC 仿真。
 - ISA 不放进 `gem5/src/arch`：张量指令由 Tile 的 SimObject 自己译码；编码以生成的 `isa_defs.hh` 为准，单一真源待重建。
-- 功能计算和时序分开：数值结果由 `func-core/` 算出，gem5 只管时序；扫大形状时可以只跑时序。
 - 片上网络计划用自研的轻量 2D Mesh，粒度是 DMA 传输，支持多播；Garnet 只用来交叉验证。目前暂时用交叉开关代替，见理想化清单第 1 项。
 - DRAM 为 LPDDR5X-8533，从 gem5 自带的 LPDDR5-6400 派生，共 8 个 x16 通道。
 
@@ -42,20 +41,10 @@ scons build/NULL/gem5.opt EXTRAS="$ROOT/gem5-ext" -j$(nproc)
 
 | 目录 | SimObject / 模块 | 对应规格 | 状态（L1 = 端到端功能正确，未做时序校准） |
 |---|---|---|---|
-| `func-core/` | 数值规则、指令编解码、Tile 相对地址换算、向量运算（不依赖 gem5） | SPEC-110 / 230 / 240 | L0 通过 |
-| `src/compute_tile/sram/` | `Gw100BankedSram`：多端口、分 bank 的 Tile SRAM | SPEC-200 | L1 通过 |
-| `src/compute_tile/sync/` | `Gw100SyncUnit`：同步计数器 | SPEC-250 | L1 通过；跨 Tile 通知未实现 |
-| `src/compute_tile/vector/` | `Gw100VectorEngine` | SPEC-220 | L1 通过；VEC_BINARY / VEC_SCALAR |
-| `src/compute_tile/dma/` | `Gw100DmaEngine`：本地口直连 SRAM，远端口接 NoC | SPEC-250 / 320 | L1 通过 |
-| `src/compute_tile/controller/` | `Gw100TileController`：接收指令、换算本地窗口地址、分发到各单元、处理 NOP/SYNC/END | SPEC-200 / 230 | L1 通过 |
-| （待建）`src/compute_tile/matrix/` | 矩阵引擎 | SPEC-210 | 未开始 |
-| `src/mgmt_tile/` | `Gw100Dispatcher`：寄存器、doorbell、命令记录、集中派发 | SPEC-330 / 400 | L1 通过 |
+| `src/gw100/pcie/` | `Gw100PciDevice`：PciEndpoint、BAR0、VERSION/STATUS/CMD_ADDR/DOORBELL | SPEC-310 / 400 | 最小枚举验证 |
 | （待建）`src/noc/` | 轻量 2D Mesh，支持多播；目前用 `NoncoherentXBar` 代替 | SPEC-120 | 未开始 |
-| `src/common/` | `MemStreamer`：把字节段拆成访存请求，跟踪完成前缀 | — | 可用 |
 
-已实现的指令：NOP、END、SYNC、DMA_COPY、VEC_BINARY、VEC_SCALAR。MATMUL、VEC_UNARY、VEC_REDUCE 只定义了编码，派发器遇到会拒绝执行。跨 Tile 通知（`sig_tile`）还没实现，用到时会 panic。
-
-时序还没有经过 L2 校准，现在的周期数只能说明流程跑通了。初步观察到单 Tile 的 DMA 从 DRAM 读只有约 16 B/周期，怀疑在途请求数（32 × 64 B）不足以覆盖 DRAM 往返延迟。
+当前只恢复了 PCIe endpoint 骨架；原来的 func-core、Compute Tile、管理 Tile 和 common 已删除，后续按新的 PCIe 模型逐步重建。
 
 ## 测试
 
@@ -65,14 +54,14 @@ scons build/NULL/gem5.opt EXTRAS="$ROOT/gem5-ext" -j$(nproc)
 
 ## 开发注意
 
-- 每个 Compute Tile 是一个 `SubSystem`，路径为 `system.ct[i].{sram,sync,ve,dma,ctrl}`，统计名形如 `system.ct0.ve.unit.busyTicks`。gem5 会把作为参数传入的孤儿 SimObject 收养为子对象，所以要先把子对象挂到容器上，再互相引用。
-- func-core 在顶层命名空间 `::gw100`，gem5 侧代码在 `gem5::gw100`。gem5 侧只包含 `src/common/fc.hh`，由它把需要的名字引入。
+- PCIe endpoint 继承 `PciEndpoint`，Host 使用 `VExpress_GEM5_Foundation` 的 `GenericArmPciHost`；BAR0 为 4 KiB。
 - 旧的 TestHost 和 device-side 配置已删除；GW100 现在走 ARM board 的 VExpress PCIe。
-- 调试开关有 `Gw100Dispatch`、`Gw100Ctrl`、`Gw100Unit`：直接运行 gem5 时用 `--debug-flags`。
 
 ## 理想化清单
 
 原则见仓库根目录 `CLAUDE.md`：模型是在模拟硬件，凡是与真实硬件不一致的简化都必须登记在这里。"方向"指这项简化让性能结果偏乐观还是偏悲观。L2 校准前要先消除标为"高"的项，否则校准的是一个不符合物理的模型。
+
+> 旧模型删除后，以下清单待按新的 PCIe 模型重建。
 
 | # | 位置 | 现状 | 方向 | 优先级 | 计划 |
 |---|---|---|---|---|---|
