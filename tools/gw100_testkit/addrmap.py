@@ -1,6 +1,9 @@
 """
 @file  addrmap.py
-@brief 从 arch_params 读出地址映射和 Tile 编号
+@brief 从架构参数 YAML 读出地址映射和 Tile 编号
+
+原 spec-src/arch_params.yaml 已删除；重建前调用 params() 会给出明确
+错误，也可以显式传入 path。
 
 Compute Tile 按行优先编号：第 0 行从左到右是 0..3，第 1 行是 4..7，依此类推。
 
@@ -17,12 +20,20 @@ from pathlib import Path
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-ARCH_PARAMS = REPO_ROOT / "spec-src" / "arch_params.yaml"
 
 
 @lru_cache(maxsize=None)
 def params(path=None):
-    return yaml.safe_load(Path(path or ARCH_PARAMS).read_text(encoding="utf-8"))
+    if path is None:
+        raise FileNotFoundError(
+            "架构参数单一真源待重建；请显式传入 path"
+        )
+    p = Path(path)
+    if not p.exists():
+        raise FileNotFoundError(
+            f"架构参数文件 {p} 不存在；单一真源待重建"
+        )
+    return yaml.safe_load(p.read_text(encoding="utf-8"))
 
 
 def compute_tiles(p=None):

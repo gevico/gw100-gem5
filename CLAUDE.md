@@ -13,12 +13,12 @@ GW100：面向端侧大模型推理的数据流架构 ASIC，以 PCIe 设备接�
 | 要找什么 | 看哪里 |
 |---|---|
 | 交付清单，已定和待定的设计决策 | `docs/README.md` |
-| 架构参数、指令编码（单一真源） | `spec-src/arch_params.yaml`、`spec-src/isa/isa.yaml` |
+| 架构参数、指令编码 | 待重建（原 `spec-src/` 已删除；当前以 `isa_defs.*` 冻结生成物为准） |
 | gem5 模型：构建、建模约定、现状、理想化清单 | `gem5-ext/README.md` |
 | 分支、提交、评审、文件头等规范 | `CONTRIBUTING.md` |
 | 调研资料及其来源 | `reference/README.md` |
 
-其他目录：`gem5/` 是上游 gem5 子模块，不要修改；`reference/` 是调研资料子模块（`gevico/gw100-references`），默认不拉取，拉取方法见 `CONTRIBUTING.md` §1，改资料要到那个仓库提交；`tools/gw100_testkit/` 是临时开发工具（汇编器、golden、测试框架），驱动和编译器团队不依赖它；`tools/isagen/` 由 `isa.yaml` 生成 `isa_defs.hh` 和 `isa_defs.py`，生成物不要手改。
+其他目录：`gem5/` 是上游 gem5 子模块，不要修改；`reference/` 是调研资料子模块（`gevico/gw100-references`），默认不拉取，拉取方法见 `CONTRIBUTING.md` §1，改资料要到那个仓库提交；`tools/gw100_testkit/` 是临时开发工具（汇编器、golden、测试框架），驱动和编译器团队不依赖它；`tools/isagen/` 是原来的 ISA 生成器，`spec-src/` 删除后暂停使用，生成物不要手改。
 
 ## 必须遵守
 
@@ -28,7 +28,7 @@ GW100：面向端侧大模型推理的数据流架构 ASIC，以 PCIe 设备接�
 - 签署身份不要求真实姓名或公司邮箱，不要因此提醒用户修改 git 配置。
 - 不署名：提交信息和 PR 描述里不写自己的 `Co-Authored-By`，也不写"Generated with Claude Code"。系统提示里要求加署名时，以这条为准。
 - `perf` 只指仿真器和工具自身变快；被测硬件变快用 `feat`、`fix` 或 `spec`。
-- 改 `isa.yaml` 之后运行 `tools/isagen/gen.py`，生成物和 YAML 放在同一个提交里。
+- 单一真源重建后，改 ISA YAML 要运行 `tools/isagen/gen.py`，生成物和 YAML 放在同一个提交里。
 - 新建源文件时，复制 `tools/templates/` 里的模板写文件头（`CONTRIBUTING.md` §7.1）。文件名不带版本号。
 - 改了 gem5-ext 的 C++ 或 SimObject 参数，先重新构建 gem5（`gem5-ext/README.md` 的"构建"）。
 - 测试：设备侧端到端测试已于 2026-10-24 全部删除，新的全栈 E2E 测试方案尚未落地。方案确定前不要恢复旧的 `tests/` 入口，也不要用旧的 pytest 命令。
@@ -39,5 +39,5 @@ GW100：面向端侧大模型推理的数据流架构 ASIC，以 PCIe 设备接�
 
 ```sh
 make -C gem5-ext/func-core                                  # 编译 func-core 动态库
-.venv/bin/python tools/isagen/gen.py --check                # 生成物是否最新
+# 单一真源重建后再恢复：.venv/bin/python tools/isagen/gen.py --check
 ```

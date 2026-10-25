@@ -2,9 +2,9 @@
 # 每行：scope  说明。NNN 表示三位数字，例如 spec-NNN 可写成 spec-110。
 # 新增组件时先在这里登记，和组件代码放在同一个提交里。
 
-# ---- 架构与规格（spec-src/）
-arch-params   spec-src/arch_params.yaml 的参数
-isa           spec-src/isa/、tools/isagen/ 及其生成物
+# ---- 架构与规格（单一真源待重建）
+arch-params   架构参数（原 spec-src/arch_params.yaml，待重建）
+isa           ISA 定义（原 spec-src/isa/、tools/isagen/ 及其生成物，待重建）
 addrmap       地址空间与地址映射（SPEC-110）
 hdi           Host-Device 接口：命令记录、完成记录、管理 Tile 寄存器（SPEC-400）
 
