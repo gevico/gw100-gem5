@@ -1,0 +1,4 @@
+Import('*')
+
+SimObject('Gw100PciDevice.py', sim_objects=['Gw100PciDevice'])
+Source('gw100_pci_device.cc')
