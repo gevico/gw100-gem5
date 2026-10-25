@@ -26,7 +26,7 @@ git config submodule.reference.update checkout
 git submodule update --init reference
 ```
 
-构建 gem5 见 `gem5-ext/README.md`，运行测试见 `tests/README.md`。
+构建 gem5 见 `gem5-ext/README.md`。
 
 不得用 `--no-verify` 绕过钩子。钩子误判时，请修钩子，并把修复单独提交（scope 用 `git`）。
 
@@ -240,7 +240,9 @@ commit-msg 和 pre-push 钩子会拦住明显的违规（识别规则见 `tools/
 
 ## 6. 提交前的检查
 
-合并前，生成物要是最新的，全部测试要通过，命令见 `tests/README.md`。改了 `gem5-ext/src/` 或 SimObject 的 Python 参数，先重新构建 gem5，见 `gem5-ext/README.md`。
+> 2026-10-24：现有设备侧测试已全部删除，新的全栈 E2E 测试方案尚未落地。以下测试要求在新测试建立后适用；当前至少保证生成物最新、构建通过。
+
+合并前，生成物要是最新的，构建要通过。测试方案重新落地后，全部测试也要通过。改了 `gem5-ext/src/` 或 SimObject 的 Python 参数，先重新构建 gem5，见 `gem5-ext/README.md`。
 
 测试要求：
 
