@@ -51,8 +51,6 @@ scons build/NULL/gem5.opt EXTRAS="$ROOT/gem5-ext" -j$(nproc)
 | （待建）`src/compute_tile/matrix/` | 矩阵引擎 | SPEC-210 | 未开始 |
 | `src/mgmt_tile/` | `Gw100Dispatcher`：寄存器、doorbell、命令记录、集中派发 | SPEC-330 / 400 | L1 通过 |
 | （待建）`src/noc/` | 轻量 2D Mesh，支持多播；目前用 `NoncoherentXBar` 代替 | SPEC-120 | 未开始 |
-| `configs/lpddr5x.py` | LPDDR5X-8533 近似时序 | SPEC-300 | 待按 JEDEC 校准 |
-| `src/testhost/` | `Gw100TestHost`：代替 Host 的测试平台，不是硬件 | — | 可用 |
 | `src/common/` | `MemStreamer`：把字节段拆成访存请求，跟踪完成前缀 | — | 可用 |
 
 已实现的指令：NOP、END、SYNC、DMA_COPY、VEC_BINARY、VEC_SCALAR。MATMUL、VEC_UNARY、VEC_REDUCE 只定义了编码，派发器遇到会拒绝执行。跨 Tile 通知（`sig_tile`）还没实现，用到时会 panic。
@@ -63,13 +61,13 @@ scons build/NULL/gem5.opt EXTRAS="$ROOT/gem5-ext" -j$(nproc)
 
 原有的设备侧端到端测试（`tests/l1_inst/`）和 L0 单元测试已按 2026-10-24 的决定全部删除，仓库里不再有 `tests/` 目录，也没有可运行的 pytest 入口。
 
-新的测试方案以全栈 E2E 为目标：应用 → runtime → 驱动 → Linux → PCIe → 设备。方案落地前，不要恢复旧的设备侧测试入口；`tools/gw100_testkit/` 暂时保留，作为将来测试的素材。
+新的测试方案以全栈 E2E 为目标：应用 → runtime → 驱动 → Linux → PCIe → 设备。旧的 TestHost、testkit 和 device-side 配置已经删除；方案落地前不要恢复它们。
 
 ## 开发注意
 
 - 每个 Compute Tile 是一个 `SubSystem`，路径为 `system.ct[i].{sram,sync,ve,dma,ctrl}`，统计名形如 `system.ct0.ve.unit.busyTicks`。gem5 会把作为参数传入的孤儿 SimObject 收养为子对象，所以要先把子对象挂到容器上，再互相引用。
 - func-core 在顶层命名空间 `::gw100`，gem5 侧代码在 `gem5::gw100`。gem5 侧只包含 `src/common/fc.hh`，由它把需要的名字引入。
-- DRAM 按 256 B 交织，功能访问不能跨通道，所以 TestHost 的后门访问按 64 B 对齐切分。
+- 旧的 TestHost 和 device-side 配置已删除；GW100 现在走 ARM board 的 VExpress PCIe。
 - 调试开关有 `Gw100Dispatch`、`Gw100Ctrl`、`Gw100Unit`：直接运行 gem5 时用 `--debug-flags`。
 
 ## 理想化清单
@@ -79,7 +77,7 @@ scons build/NULL/gem5.opt EXTRAS="$ROOT/gem5-ext" -j$(nproc)
 | # | 位置 | 现状 | 方向 | 优先级 | 计划 |
 |---|---|---|---|---|---|
 | 1 | NoC | 用一个 `NoncoherentXBar` 代替 2D Mesh：没有多跳延迟，也没有沿 XY 路径的链路竞争 | 乐观 | 高 | 自研轻量 Mesh（SPEC-120） |
-| 2 | Host 通路 | Host 内存直接挂在片上交叉开关上，延迟 100 ns，没有 PCIe Gen4 x4 的带宽和往返延迟。TestHost 轮询完成记录也要经过片上交叉开关 | 乐观 | 高 | 建 PCIe Tile，Host 内存放到它后面；TestHost 接在 Host 一侧 |
+| 2 | PCIe 通路 | VExpress 的 PCIe 是功能模型，没有 Gen4 x4 的链路时序和带宽 | 未知 | 中 | 加 PCIe 链路 shim；新 ARM board 已接到 VExpress PCIe |
 | 3 | DMA 暂存缓冲 | `buf` 按整次传输的大小分配，读方从不因写方慢而被反压 | 写比读慢时乐观 | 高 | 加有限暂存缓冲参数，读方受缓冲剩余空间限制 |
 | 4 | 向量引擎 | 先把操作数整块读进内部缓冲，再计算，再整块写回。缓冲大小不受限，读、算、写之间也没有重叠 | 结构不符；大张量隐含无限缓冲，时序上又没有流水重叠 | 高 | 改成有限缓冲的流式流水线，缓冲大小进架构参数（待重建） |
 | 5 | 派发器 | 整个程序先读进一块不限大小的缓冲，再零时间完成译码和校验（END 检查、本地地址越界检查），然后才开始派发 | 校验免费，偏乐观；必须等整个程序取完才开始，偏悲观 | 中 | 有限指令缓冲、流式取指、译码要花周期。越界改为 Tile 换算地址时报错，再由派发器结束命令；整程序检查移到软件（汇编器、编译器、驱动） |

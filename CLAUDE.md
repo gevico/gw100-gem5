@@ -13,12 +13,12 @@ GW100：面向端侧大模型推理的数据流架构 ASIC，以 PCIe 设备接�
 | 要找什么 | 看哪里 |
 |---|---|
 | 交付清单，已定和待定的设计决策 | `docs/README.md` |
-| 架构参数、指令编码 | 待重建（原 `spec-src/` 已删除；当前以 `isa_defs.*` 冻结生成物为准） |
+| 架构参数、指令编码 | 待重建（原 `spec-src/` 已删除；当前以 `isa_defs.hh` 冻结生成物为准） |
 | gem5 模型：构建、建模约定、现状、理想化清单 | `gem5-ext/README.md` |
 | 分支、提交、评审、文件头等规范 | `CONTRIBUTING.md` |
 | 调研资料及其来源 | `reference/README.md` |
 
-其他目录：`gem5/` 是上游 gem5 子模块，不要修改；`reference/` 是调研资料子模块（`gevico/gw100-references`），默认不拉取，拉取方法见 `CONTRIBUTING.md` §1，改资料要到那个仓库提交；`tools/gw100_testkit/` 是临时开发工具（汇编器、golden、测试框架），驱动和编译器团队不依赖它；`tools/isagen/` 是原来的 ISA 生成器，`spec-src/` 删除后暂停使用，生成物不要手改。
+其他目录：`gem5/` 是上游 gem5 子模块，不要修改；`reference/` 是调研资料子模块（`gevico/gw100-references`），默认不拉取，拉取方法见 `CONTRIBUTING.md` §1，改资料要到那个仓库提交；`tools/isagen/` 是原来的 ISA 生成器，`spec-src/` 删除后暂停使用，生成物不要手改。
 
 ## 必须遵守
 

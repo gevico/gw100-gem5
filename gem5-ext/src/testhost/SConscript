@@ -1,4 +1,0 @@
-Import('*')
-
-SimObject('TestHost.py', sim_objects=['Gw100TestHost'])
-Source('test_host.cc')
