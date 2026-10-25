@@ -20,15 +20,8 @@ mgmt          管理 Tile、派发器
 mem-tile      Memory Tile：DRAM 控制器与 DRAM 时序
 noc           片上网络
 pcie          PCIe Tile 与 Host 通路
-testhost      TestHost（测试平台，不是硬件）
 common        gem5-ext/src/common 下的公共件
 configs       gem5-ext/configs：芯片搭建与运行脚本
-
-# ---- 临时开发工具（tools/gw100_testkit/）
-asm           汇编器
-golden        golden 参考实现
-harness       测试框架
-tests         测试用例（tests/ 已于 2026-10-24 删除，保留 scope 供新测试方案使用）
 
 # ---- 文档与资料
 docs          仓库级文档：README、CLAUDE.md、CONTRIBUTING.md 等
