@@ -36,7 +36,7 @@ Linux（以 Ubuntu 24.04 为例）：先装好 `build-essential m4 scons python3
 
 | 目录 | SimObject / 模块 | 对应规格 | 状态 |
 |---|---|---|---|
-| `src/gw100/pcie/` | `Gw100PciDevice`：PciEndpoint、BAR0、VERSION/STATUS/CMD_ADDR/DOORBELL | SPEC-310 / 400 | 已挂到 PCIe 总线（`m5out/config.ini` 可见）；还没有软件枚举或访问它，没有自动化测试 |
+| `src/gw100/pcie/` | `Gw100PciDevice`：PciEndpoint、BAR0、VERSION/STATUS/CMD_ADDR/DOORBELL | SPEC-310 / 400 | 已挂到 PCIe 总线（输出目录的 `config.ini` 可见）；还没有软件枚举或访问它，没有自动化测试 |
 | （待建）`src/noc/` | 轻量 2D Mesh，支持多播 | SPEC-120 | 未开始 |
 
 当前只恢复了 PCIe endpoint 骨架；原来的 func-core、Compute Tile、管理 Tile 和 common 已删除，后续按新的 PCIe 模型逐步重建。
