@@ -22,28 +22,33 @@
 
 ## 构建 gem5
 
-```sh
-cd gem5
-../.venv/bin/scons build/ARM/gem5.opt EXTRAS="$PWD/../gem5-ext" -j8
-```
-
-macOS 上需要按 `gem5-ext/README.md` 的说明补
-`PYTHON_CONFIG=/opt/homebrew/opt/python@3.12/bin/python3.12-config`。
+在仓库根目录执行 `make gem-build`。手工构建的命令和 `PYTHON_CONFIG` 的注意事项见
+`gem5-ext/README.md` 的"构建"。
 
 ## 编译和运行
 
-推荐用仓库根目录的 `baremetal/Makefile`：
+运行在仓库根目录的 Makefile 里进行，跑哪个程序、用哪个配置脚本都在那里选：
+
+```sh
+make run                              # 构建 gem5 和 hello.elf，并运行
+make run-only                         # 不重新构建 gem5，直接运行
+make run BAREMETAL_PROGRAM=foo        # 改跑 baremetal/foo.S
+make run GEM5_OPTS="--debug-flags=PciDevice"   # gem5 本身的选项
+```
+
+`GEM5_OPTS` 写在配置脚本之前，交给 gem5；`CONFIG_ARGS` 写在之后，交给配置脚本。
+
+默认使用 `gem5/build/ARM/gem5.opt` 和 `gem5-ext/configs/run_gw100.py`，
+输出目录是 `gem5/m5out`。
+
+`baremetal/Makefile` 只负责编译，也可以单独用：
 
 ```sh
 make -C baremetal          # 构建 build/gw100-baremetal/hello.elf
 make -C baremetal check    # 查看 ELF 架构和入口地址
-make -C baremetal run      # 构建并启动 gem5 裸机仿真
 make -C baremetal disasm   # 反汇编
 make -C baremetal clean    # 删除构建产物
 ```
-
-`make run` 默认使用 `gem5/build/ARM/gem5.opt` 和
-`gem5-ext/configs/run_gw100.py`，输出目录是 `gem5/m5out`。
 
 如果手工编译：
 

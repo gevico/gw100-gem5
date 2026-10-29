@@ -1,8 +1,11 @@
-# GW100 ARM 裸机示例的构建与运行规则。
+# GW100 ARM 裸机程序的构建规则。
 #
-# 在仓库根目录执行：
-#   make -C baremetal            # 构建 build/gw100-baremetal/hello.elf
-#   make -C baremetal run        # 构建并启动 gem5
+# 只负责把裸机程序编译成 ELF；运行哪个程序、用什么板卡配置，
+# 由仓库根目录的 Makefile 决定（make run）。
+#
+# 单独使用：
+#   make -C baremetal                    # 构建 build/gw100-baremetal/hello.elf
+#   make -C baremetal PROGRAM=<名字>     # 构建 <名字>.S
 #   make -C baremetal clean
 
 CROSS_COMPILE ?= aarch64-linux-gnu-
@@ -10,20 +13,18 @@ CC := $(CROSS_COMPILE)gcc
 OBJDUMP ?= $(CROSS_COMPILE)objdump
 READELF ?= $(CROSS_COMPILE)readelf
 
-SRC ?= hello.S
+PROGRAM ?= hello
+SRC ?= $(PROGRAM).S
 LDSCRIPT ?= linker.ld
 BUILD_DIR ?= ../build/gw100-baremetal
-ELF := $(BUILD_DIR)/hello.elf
+ELF := $(BUILD_DIR)/$(PROGRAM).elf
 
 CFLAGS ?= -nostdlib -nostartfiles -ffreestanding -g
 LDFLAGS ?= -Wl,-T,$(LDSCRIPT)
 
-GEM5 ?= build/ARM/gem5.opt
-RUN_CONFIG ?= ../gem5-ext/configs/run_gw100.py
-
 .DEFAULT_GOAL := all
 .DELETE_ON_ERROR:
-.PHONY: all clean run disasm check help
+.PHONY: all clean disasm check help
 
 all: $(ELF)
 
@@ -32,10 +33,6 @@ $(ELF): $(SRC) $(LDSCRIPT) | $(BUILD_DIR)
 
 $(BUILD_DIR):
 	mkdir -p $@
-
-run: $(ELF)
-	cd ../gem5 && $(GEM5) $(RUN_CONFIG) \
-		--workload baremetal --kernel $(abspath $(ELF))
 
 disasm: $(ELF)
 	$(OBJDUMP) -d $<
@@ -50,11 +47,9 @@ clean:
 
 help:
 	@echo "all      构建 $(ELF)"
-	@echo "run      构建并启动 gem5 裸机仿真"
 	@echo "disasm   反汇编 $(ELF)"
 	@echo "check    查看 ELF 架构和入口地址"
 	@echo "clean    删除 $(BUILD_DIR)"
 	@echo ""
-	@echo "变量：CROSS_COMPILE=$(CROSS_COMPILE)"
-	@echo "      GEM5=$(GEM5)"
-	@echo "      RUN_CONFIG=$(RUN_CONFIG)"
+	@echo "变量：PROGRAM=$(PROGRAM)  CROSS_COMPILE=$(CROSS_COMPILE)"
+	@echo "      BUILD_DIR=$(BUILD_DIR)"
