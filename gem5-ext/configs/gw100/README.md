@@ -32,14 +32,16 @@
 ```sh
 make run                              # 构建 gem5 和 hello.elf，并运行
 make run-only                         # 不重新构建 gem5，直接运行
+make run HOST=o3                      # 换成 O3 host 预设
 make run BAREMETAL_PROGRAM=foo        # 改跑 baremetal/foo.S
 make run GEM5_OPTS="--debug-flags=PciDevice"   # gem5 本身的选项
 ```
 
 `GEM5_OPTS` 写在配置脚本之前，交给 gem5；`CONFIG_ARGS` 写在之后，交给配置脚本。
 
-默认使用 `gem5/build/ARM/gem5.opt` 和 `gem5-ext/configs/run_gw100.py`，
-输出目录是 `gem5/m5out`。
+默认使用 `gem5/build/ARM/gem5.opt` 和 `gem5-ext/configs/run_gw100.py`。
+每种组合有自己的输出目录 `gem5/m5out/<板卡>-<host>-<设备>`，例如
+`gem5/m5out/arm_vexpress-timing-gw100`，扫描组合时互不覆盖。
 
 `baremetal/Makefile` 只负责编译，也可以单独用：
 
@@ -77,10 +79,42 @@ cd gem5
 
 - 串口/标准输出出现 `G`；
 - 仿真通过 semihosting 退出；
-- `m5out/config.ini` 里能看到 `Gw100PciDevice` 挂在 PCIe 总线上。
+- 输出目录的 `config.ini` 里能看到 `Gw100PciDevice` 挂在 PCIe 总线上。
 
-当前使用 O3 CPU，启动会明显变慢；如果只想快速验证，可以把
-`board_arm.py` 里的 `CPUTypes.O3` 临时改回 `CPUTypes.TIMING`。
+## 板卡与 host 预设
+
+板卡、host 和设备分三层，互相独立，只在入口脚本 `run_gw100.py` 里组合：
+
+```
+gem5-ext/configs/
+├── run_gw100.py        # 唯一的组合点：--board / --host / --device
+└── gw100/
+    ├── boards/         # 平台结构，只提供插槽
+    ├── hosts/          # host 预设
+    ├── devices/        # 被测设备预设
+    └── workload.py     # 裸机 / Linux 的启动方式
+```
+
+| 目录 | 决定什么 | 现有 | Makefile 变量 |
+|---|---|---|---|
+| `boards/` | 平台、PCIe、中断、启动方式；用 `features()` 声明提供的能力 | `arm_vexpress`（VExpress_GEM5_Foundation，提供 `pcie`） | `BOARD` |
+| `hosts/` | CPU 模型、核数、频率、内存、cache | `timing`（默认）、`o3` | `HOST` |
+| `devices/` | 设备参数和 SimObject 的创建；用 `requires` 声明需要的能力 | `gw100` | `DEVICE` |
+
+- 板卡不认识具体设备，只把入口脚本传进来的 PCI 设备挂到总线上；设备号由
+  VExpress 平台从 1 起分配。
+- 设备 `requires` 的能力板卡不提供时，仿真开始前就报错。例如以后设备需要
+  MSI-X，而 Foundation 平台没有 ITS。
+- 加新的 host 或设备变体，只在 `hosts/` 或 `devices/` 里登记一项。
+
+`o3` 比 `timing` 慢一个数量级，只在测 host 侧软件开销或检查驱动内存序时用。
+两个 host 预设都还没有对标真实的端侧主机。
+
+扫描组合：
+
+```sh
+for h in timing o3; do make run-only HOST=$h; done
+```
 
 ## Linux（可选，后续对比用）
 
@@ -96,4 +130,4 @@ cd gem5
 - 把 BAR0 接到派发器寄存器；
 - 加命令记录/完成记录和 DMA；
 - 加 legacy INTx，再考虑 MSI-X；
-- 把地址映射、BAR 和 ABI 常量从 `params.py` 迁移到重建后的单一真源。
+- 把地址映射、BAR 和 ABI 常量从 `devices/gw100.py` 迁移到重建后的单一真源。
