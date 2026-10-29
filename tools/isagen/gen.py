@@ -3,7 +3,7 @@
 @brief 根据 ISA YAML 生成 C++ 头文件
 
 输入是 ISA YAML（原 spec-src/isa/*.yaml）。原 spec-src/ 已删除，
-重建前本脚本不可用；isa_defs.hh 作为冻结生成物保留。
+重建前本脚本不可用。输出路径指向的 func-core 也已删除，重建时一并调整。
 
 用法（源重建后，在仓库根目录执行）：
     .venv/bin/python tools/isagen/gen.py <isa.yaml>

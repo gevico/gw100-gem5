@@ -1,5 +1,6 @@
 # gem5-ext 的入口。编译方式：在 gem5 目录执行
-#   scons EXTRAS=<仓库根目录>/gem5-ext build/NULL/gem5.opt -j6
+#   scons EXTRAS=<仓库根目录>/gem5-ext build/ARM/gem5.opt -j6
+# 通常直接在仓库根目录执行 make gem-build。
 # gem5 会递归遍历本目录下所有 SConscript；名为 build 的子目录会被跳过。
 
 Import('*')
