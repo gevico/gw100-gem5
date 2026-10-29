@@ -138,6 +138,7 @@ SPEC 均由架构线负责。SPEC-400 与驱动团队联合编写，SPEC-410 与
 | NoC 建模方式 | SPEC-120，MAN-060 | 自研轻量 Mesh 模型，粒度为 DMA 传输，支持多播；Garnet 只做交叉验证 |
 | 基准模型 | DOC-002 | LLaMA2-7B 为主，Llama-3.2-1B 为辅 |
 | gem5 全系统平台的 host ISA（2026-10-25） | MAN-050，SPEC-310 / 400 | AArch64，`VExpress_GEM5_*` 平台，先裸机后 Linux；x86 暂不做 |
+| gem5 host 的 CPU 模型（2026-10-29） | MAN-050 | 默认 TIMING；O3 作为可选预设，只在测 host 侧软件开销、检查驱动内存序时用。板卡、host 预设、设备预设分别在 `gem5-ext/configs/gw100/` 的 `boards/`、`hosts/`、`devices/`，由入口脚本组合 |
 | SRAM 操作数寻址 | SPEC-110 / 230，MAN-020 | Tile 相对寻址：指令中落在本地窗口（`address_map.local_sram_base`）内的地址指执行该指令的 Tile 的 SRAM，同一条指令可多播给多个 Tile；跨 Tile 访问仍用全局窗口。越出 SRAM 容量的程序由管理 Tile 在派发前拒绝 |
 
 ### 5.2 待决
@@ -154,4 +155,3 @@ SPEC 均由架构线负责。SPEC-400 与驱动团队联合编写，SPEC-410 与
 | 跨 Tile 通知的 Tile 编号 | SPEC-250 | 绝对编号（`sig_tile`）。多播指令要通知"相邻 Tile"时，需要相对编号（如东/南邻居），待定 |
 | 管理 Tile 固件归属 | DOC-003，SPEC-330 | 驱动团队 |
 | Runtime（用户态驱动）归属 | DOC-003，SPEC-400 | 驱动团队 |
-| gem5 host 的 CPU 模型 | MAN-050 | 当前为 O3 单核（`gem5-ext/configs/gw100/board_arm.py`）。是否改为 TIMING 为主、只在测量区间切换 O3，待定 |

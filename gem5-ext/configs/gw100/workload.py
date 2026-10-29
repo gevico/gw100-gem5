@@ -3,7 +3,7 @@
 @brief GW100 ARM host 的工作负载选择
 
 Linux 走 `set_linux_workload`；bare-metal 只提供 workload 类，由
-`Gw100ArmBoard.set_baremetal_workload()` 触发板卡初始化。
+`boards.arm_vexpress.ArmVExpressBoard.set_baremetal_workload()` 触发板卡初始化。
 
 @see MAN-050
 """

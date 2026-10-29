@@ -40,11 +40,17 @@ BAREMETAL_DIR := build/gw100-baremetal
 BAREMETAL_PROGRAM ?= hello
 BAREMETAL_ELF := $(BAREMETAL_DIR)/$(BAREMETAL_PROGRAM).elf
 GEM5_CONFIG ?= gem5-ext/configs/run_gw100.py
+BOARD ?= arm_vexpress
+HOST ?= timing
+DEVICE ?= gw100
 WORKLOAD ?= baremetal
+# 每种组合单独一个输出目录（相对 gem5/），扫描组合时互不覆盖
+GEM5_OUTDIR ?= m5out/$(BOARD)-$(HOST)-$(DEVICE)
 GEM5_OPTS ?=
 CONFIG_ARGS ?=
-RUN_GEM5 = cd gem5 && ./$(GEM5_TARGET) $(GEM5_OPTS) $(abspath $(GEM5_CONFIG)) \
-	--workload $(WORKLOAD) \
+RUN_GEM5 = cd gem5 && ./$(GEM5_TARGET) --outdir=$(GEM5_OUTDIR) $(GEM5_OPTS) \
+	$(abspath $(GEM5_CONFIG)) \
+	--board $(BOARD) --host $(HOST) --device $(DEVICE) --workload $(WORKLOAD) \
 	$(if $(filter baremetal,$(WORKLOAD)),--kernel $(abspath $(BAREMETAL_ELF))) $(CONFIG_ARGS)
 
 # 代码提示用 clangd；cpptools 只保留调试，关闭它的 IntelliSense 以免重复报错。
@@ -182,6 +188,10 @@ help:
 	@echo "运行配置（可在命令行覆盖）："
 	@echo "  BAREMETAL_PROGRAM=$(BAREMETAL_PROGRAM)   编译 baremetal/<名字>.S"
 	@echo "  GEM5_CONFIG=$(GEM5_CONFIG)"
+	@echo "  BOARD=$(BOARD)   板卡（gem5-ext/configs/gw100/boards/）"
+	@echo "  HOST=$(HOST)   host 预设：timing 或 o3（gem5-ext/configs/gw100/hosts/）"
+	@echo "  DEVICE=$(DEVICE)   设备预设（gem5-ext/configs/gw100/devices/）"
+	@echo "  GEM5_OUTDIR=$(GEM5_OUTDIR)   输出目录，相对 gem5/"
 	@echo "  WORKLOAD=$(WORKLOAD)   baremetal 或 linux"
 	@echo "  GEM5_OPTS=$(GEM5_OPTS)   gem5 本身的选项，如 --debug-flags=..."
 	@echo "  CONFIG_ARGS=$(CONFIG_ARGS)   追加给配置脚本的参数"
