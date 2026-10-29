@@ -23,9 +23,10 @@ GEM5_CDB := build/ARM/compile_commands.json
 GEM5_EXTRAS := $(abspath gem5-ext)
 BAREMETAL_ELF := build/gw100-baremetal/hello.elf
 
+# 代码提示用 clangd；cpptools 只保留调试，关闭它的 IntelliSense 以免重复报错。
+CLANGD_CONFIG := .clangd
 VSCODE_DIR := .vscode
 VSCODE_SETTINGS := $(VSCODE_DIR)/settings.json
-VSCODE_PROPS := $(VSCODE_DIR)/c_cpp_properties.json
 VSCODE_CDB := gem5/$(GEM5_CDB)
 
 .DEFAULT_GOAL := help
@@ -43,25 +44,23 @@ gem-build:
 		$(if $(PYTHON_CONFIG),PYTHON_CONFIG=$(PYTHON_CONFIG),) \
 		-j$(JOBS)
 
-vscode-config: gem-build
-	@test -f $(VSCODE_CDB) || { \
-		echo "缺少 $(VSCODE_CDB)；请先运行 make gem-build"; \
-		exit 1; \
-	}
+vscode-config:
+	@printf '%s\n' \
+		'# 由 make vscode-config 生成，不要手改。' \
+		'CompileFlags:' \
+		'  CompilationDatabase: $(patsubst %/,%,$(dir $(VSCODE_CDB)))' \
+		> $(CLANGD_CONFIG)
 	@mkdir -p $(VSCODE_DIR)
 	@$(PYTHON) -c 'import json, pathlib; \
-	cdb = "$${workspaceFolder}/$(VSCODE_CDB)"; \
 	sp = pathlib.Path("$(VSCODE_SETTINGS)"); \
 	s = json.loads(sp.read_text(encoding="utf-8")) if sp.exists() else {}; \
-	s["C_Cpp.default.compileCommands"] = cdb; \
-	sp.write_text(json.dumps(s, indent=4, ensure_ascii=False) + "\n", encoding="utf-8"); \
-	pp = pathlib.Path("$(VSCODE_PROPS)"); \
-	p = json.loads(pp.read_text(encoding="utf-8")) if pp.exists() else {"configurations": []}; \
-	cfg = p.setdefault("configurations", []) or [{}]; \
-	p["configurations"] = cfg; \
-	[item.__setitem__("compileCommands", cdb) for item in cfg]; \
-	pp.write_text(json.dumps(p, indent=4, ensure_ascii=False) + "\n", encoding="utf-8")'
-	@echo "已配置 VS Code：$(VSCODE_CDB)"
+	[s.pop(k, None) for k in ("C_Cpp.default.configurationProvider", \
+		"C_Cpp.default.includePath", "C_Cpp.default.browse.path", \
+		"C_Cpp.default.compileCommands")]; \
+	s["C_Cpp.intelliSenseEngine"] = "disabled"; \
+	sp.write_text(json.dumps(s, indent=4, ensure_ascii=False) + "\n", encoding="utf-8")'
+	@echo "已生成 $(CLANGD_CONFIG)，并关闭 cpptools IntelliSense"
+	@test -f $(VSCODE_CDB) || echo "[WARN] 还没有 $(VSCODE_CDB)；运行 make gem-build 生成"
 
 baremetal-build:
 	$(MAKE) -C baremetal
@@ -126,6 +125,11 @@ check:
 	else \
 		echo "[WARN] 还没有 $(VSCODE_CDB)；运行 make gem-build 生成"; \
 	fi; \
+	if [ -f $(CLANGD_CONFIG) ]; then \
+		echo "[OK]   $(CLANGD_CONFIG)"; \
+	else \
+		echo "[WARN] 还没有 $(CLANGD_CONFIG)；运行 make vscode-config 生成"; \
+	fi; \
 	exit $$fail
 
 format:
@@ -144,7 +148,7 @@ help:
 	@echo "  run        构建 gem5 和 baremetal，并在 gem5 中运行裸机 ELF"
 	@echo "  gem-build       构建 gem5/build/ARM/gem5.opt 和 compile_commands.json"
 	@echo "  baremetal-build 构建裸机 ELF（调用 baremetal/Makefile）"
-	@echo "  vscode-config   生成编译数据库并写入 VS Code C/C++ 配置"
+	@echo "  vscode-config   生成 .clangd（指向 gem5 编译数据库），关闭 cpptools IntelliSense"
 	@echo "  commit-check    检查暂存文件头、最近提交信息和 DCO"
 	@echo "  check      检查 macOS、编译工具链、Python 和目录"
 	@echo "  format     用 gem5/.clang-format 格式化 gem5-ext 的 C++ 文件"

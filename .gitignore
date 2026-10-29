@@ -16,3 +16,7 @@ gem5-ext/func-core/build/
 .idea/
 .vscode/
 *.swp
+
+# clangd：.clangd 由 make vscode-config 生成，.cache/ 是索引缓存
+.clangd
+.cache/
