@@ -13,12 +13,12 @@ GW100：面向端侧大模型推理的数据流架构 ASIC，以 PCIe 设备接�
 | 要找什么 | 看哪里 |
 |---|---|
 | 交付清单，已定和待定的设计决策 | `docs/README.md` |
-| 架构参数、指令编码 | 待重建（原 `spec-src/` 已删除；当前以 `isa_defs.hh` 冻结生成物为准） |
+| 架构参数、指令编码 | 待重建（原 `spec-src/` 已删除，`isa_defs.hh` 已随 func-core 删除，目前没有可用的真源） |
 | gem5 模型：构建、建模约定、现状、理想化清单 | `gem5-ext/README.md` |
 | 分支、提交、评审、文件头等规范 | `CONTRIBUTING.md` |
 | 调研资料及其来源 | `reference/README.md` |
 
-其他目录：`gem5/` 是上游 gem5 子模块，不要修改；`reference/` 是调研资料子模块（`gevico/gw100-references`），默认不拉取，拉取方法见 `CONTRIBUTING.md` §1，改资料要到那个仓库提交；`tools/isagen/` 是原来的 ISA 生成器，`spec-src/` 删除后暂停使用，生成物不要手改。
+其他目录：`gem5/` 是上游 gem5 子模块，不要修改；`reference/` 是调研资料子模块（`gevico/gw100-references`），默认不拉取，拉取方法见 `CONTRIBUTING.md` §1，改资料要到那个仓库提交；`tools/isagen/` 是原来的 ISA 生成器，输入（`spec-src/`）和输出（func-core 的 `isa_defs.hh`）都已删除，单一真源重建前不可用。
 
 ## 必须遵守
 
@@ -38,6 +38,9 @@ GW100：面向端侧大模型推理的数据流架构 ASIC，以 PCIe 设备接�
 ## 常用命令
 
 ```sh
-make -C gem5-ext/func-core                                  # 编译 func-core 动态库
+make check                                                  # 检查工具链、Python 和目录
+make gem-build                                              # 构建 gem5/build/ARM/gem5.opt 和编译数据库
+make run                                                    # 构建并运行裸机程序
+make vscode-config                                          # 生成 .clangd
 # 单一真源重建后再恢复：.venv/bin/python tools/isagen/gen.py --check
 ```

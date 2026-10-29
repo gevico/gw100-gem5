@@ -113,7 +113,7 @@ SPEC 均由架构线负责。SPEC-400 与驱动团队联合编写，SPEC-410 与
 
 下列内容以机器可读文件为唯一来源，文档、gem5 模型和软件头文件都由它们生成或引用，不各自维护副本。
 
-**当前状态：原 `spec-src/` 已删除，单一真源待重建。** 重建前，`isa_defs.hh` 作为冻结生成物使用，不再从源文件生成；架构参数以现有代码和配置中的值为准，重建后再恢复生成流程。
+**当前状态：原 `spec-src/` 已删除，单一真源待重建。** 旧的生成物 `isa_defs.hh` 已随 func-core 删除，目前仓库里没有可用的架构参数和指令编码真源。重建后再恢复生成流程。
 
 重建后预计包含：
 
@@ -137,6 +137,7 @@ SPEC 均由架构线负责。SPEC-400 与驱动团队联合编写，SPEC-410 与
 | 初版参数起点 | 全部 Tile 级 SPEC | 6×4 Mesh：第 0 列 4 个 Memory Tile，中间 4×4 个 Compute Tile，第 5 列 PCIe / 管理 / 预留；每个 Compute Tile 8×64×4 点积阵列、2 MB SRAM、1 GHz。数值以单一真源为准（待重建） |
 | NoC 建模方式 | SPEC-120，MAN-060 | 自研轻量 Mesh 模型，粒度为 DMA 传输，支持多播；Garnet 只做交叉验证 |
 | 基准模型 | DOC-002 | LLaMA2-7B 为主，Llama-3.2-1B 为辅 |
+| gem5 全系统平台的 host ISA（2026-10-25） | MAN-050，SPEC-310 / 400 | AArch64，`VExpress_GEM5_*` 平台，先裸机后 Linux；x86 暂不做 |
 | SRAM 操作数寻址 | SPEC-110 / 230，MAN-020 | Tile 相对寻址：指令中落在本地窗口（`address_map.local_sram_base`）内的地址指执行该指令的 Tile 的 SRAM，同一条指令可多播给多个 Tile；跨 Tile 访问仍用全局窗口。越出 SRAM 容量的程序由管理 Tile 在派发前拒绝 |
 
 ### 5.2 待决
@@ -153,4 +154,4 @@ SPEC 均由架构线负责。SPEC-400 与驱动团队联合编写，SPEC-410 与
 | 跨 Tile 通知的 Tile 编号 | SPEC-250 | 绝对编号（`sig_tile`）。多播指令要通知"相邻 Tile"时，需要相对编号（如东/南邻居），待定 |
 | 管理 Tile 固件归属 | DOC-003，SPEC-330 | 驱动团队 |
 | Runtime（用户态驱动）归属 | DOC-003，SPEC-400 | 驱动团队 |
-| gem5 全系统平台的 host ISA | MAN-050 | 先做 x86，ARM 放到后面 |
+| gem5 host 的 CPU 模型 | MAN-050 | 当前为 O3 单核（`gem5-ext/configs/gw100/board_arm.py`）。是否改为 TIMING 为主、只在测量区间切换 O3，待定 |
