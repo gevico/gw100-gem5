@@ -22,6 +22,7 @@ noc           片上网络
 pcie          PCIe Tile 与 Host 通路
 common        gem5-ext/src/common 下的公共件
 configs       gem5-ext/configs：芯片搭建与运行脚本
+baremetal     baremetal/：裸机测试与公共库
 
 # ---- 文档与资料
 docs          仓库级文档：README、CLAUDE.md、CONTRIBUTING.md 等
