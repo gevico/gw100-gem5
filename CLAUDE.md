@@ -31,7 +31,7 @@ GW100：面向端侧大模型推理的数据流架构 ASIC，以 PCIe 设备接�
 - 单一真源重建后，改 ISA YAML 要运行 `tools/isagen/gen.py`，生成物和 YAML 放在同一个提交里。
 - 新建源文件时，复制 `tools/templates/` 里的模板写文件头（`CONTRIBUTING.md` §7.1）。文件名不带版本号。
 - 改了 gem5-ext 的 C++ 或 SimObject 参数，先重新构建 gem5（`gem5-ext/README.md` 的"构建"）。
-- 测试：设备侧端到端测试已于 2026-10-24 全部删除，新的全栈 E2E 测试方案尚未落地。方案确定前不要恢复旧的 `tests/` 入口，也不要用旧的 pytest 命令。
+- 测试：设备级裸机测试放在 `baremetal/tests/`，用 `make test` 运行，约定见 `baremetal/README.md`；改了设备模型或配置要跑一遍。全栈 E2E 测试方案尚未落地，不要恢复旧的根目录 `tests/` 入口，也不要用旧的 pytest 命令。
 - `reference/hailo/hailort-drivers/` 是 GPL-2.0 代码，只能阅读，不能复制进我们的代码。
 - 写进 SPEC 的数字要回 PDF 原页核对，自动转换的表格偶尔会错位。引用资料写"代号 p.N"，自己推算的标"推算"。
 
@@ -40,7 +40,8 @@ GW100：面向端侧大模型推理的数据流架构 ASIC，以 PCIe 设备接�
 ```sh
 make check                                                  # 检查工具链、Python 和目录
 make gem-build                                              # 构建 gem5/build/ARM/gem5.opt 和编译数据库
-make run                                                    # 构建并运行裸机程序
+make run TEST=hello                                         # 构建并运行一个裸机测试
+make test                                                   # 批量运行全部裸机测试并汇总
 make vscode-config                                          # 生成 .clangd
 # 单一真源重建后再恢复：.venv/bin/python tools/isagen/gen.py --check
 ```
