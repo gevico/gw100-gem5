@@ -5,7 +5,7 @@
 Linux 走 `set_linux_workload`；bare-metal 只提供 workload 类，由
 `boards.arm_vexpress.ArmVExpressBoard.set_baremetal_workload()` 触发板卡初始化。
 
-@see MAN-050
+@see man-gem5-user
 """
 
 from m5.objects import ArmFsWorkload

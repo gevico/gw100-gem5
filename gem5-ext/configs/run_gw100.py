@@ -13,7 +13,7 @@
 不提供时直接报错。默认是 bare-metal，不启动 Linux、不生成 DTB，
 也不使用 bootloader。
 
-@see MAN-050, SPEC-310
+@see man-gem5-user, spec-pcie
 """
 
 import argparse

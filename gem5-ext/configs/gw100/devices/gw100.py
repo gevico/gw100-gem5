@@ -8,7 +8,7 @@
 地址映射、BAR 窗口和 ABI 常量等单一真源重建后再从这里接入；
 不要把驱动/测试用的地址硬编码到入口脚本里。
 
-@see SPEC-310, SPEC-400
+@see spec-pcie, spec-hdi
 """
 
 from dataclasses import dataclass

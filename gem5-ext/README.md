@@ -1,6 +1,6 @@
 # gem5-ext：GW100 的 gem5 模型
 
-通过 `EXTRAS` 编译进上游 gem5 的 ARM 构建（host 为 AArch64），不修改 `gem5/`。完整的开发者指南将写成 MAN-060。
+通过 `EXTRAS` 编译进上游 gem5 的 ARM 构建（host 为 AArch64），不修改 `gem5/`。完整的开发者指南将写成 `man-gem5-dev`。
 
 ## 构建
 
@@ -36,8 +36,8 @@ Linux（以 Ubuntu 24.04 为例）：先装好 `build-essential m4 scons python3
 
 | 目录 | SimObject / 模块 | 对应规格 | 状态 |
 |---|---|---|---|
-| `src/gw100/pcie/` | `Gw100PciDevice`：PciEndpoint、BAR0、VERSION/STATUS/CMD_ADDR/DOORBELL | SPEC-310 / 400 | 已挂到 PCIe 总线（输出目录的 `config.ini` 可见）；还没有软件枚举或访问它，没有自动化测试 |
-| （待建）`src/noc/` | 轻量 2D Mesh，支持多播 | SPEC-120 | 未开始 |
+| `src/gw100/pcie/` | `Gw100PciDevice`：PciEndpoint、BAR0、VERSION/STATUS/CMD_ADDR/DOORBELL | `spec-pcie`、`spec-hdi` | 已挂到 PCIe 总线（输出目录的 `config.ini` 可见）；还没有软件枚举或访问它，没有自动化测试 |
+| （待建）`src/noc/` | 轻量 2D Mesh，支持多播 | `spec-noc` | 未开始 |
 
 当前只恢复了 PCIe endpoint 骨架；原来的 func-core、Compute Tile、管理 Tile 和 common 已删除，后续按新的 PCIe 模型逐步重建。
 
@@ -67,13 +67,13 @@ Linux（以 Ubuntu 24.04 为例）：先装好 `build-essential m4 scons python3
 
 | # | 原位置 | 当时的理想化 | 重建时的要求 |
 |---|---|---|---|
-| 1 | NoC | 用 `NoncoherentXBar` 代替 2D Mesh，没有多跳延迟和链路竞争 | 自研轻量 Mesh（SPEC-120） |
+| 1 | NoC | 用 `NoncoherentXBar` 代替 2D Mesh，没有多跳延迟和链路竞争 | 自研轻量 Mesh（`spec-noc`） |
 | 3 | DMA 暂存缓冲 | 按整次传输大小分配，读方从不被反压 | 有限暂存缓冲，读方受剩余空间限制 |
 | 4 | 向量引擎 | 操作数整块读入不限大小的缓冲，读、算、写不重叠 | 有限缓冲的流式流水线，缓冲大小进架构参数 |
 | 5 | 派发器 | 整个程序读进不限大小的缓冲，零时间译码和校验 | 有限指令缓冲、流式取指，译码花周期；整程序检查移到软件 |
-| 6 | 指令多播 | 多播指令无论发给多少 Tile 都只占一次指令通道 | 随"指令通道"决策（docs/README §5.2）按物理形态计时 |
+| 6 | 指令多播 | 多播指令无论发给多少 Tile 都只占一次指令通道 | 定下指令通道的物理形态后，按该形态计时 |
 | 7 | DRAM 时序 | LPDDR5X-8533 由 LPDDR5-6400 派生，tCL 沿用 6400 的纳秒值 | 按 JEDEC LPDDR5X 规范逐项核对 |
-| 8 | 向量引擎吞吐 | 各数据类型都按 32 元素/周期计 | 按 SPEC-220 定义的各类型吞吐 |
+| 8 | 向量引擎吞吐 | 各数据类型都按 32 元素/周期计 | 按 `spec-vector-engine` 定义的各类型吞吐 |
 
 已消除：
 - 2026-10-18：DRAM 容量随测试缩小，器件规格也跟着变。现在只取自架构参数。

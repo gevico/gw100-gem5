@@ -5,7 +5,7 @@
 第一步只暴露 PCI 配置空间、BAR0 和 VERSION/STATUS 寄存器；
 命令记录、完成记录和 DMA 后续接入。
 
-@see SPEC-310, SPEC-400
+@see spec-pcie, spec-hdi
 """
 
 from m5.objects.PciDevice import PciEndpoint, PciMemBar
