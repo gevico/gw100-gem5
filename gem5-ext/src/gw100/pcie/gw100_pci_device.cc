@@ -2,7 +2,7 @@
  * @file  gw100_pci_device.cc
  * @brief Gw100PciDevice 的实现
  *
- * @see SPEC-310, SPEC-400
+ * @see spec-pcie, spec-hdi
  */
 
 #include "src/gw100/pcie/gw100_pci_device.hh"

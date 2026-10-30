@@ -11,7 +11,7 @@ host 预设只决定 CPU 模型、核数、频率、内存和 cache 这些参数
 
 两个预设都还没有对标真实的端侧主机，host 侧的时序不能当结论。
 
-@see MAN-050
+@see man-gem5-user
 """
 
 from dataclasses import dataclass, replace

@@ -9,7 +9,7 @@
     .venv/bin/python tools/isagen/gen.py <isa.yaml>
     .venv/bin/python tools/isagen/gen.py <isa.yaml> --check
 
-@see SPEC-230
+@see spec-isa
 """
 
 import argparse

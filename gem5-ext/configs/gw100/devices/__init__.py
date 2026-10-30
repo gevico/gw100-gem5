@@ -8,7 +8,7 @@
 
 - gw100：当前的 GW100 PCIe endpoint
 
-@see SPEC-310, SPEC-400
+@see spec-pcie, spec-hdi
 """
 
 from .gw100 import GW100
