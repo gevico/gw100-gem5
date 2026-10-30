@@ -6,8 +6,8 @@
 第一步验证：
 
 1. ARM 裸机程序能在 `VExpress_GEM5_Foundation` 上执行；
-2. PCIe 总线上已经挂了 `Gw100PciDevice`（裸机程序暂时只写 UART 并退出，
-   还没有去枚举/访问设备）。
+2. PCIe 总线上已经挂了 `Gw100PciDevice`，裸机测试 `pcie_enum` 能枚举它并读写
+   BAR0 寄存器。裸机测试的架构见 `baremetal/README.md`。
 
 设备目前只有配置空间、BAR0（4 KiB）和几个最小寄存器：
 
@@ -27,14 +27,14 @@
 
 ## 编译和运行
 
-运行在仓库根目录的 Makefile 里进行，跑哪个程序、用哪个配置脚本都在那里选：
+运行在仓库根目录的 Makefile 里进行，跑哪个 test、用哪个配置脚本都在那里选：
 
 ```sh
-make run                              # 构建 gem5 和 hello.elf，并运行
-make run-only                         # 不重新构建 gem5，直接运行
+make run                              # 按需构建 gem5 和裸机测试，运行 hello
+make run TEST=pcie_enum               # 改跑 baremetal/tests/pcie_enum.c
 make run HOST=o3                      # 换成 O3 host 预设
-make run BAREMETAL_PROGRAM=foo        # 改跑 baremetal/foo.S
 make run GEM5_OPTS="--debug-flags=PciDevice"   # gem5 本身的选项
+make test                             # 批量运行全部裸机测试并汇总
 ```
 
 `GEM5_OPTS` 写在配置脚本之前，交给 gem5；`CONFIG_ARGS` 写在之后，交给配置脚本。
@@ -43,28 +43,10 @@ make run GEM5_OPTS="--debug-flags=PciDevice"   # gem5 本身的选项
 每种组合有自己的输出目录 `gem5/m5out/<板卡>-<host>-<设备>`，例如
 `gem5/m5out/arm_vexpress-timing-gw100`，扫描组合时互不覆盖。
 
-`baremetal/Makefile` 只负责编译，也可以单独用：
+`baremetal/Makefile` 只负责编译，也可以单独用，见 `baremetal/README.md`。
 
-```sh
-make -C baremetal          # 构建 build/gw100-baremetal/hello.elf
-make -C baremetal check    # 查看 ELF 架构和入口地址
-make -C baremetal disasm   # 反汇编
-make -C baremetal clean    # 删除构建产物
-```
-
-如果手工编译：
-
-```sh
-cd gem5
-mkdir -p ../build/gw100-baremetal
-aarch64-linux-gnu-gcc -nostdlib -nostartfiles -ffreestanding \
-    -Wl,-T,../baremetal/linker.ld \
-    -o ../build/gw100-baremetal/hello.elf \
-    ../baremetal/hello.S
-```
-
-程序向 Foundation 的 UART（`0x1C090000`）写 `G`，然后用 semihosting
-`SYS_EXIT` 结束仿真。
+裸机程序经 semihosting 输出到 gem5 的 stdout，并用 semihosting 的 `SYS_EXIT`
+结束仿真；退出子码就是 gem5 的进程退出码（0 通过、1 失败、2 异常）。
 
 ## 运行
 
@@ -72,14 +54,17 @@ aarch64-linux-gnu-gcc -nostdlib -nostartfiles -ffreestanding \
 cd gem5
 ./build/ARM/gem5.opt ../gem5-ext/configs/run_gw100.py \
     --workload baremetal \
-    --kernel ../build/gw100-baremetal/hello.elf
+    --kernel ../build/gw100-baremetal/hello.elf \
+    --max-ticks 10000000000
 ```
 
 预期：
 
-- 串口/标准输出出现 `G`；
-- 仿真通过 semihosting 退出；
+- 标准输出出现 `[INFO] hello from GW100 baremetal` 和 `[PASS]`；
+- 最后一行是 `bare-metal exit: semi:ADP_Stopped_ApplicationExit (code 0)`，gem5 的进程退出码为 0；
 - 输出目录的 `config.ini` 里能看到 `Gw100PciDevice` 挂在 PCIe 总线上。
+
+`--max-ticks` 是仿真 tick 上限，到达时退出码为 124，用来防止程序死循环；省略表示不限。
 
 ## 板卡与 host 预设
 
@@ -98,7 +83,7 @@ gem5-ext/configs/
 | 目录 | 决定什么 | 现有 | Makefile 变量 |
 |---|---|---|---|
 | `boards/` | 平台、PCIe、中断、启动方式；用 `features()` 声明提供的能力 | `arm_vexpress`（VExpress_GEM5_Foundation，提供 `pcie`） | `BOARD` |
-| `hosts/` | CPU 模型、核数、频率、内存、cache | `timing`（默认）、`o3` | `HOST` |
+| `hosts/` | CPU 模型、核数、频率、内存、cache | `timing`（默认）、`o3`、`atomic` | `HOST` |
 | `devices/` | 设备参数和 SimObject 的创建；用 `requires` 声明需要的能力 | `gw100` | `DEVICE` |
 
 - 板卡不认识具体设备，只把入口脚本传进来的 PCI 设备挂到总线上；设备号由
@@ -108,12 +93,13 @@ gem5-ext/configs/
 - 加新的 host 或设备变体，只在 `hosts/` 或 `devices/` 里登记一项。
 
 `o3` 比 `timing` 慢一个数量级，只在测 host 侧软件开销或检查驱动内存序时用。
-两个 host 预设都还没有对标真实的端侧主机。
+`atomic` 是功能模式：访问立即完成，只验证功能正确，不产出性能数字。
+这几个 host 预设都还没有对标真实的端侧主机。
 
 扫描组合：
 
 ```sh
-for h in timing o3; do make run-only HOST=$h; done
+for h in timing o3; do make run HOST=$h; done
 ```
 
 ## Linux（可选，后续对比用）
@@ -126,7 +112,6 @@ for h in timing o3; do make run-only HOST=$h; done
 
 ## 下一步
 
-- 在裸机程序里扫描 PCIe 配置空间，找到 GW100 并读 BAR0 的 VERSION；
 - 把 BAR0 接到派发器寄存器；
 - 加命令记录/完成记录和 DMA；
 - 加 legacy INTx，再考虑 MSI-X；

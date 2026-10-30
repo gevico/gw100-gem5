@@ -4,7 +4,7 @@
 
 ## 构建
 
-命令都从仓库根目录开始执行。第一次构建是全量的，要十分钟以上；之后只改 gem5-ext 时，增量构建一两分钟。改了 C++ 或 SimObject 的 Python 参数之后要重新构建，构建不会自动发生。
+命令都从仓库根目录开始执行。第一次构建是全量的，要十分钟以上；之后只改 gem5-ext 时，增量构建一两分钟。改了 C++ 或 SimObject 的 Python 参数之后要重新构建：`make gem-build`、`make run`、`make test` 会比较 `gem5-ext/src/` 下的源文件和 gem5 子模块的提交号，有变化才调用 scons，没有变化时直接跳过。改了 `PYTHON_CONFIG` 等构建选项时，用 `make -B gem-build` 强制构建。只改 `gem5-ext/configs/` 下的配置脚本不需要重新构建。
 
 ```sh
 uv pip install --python .venv/bin/python -r requirements-dev.txt   # 含 scons
@@ -43,9 +43,9 @@ Linux（以 Ubuntu 24.04 为例）：先装好 `build-essential m4 scons python3
 
 ## 测试
 
-原有的设备侧端到端测试（`tests/l1_inst/`）和 L0 单元测试已按 2026-10-24 的决定全部删除，仓库里不再有 `tests/` 目录，也没有可运行的 pytest 入口。
+设备级测试是在 host 上运行的裸机程序，放在 `baremetal/tests/`，每个 test 独立运行，共用 `baremetal/lib/` 的公共库。在仓库根目录执行 `make test`，默认在 `timing` 和 `atomic` 两个 host 预设下各跑一遍；架构、约定和用法见 `baremetal/README.md`。
 
-新的测试方案以全栈 E2E 为目标：应用 → runtime → 驱动 → Linux → PCIe → 设备。旧的 TestHost、testkit 和 device-side 配置已经删除；方案落地前不要恢复它们。
+全栈 E2E 测试（应用 → runtime → 驱动 → Linux → PCIe → 设备）的方案尚未落地。原有的 `tests/l1_inst/`、L0 单元测试、TestHost 和 testkit 已于 2026-10-24 删除，不要恢复。
 
 ## 开发注意
 
