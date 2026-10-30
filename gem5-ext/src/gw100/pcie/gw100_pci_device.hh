@@ -10,7 +10,7 @@
  *
  * DMA、命令/完成记录和中断后续接入。
  *
- * @see SPEC-310, SPEC-400
+ * @see spec-pcie, spec-hdi
  */
 
 #ifndef __GW100_PCIE_GW100_PCI_DEVICE_HH__

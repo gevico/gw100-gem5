@@ -12,7 +12,7 @@ GW100：面向端侧大模型推理的数据流架构 ASIC，以 PCIe 设备接�
 
 | 要找什么 | 看哪里 |
 |---|---|
-| 交付清单，已定和待定的设计决策 | `docs/README.md` |
+| 文档分类与命名 | `docs/README.md` |
 | 架构参数、指令编码 | 待重建（原 `spec-src/` 已删除，`isa_defs.hh` 已随 func-core 删除，目前没有可用的真源） |
 | gem5 模型：构建、建模约定、现状、理想化清单 | `gem5-ext/README.md` |
 | 分支、提交、评审、文件头等规范 | `CONTRIBUTING.md` |

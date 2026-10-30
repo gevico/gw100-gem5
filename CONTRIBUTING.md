@@ -41,13 +41,13 @@ git submodule update --init reference
 | `main` | 唯一的长期分支 | 任何时候都能构建、测试全部通过。不得直接推送，只能经评审后合并；保持线性历史，不产生合并提交 |
 | `<类型>/<scope>-<简述>` | 日常开发 | 从最新的 `main` 拉出，生命周期尽量不超过一周，合并后删除 |
 | `exp/<简述>` | 设计空间探索 | 可以长期存在，不要求测试通过，但不得直接合入 `main`。结论先写进 SPEC 或 ADR，再把需要保留的模型改动整理成正式分支合入 |
-| `release/spec-v<主>.<次>` | 交付版本冻结（对应 `docs/README.md` §3 的 v0.5 / v0.8 / v1.0） | 只接受修正。每个修正也必须合回 `main` |
+| `release/spec-v<主>.<次>` | 交付版本冻结（如 v0.5 / v0.8 / v1.0） | 只接受修正。每个修正也必须合回 `main` |
 
 ### 2.2 命名
 
 - 全小写，单词之间用连字符；`<类型>` 与提交类型（§3.3）相同，`<scope>` 取自 `tools/git-hooks/scopes.txt`；
 - 有工单号时放在类型后面，例如 `fix/123-ct-dma-backpressure`；
-- 例子：`feat/noc-mesh-xy`、`fix/ct-dma-backpressure`、`spec/spec-110-local-window`、`docs/contributing`、`exp/dma-outstanding-sweep`。
+- 例子：`feat/noc-mesh-xy`、`fix/ct-dma-backpressure`、`spec/spec-address-map-local-window`、`docs/contributing`、`exp/dma-outstanding-sweep`。
 
 ### 2.3 同步与改写历史
 
@@ -258,7 +258,7 @@ commit-msg 和 pre-push 钩子会拦住明显的违规（识别规则见 `tools/
   - 现状：现有代码中有不少行超过 79 列，将用一个单独的 `style` 提交统一整改。整改之前，新增和修改的行就要符合要求。
 - **文档**：
   - 用 Markdown 写；框图用 Mermaid，时序图用 WaveDrom，包格式和位域用表格。
-  - 交付文档命名为 `<编号>-<英文短名>.md`，例如 `docs/spec/SPEC-210-matrix-engine.md`。
+  - 交付文档按 `docs/README.md` 分目录和命名：文件名就是文档 ID（`<类别>-<主题>.md`），例如 `docs/spec/compute/spec-matrix-engine.md`；新增文档先在 `tools/git-hooks/scopes.txt` 登记。
   - "必须""应""可"分别对应 MUST、SHOULD、MAY，只在 SPEC 里使用；还没定的内容标 `TBD`。
   - 参数只在单一真源中维护，文档里引用参数名，不写死数字。
   - 引用调研资料写"代号 p.N"；写进 SPEC 的数字要回 PDF 原页核对；自己推算的标"推算"，跨资料对比得出的判断标"观察"。
@@ -282,7 +282,7 @@ commit-msg 和 pre-push 钩子会拦住明显的违规（识别规则见 `tools/
  *
  * 本地口直连本 Tile SRAM，远端口接 NoC，边读边写。
  *
- * @see SPEC-250, SPEC-320
+ * @see spec-tile-sync, spec-host-dma
  */
 ```
 
@@ -291,7 +291,7 @@ commit-msg 和 pre-push 钩子会拦住明显的违规（识别规则见 `tools/
 | `@file` | 必填。只写文件名，不带路径，必须与实际文件名一致；改名时同步修改 |
 | `@brief` | 必填。一行中文，说明这个文件是什么，末尾不加句号。`.cc` 文件可以写"XXX 的实现" |
 | 详细说明 | 可选。与 `@brief` 之间空一行，写职责、关键设计取舍、与其他组件的关系、已知简化；不复述代码 |
-| `@see` | 有对应的 SPEC 或 MAN 时必填，写编号，多个用逗号分隔。纯工具或测试文件没有对应规格时可以省略 |
+| `@see` | 有对应的规格或手册时必填，写文档 ID（如 `spec-pcie`），多个用逗号分隔。纯工具或测试文件没有对应规格时可以省略 |
 
 **不写**：作者、日期、修改记录，因为 git 已经记录了这些，写在文件头里很快会过时；也不写版权和许可证声明。
 

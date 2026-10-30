@@ -9,7 +9,7 @@ CPU、内存和 cache 由 host 预设提供；板卡不认识具体设备，
 
 Foundation 平台没有接 GICv3 ITS，不提供 MSI/MSI-X。
 
-@see SPEC-100, SPEC-310
+@see spec-arch, spec-pcie
 """
 
 from pathlib import Path

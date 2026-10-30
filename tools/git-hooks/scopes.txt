@@ -1,12 +1,12 @@
 # 提交信息 scope 清单（唯一来源，commit-msg 钩子读取本文件）。
-# 每行：scope  说明。NNN 表示三位数字，例如 spec-NNN 可写成 spec-110。
-# 新增组件时先在这里登记，和组件代码放在同一个提交里。
+# 每行：scope  说明。NNN 表示三位数字，例如 adr-NNN 可写成 adr-001。
+# 新增组件或交付文档时先在这里登记，和组件代码或文档放在同一个提交里。
 
 # ---- 架构与规格（单一真源待重建）
 arch-params   架构参数（原 spec-src/arch_params.yaml，待重建）
 isa           ISA 定义（原 spec-src/isa/、tools/isagen/ 及其生成物，待重建）
-addrmap       地址空间与地址映射（SPEC-110）
-hdi           Host-Device 接口：命令记录、完成记录、管理 Tile 寄存器（SPEC-400）
+addrmap       地址空间与地址映射（spec-address-map）
+hdi           Host-Device 接口：命令记录、完成记录、管理 Tile 寄存器（spec-hdi）
 
 # ---- gem5 模型（gem5-ext/）
 func-core     gem5-ext/func-core：数值规则、指令编解码、地址换算、运算核心
@@ -25,10 +25,33 @@ configs       gem5-ext/configs：芯片搭建与运行脚本
 
 # ---- 文档与资料
 docs          仓库级文档：README、CLAUDE.md、CONTRIBUTING.md 等
-spec-NNN      某一份 SPEC，例如 spec-110
-man-NNN       某一份手册，例如 man-060
-doc-NNN       某一份总体文档，例如 doc-001
-adr-NNN       某一条架构决策记录
+adr-NNN       某一条架构决策记录，例如 adr-001
+
+# ---- 交付文档：每份一个 scope，与文档 ID 相同（docs/README.md）
+spec-arch               总体架构规格
+spec-address-map        地址空间与内存模型
+spec-clock-reset-power  时钟、复位与电源
+spec-interrupt-ras      中断、错误与 RAS
+spec-debug-perf         调试、Trace 与性能计数器
+spec-compute-tile       Compute Tile
+spec-matrix-engine      矩阵引擎（SA）
+spec-vector-engine      向量引擎（VU）
+spec-isa                Tile ISA
+spec-numerics           数值规格
+spec-noc                片上网络
+spec-tile-sync          Tile 间通信与同步
+spec-dram               Memory Tile（DRAM 子系统）
+spec-pcie               PCIe 子系统
+spec-host-dma           Host DMA 引擎
+spec-mgmt-tile          管理 Tile 与固件接口
+spec-hdi                Host-Device 接口
+spec-exe-format         可执行文件格式
+man-registers           寄存器参考手册
+man-programming         编程参考手册
+man-perf-tuning         性能模型与调优手册
+man-driver-guide        驱动开发指南
+man-gem5-user           gem5 虚拟平台用户手册
+man-gem5-dev            gem5 模型开发者指南
 reference     reference/ 子模块指针；资料本身在 gevico/gw100-references
 tools         tools/ 下的其他工具，例如 tools/templates/ 的文件头模板
 

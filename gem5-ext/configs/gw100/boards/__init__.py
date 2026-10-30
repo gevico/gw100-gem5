@@ -8,7 +8,7 @@ cache 等参数由 `gw100.hosts` 的预设提供；挂什么设备由 `gw100.dev
 
 - arm_vexpress：AArch64，VExpress_GEM5_Foundation 平台
 
-@see MAN-050, SPEC-310
+@see man-gem5-user, spec-pcie
 """
 
 from .arm_vexpress import ArmVExpressBoard
