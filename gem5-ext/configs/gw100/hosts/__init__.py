@@ -8,6 +8,8 @@ host 预设只决定 CPU 模型、核数、频率、内存和 cache 这些参数
 
 - timing：默认。TIMING CPU，日常开发和设备功能验证用，仿真快
 - o3：O3 CPU，测 host 侧软件开销、暴露驱动的内存序问题时用
+- atomic：ATOMIC CPU，功能模式。访问立即完成、不计排队和竞争，只用来
+  验证功能正确，不产出性能数字
 
 两个预设都还没有对标真实的端侧主机，host 侧的时序不能当结论。
 
@@ -44,9 +46,12 @@ TIMING = HostConfig(
 
 O3 = replace(TIMING, cpu_type=CPUTypes.O3)
 
+ATOMIC = replace(TIMING, cpu_type=CPUTypes.ATOMIC)
+
 HOSTS = {
     "timing": TIMING,
     "o3": O3,
+    "atomic": ATOMIC,
 }
 
 DEFAULT_HOST = "timing"
