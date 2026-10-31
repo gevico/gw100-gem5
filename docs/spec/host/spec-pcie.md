@@ -19,9 +19,9 @@
 
 - Host DMA 引擎的通道、描述符和 scatter-gather 列表，见 `spec-host-dma`；
 - 命令协议：命令队列、doorbell 的语义、命令与完成记录、上下文，见 `spec-hdi`；
-- 设备内部地址空间的划分（BAR2 调试窗口指向的地址），将由 `spec-address-map` 定义；
+- 设备内部地址空间的划分（BAR2 调试窗口指向的地址），见 `spec-address-map`；
 - 启动过程中设备内部的步骤、固件格式和校验算法，见 `spec-mgmt-tile` §8；安全启动尚未定义；
-- 全芯片的错误分级与汇聚，将由 `spec-interrupt-ras` 定义。
+- 全芯片的错误分级与汇聚，将由 `spec-interrupt-ras`（待写） 定义。
 
 ### 1.2 设备在系统中的位置
 
@@ -104,7 +104,7 @@ flowchart LR
 
 - **决定**：BAR0 放寄存器。BAR2 在启动阶段是固件装载窗口，正常运行时关闭，只在固件开启调试模式后作为可重映射的调试窗口。不提供映射全部设备内存的大 BAR；设备内存的数据一律经 DMA 搬运。
 - **理由**：
-  - 嵌入式 ARM 主机分给 PCIe 的 MMIO 地址空间往往很小，也很少支持 Resizable BAR。把 8–16 GB 设备内存映射成一个 BAR，在这类主机上很可能分配不出来，设备将无法使用。
+  - 嵌入式 ARM 主机分给 PCIe 的 MMIO 地址空间往往很小，也很少支持 Resizable BAR。把 32 GB 设备内存映射成一个 BAR，在这类主机上很可能分配不出来，设备将无法使用。
   - 设备内存的访问只由固件编程的 DMA 完成，固件能统一校验每一次访问的设备地址。如果 host 在正常运行时也能经 BAR 直接读写设备内存，就绕过了这道校验，还要另外保护固件放在设备内存中的数据。
   - 固件装载经 BAR2 直接写入片上 SRAM，启动 ROM 只需校验和跳转，不需要驱动 DMA 引擎，也不需要先训练设备内存。启动 ROM 流片后不可修改，其中的代码越少，变砖的风险越小。
   - 小 BAR 的划分与 Hailo-8（BAR0 配置、BAR2 DMA 寄存器、BAR4 固件窗口）和 Tenstorrent 的 BAR 加可配置 TLB 类似（见附录 A）。
@@ -144,7 +144,7 @@ flowchart LR
 | 通道反转、极性反转 | 必须支持 |
 | 虚通道 | 只有 VC0 |
 | 物理功能 | 单个物理功能（Function 0），不支持 SR-IOV |
-| 参考时钟 | 必须支持 host 提供的公共参考时钟；是否支持独立参考时钟（SRIS）TBD |
+| 参考时钟 | 使用 host 经插槽提供的公共参考时钟（100 MHz，允许带扩频）；不支持独立参考时钟（SRIS）。板卡在 D0、D3hot 期间必须持续提供参考时钟（`spec-clock-reset-power` §3.2） |
 
 各配置下的理论带宽（每个方向，推算）：
 
@@ -169,7 +169,7 @@ flowchart LR
 | Revision ID | 芯片步进号 | 每次改版加一 |
 | Class Code | 0x12 / 0x00 / 0x00 | Processing Accelerator，无子类，无编程接口 |
 | Header Type | 0x00 | Type 0，单功能 |
-| Subsystem Vendor ID / Subsystem ID | TBD | 由板卡厂商通过板级配置提供 |
+| Subsystem Vendor ID / Subsystem ID | 熔丝提供 | 由板卡厂商烧写熔丝；未烧写时分别等于 Vendor ID 和 Device ID。复位后由硬件从熔丝载入，不经启动 ROM |
 | Interrupt Pin | 0x01 | INTA |
 | Capabilities Pointer | 指向 §4.2 的第一个 capability | |
 
@@ -186,7 +186,7 @@ Command 寄存器中，设备必须实现 Memory Space Enable、Bus Master Enabl
 | Advanced Error Reporting（AER） | 必须 | 见 §12 |
 | Device Serial Number | 应 | 每颗芯片唯一，用于板卡追溯 |
 | Latency Tolerance Reporting（LTR） | 应 | 配合 host 的电源管理 |
-| L1 PM Substates | 可 | TBD，取决于产品形态 |
+| L1 PM Substates | 不支持 | L1.2 允许 host 关闭参考时钟，会使设备内部依赖它的时钟停止（`spec-clock-reset-power` §3.2） |
 | Secondary PCIe（均衡控制） | 必须 | Gen3 及以上速率要求 |
 | Physical Layer 16.0 GT/s 等 Gen4 相关 capability | 必须 | Gen4 速率要求 |
 | Resizable BAR、ATS、PRI、PASID、SR-IOV、ACS | 不支持 | |
@@ -204,6 +204,7 @@ PCI Express Capability 的关键字段：
 | Completion Timeout Ranges Supported | 至少范围 A、B |
 | Completion Timeout Disable Supported | 0（完成超时不可关闭，见 §10.3） |
 | ASPM Support | L1 必须；L0s 可不支持 |
+| Clock Power Management（Link Capabilities） | 0：不支持经 CLKREQ# 关闭参考时钟 |
 
 ---
 
@@ -317,7 +318,7 @@ MSI-X 表和 PBA 的访问规则以 PCIe 规范为准（DWORD 和 QWORD 访问�
 | [17] | DEBUG_WIN | 1 表示固件已开启 BAR2 调试窗口（§7.3）；只有固件能改变 |
 | [31:18] | — | RsvdZ |
 
-**时间戳**：64 位自由运行计数器，冷复位和热复位后从 0 开始，FLR 和设备完全复位不清零，频率由 `TIMESTAMP_FREQ` 给出，不回绕（以 1 GHz 计约 584 年，推算）。设备内部所有对外报告的时间戳都取自这个计数器。
+**时间戳**：64 位自由运行计数器，冷复位和热复位后从 0 开始，FLR 和设备完全复位不清零，频率由 `TIMESTAMP_FREQ` 给出（`dev.timestamp_hz` = 100 MHz，`spec-clock-reset-power` §3.2），不回绕（以 100 MHz 计约 5849 年，推算）。设备内部所有对外报告的时间戳都取自这个计数器。
 
 ### 6.3 错误状态
 
@@ -359,7 +360,7 @@ v0.1 只支持由 host 加载固件（PCIe 启动）。本节定义 host 能观�
 | 偏移 | 名称 | 类型 | 复位值 | 说明 |
 |---|---|---|---|---|
 | 0x4000 | `BOOT_STATUS` | RO | 0 | [3:0] STAGE，见上表。[8] FW_READY：固件已完成初始化，命令协议可以使能。[23:16] ERROR：最近一次失败的原因，见下表。其余 RsvdZ |
-| 0x4004 | `BOOT_CTRL` | W1S | — | [0] FW_START：镜像已写完，请设备校验并启动；只在 STAGE = 2 时有效，其他阶段写入被忽略。[1] DEV_RESET：设备完全复位，TBD，见 §13.1。其余 RsvdZ |
+| 0x4004 | `BOOT_CTRL` | W1S | — | [0] FW_START：镜像已写完，请设备校验并启动；只在 STAGE = 2 时有效，其他阶段写入被忽略。[1] DEV_RESET：设备完全复位，见 §13.1。其余 RsvdZ |
 | 0x4008 | — | RsvdZ | 0 | |
 | 0x400C | — | RsvdZ | 0 | |
 | 0x4010 | `FW_LOAD_MAX` | RO | `mgmt.fw_load_max` | 启动窗口的大小，也是镜像大小的上限，字节；8 的整数倍 |
@@ -375,21 +376,22 @@ v0.1 只支持由 host 加载固件（PCIe 启动）。本节定义 host 能观�
 | 2 | WIN_WRITE | 本次加载期间启动窗口收到过非法写入（§7.2） | 回到 2，可重新加载 |
 | 3 | VERIFY | 镜像校验失败 | 回到 2，可重新加载 |
 | 4 | INIT | 固件初始化失败，例如设备内存训练失败 | 0xF |
-| 5 – 0x7F | — | 保留 | |
+| 5 | LINK | 设备内部的启动通路故障，由硬件直接锁存（`spec-mgmt-tile` §5.5）；FLR 不清除，只能由设备完全复位、热复位或冷复位清除 | 0xF |
+| 6 – 0x7F | — | 保留 | |
 | 0x80 – 0xFF | — | 由固件定义，表示 INIT 的细分原因 | 0xF |
 
 设备接受 `FW_START` 时，立即把 STAGE 置为 3、把 ERROR 清零，并关闭启动窗口。根据 §9.1 规则 3，驱动在写 `FW_START` 之后读到的 `BOOT_STATUS` 已经反映这一变化，不会读到上一次加载遗留的 ERROR。ROM 在加载失败、回到 STAGE 2 时清零 `FW_SIZE` 并重新打开启动窗口；装载区的旧内容作废。
 
 **驱动的加载流程**
 
-1. 使能 Memory Space（不需要 Bus Master），等待 `BOOT_STATUS.STAGE` = 2，超时 TBD，默认 1 s。STAGE = 4 且 `FW_READY` = 1 表示固件已在运行，跳过加载。
+1. 使能 Memory Space（不需要 Bus Master），等待 `BOOT_STATUS.STAGE` = 2，超时 1 s。STAGE = 4 且 `FW_READY` = 1 表示固件已在运行，跳过加载。
 2. 检查镜像不超过 `FW_LOAD_MAX`，在末尾补 0，使长度为 8 的整数倍。
 3. 从 BAR2 偏移 0 开始顺序写入镜像。写入必须满足 §7.2 的访问规则：只用 8 字节对齐的 64 位写。Linux 上应使用保证 64 位访问宽度的 `__iowrite64_copy`；`memcpy_toio` 在头尾不对齐时可能产生更窄的写，各平台的实现也不一致，不得使用。BAR2 可以按写合并方式映射。
 4. 执行写屏障（Linux 的 `wmb()`），确保写合并缓冲中的镜像数据都已发出；然后写 `FW_SIZE`，再写 `BOOT_CTRL.FW_START`。
-5. 轮询 `BOOT_STATUS`，超时 TBD，默认 5 s（包括设备内存训练的时间）：
+5. 轮询 `BOOT_STATUS`，超时 5 s（包括设备内存训练的时间）：
    - `FW_READY` = 1：启动成功；
    - STAGE = 2 且 ERROR ≠ 0：加载失败，可以从第 2 步重新加载；
-   - STAGE = 0xF：固件初始化失败，只能通过复位恢复（§13.1）。
+   - STAGE = 0xF：固件初始化失败或启动通路故障，只能通过复位恢复（§13.1）。
 
 **设备对 `FW_START` 的保证**：ROM 看到 `FW_START` 时，设备在 `FW_START` 之前接受的全部启动窗口写入都已写入装载区。这是 §9.1 规则 2 在启动窗口上的具体要求："生效"指数据已写入装载区，而不只是被 PCIe 子系统接收。设备内部的实现见 `spec-mgmt-tile` §5.3。
 
@@ -423,14 +425,14 @@ BAR2 不在设备的正常数据通路上。正常运行时，host 不能直接�
 | Relaxed Ordering | 忽略。启动窗口的写入一律按到达顺序生效 |
 | 设备接受 `FW_START` 之后的访问 | 窗口已关闭，按 §7.1 的"关闭"处理 |
 
-- 设备必须能以写合并产生的最大 TLP（不超过 MPS）接收启动窗口写入。
+- 设备必须能以写合并产生的最大 TLP（不超过 MPS）接收启动窗口写入。持续写入的带宽受设备内部管理链路的限制（`spec-mgmt-tile` §10 P4），超过时 PCIe 入站方向被反压，写入只会延缓，不会丢失。
 - 装载区内的数据在 ROM 校验之后不会再被 host 改写：设备接受 `FW_START` 时立即关闭窗口，ROM 在此之后才开始校验。
 
 ### 7.3 调试窗口
 
 调试窗口用于诊断，例如固件故障时读取设备内存中的日志和数据。驱动的正常功能不得依赖它。
 
-- **开启**：只有固件能开启调试窗口；`DEV_STATUS.DEBUG_WIN` 向 host 报告当前状态。host 如何请求开启将由 `spec-hdi` 定义（尚未定义，见 §16）。量产芯片可以由熔丝永久禁止开启。
+- **开启**：只有固件能开启调试窗口；`DEV_STATUS.DEBUG_WIN` 向 host 报告当前状态。host 经管理命令 SET_FEATURE 的 DEBUG_WINDOW 特性请求开启或关闭（`spec-hdi` §9.7）。量产芯片可以由熔丝永久禁止开启。
 - 复位后调试窗口关闭；设备复位、热复位和 FLR 都会把它关闭。
 - 窗口配置寄存器（§7.5）在任何阶段都可读写，但只在调试窗口开启时起作用。
 
@@ -442,7 +444,7 @@ BAR2 等分为 `pcie.bar2_window_count` = 16 个窗口，每个窗口 `pcie.bar2
 设备物理地址 = WIN_BASE[i] + (o mod 4 MiB)
 ```
 
-设备物理地址的宽度为 `addr.device_pa_bits`（TBD，默认 40 位）。设备地址空间如何划分不在本文档范围内。
+设备物理地址的宽度为 `addr.device_pa_bits` = 40 位，地址空间的划分见 `spec-address-map` §3。
 
 **窗口只能指向设备内存**：目标范围必须完全落在设备内存（LPDDR5X）之内，指向设备内部的控制寄存器（例如 DMA 引擎、命令处理器）、片上 SRAM 或其他区域都按"目标地址无效"处理。这样即使调试窗口开启，host 也无法经 BAR2 改写固件和 DMA 描述符，或绕过固件直接操作设备内部的控制逻辑。
 
@@ -608,10 +610,10 @@ MSI-X 消息是 posted 写，且设备发出时 Relaxed Ordering 位为 0。根�
 
 | 参数 | 值 | 说明 |
 |---|---|---|
-| Posted 头信用 | TBD，默认 32 | host 的 MMIO 写和 BAR2 写（包括固件装载） |
-| Posted 数据信用 | TBD，默认 2 KiB | Hailo-8 的接收缓冲为 2 KB（Hailo-DS p.38） |
-| Non-posted 头信用 | TBD，默认 16 | host 的 MMIO 读 |
-| 重传缓冲 | TBD，默认 2 KiB | Hailo-8 为 2 KB（Hailo-DS p.38） |
+| Posted 头信用 | 32 | host 的 MMIO 写和 BAR2 写（包括固件装载） |
+| Posted 数据信用 | 2 KiB | 覆盖约 250 ns 的信用返还延迟：7.877 GB/s × 250 ns ≈ 2 KB（推算）；Hailo-8 的接收缓冲也为 2 KB（Hailo-DS p.38） |
+| Non-posted 头信用 | 16 | host 的 MMIO 读 |
+| 重传缓冲 | 4 KiB（初始预算） | 必须容纳 ACK 往返期间发出的全部 TLP：Gen4 x4 下按约 500 ns 计为 7.877 GB/s × 500 ns ≈ 3.9 KB（推算）；Hailo-8 在 Gen3 下为 2 KB（Hailo-DS p.38）。所需容量取决于 IP 的 ACK 策略，以满足 §11.2 的吞吐为验收标准 |
 
 ---
 
@@ -637,8 +639,8 @@ host → 设备方向的带宽取决于 host 根复合体把读完成拆成多�
 |---|---|
 | P1 | 设备侧的缓冲、tag 数和处理能力不得成为瓶颈：在 host 读延迟不超过 2.5 µs 时，DMA 在两个方向上都必须达到 §11.1 所列可用带宽的 95% 以上 |
 | P2 | 两个方向同时满负荷传输时，各自仍须满足 P1（全双工） |
-| P3 | BAR0 寄存器读的设备侧响应时间（从收到请求到发出完成）应不超过 500 ns（TBD） |
-| P4 | BAR2 调试窗口读的设备侧响应时间取决于目标；指向 DRAM 时应不超过 1 µs（TBD） |
+| P3 | BAR0 寄存器读的设备侧响应时间（从收到请求到发出完成）应不超过 500 ns；复位开始时已在处理中的读除外（`spec-clock-reset-power` §4.3 复位排空） |
+| P4 | BAR2 调试窗口读的设备侧响应时间取决于目标；指向 DRAM 时应不超过 1 µs |
 
 ---
 
@@ -673,11 +675,13 @@ host → 设备方向的带宽取决于 host 根复合体把读完成拆成多�
 
 ### 13.1 复位类型
 
+本节定义各种复位对 host 可见的范围。设备内部各部件的行为见 `spec-clock-reset-power` §4.2。
+
 | 复位 | 触发 | 范围 |
 |---|---|---|
 | 冷复位 | 上电、PERST# | 整颗芯片，包括 PCIe 控制器和配置空间 |
 | 热复位 | host 发起的 Hot Reset、链路断开（Link Down） | 除粘滞（sticky）位以外的全部状态，包括设备内部和管理 CPU；回到 STAGE 1，驱动需要重新加载固件 |
-| 设备完全复位（TBD） | 写 `BOOT_CTRL.DEV_RESET` | 除 PCIe 控制器、配置空间和链路以外的全部设备状态，包括管理 CPU；回到 STAGE 1，驱动需要重新加载固件。用于固件停止响应或初始化失败（STAGE = 0xF）时恢复，不必让链路断开 |
+| 设备完全复位 | 写 `BOOT_CTRL.DEV_RESET` | 除 PCIe 控制器、配置空间和链路以外的全部设备状态，包括管理 CPU；回到 STAGE 1，驱动需要重新加载固件。用于固件停止响应或初始化失败（STAGE = 0xF）时恢复，不必让链路断开 |
 | FLR | 写 Device Control 的 Initiate Function Level Reset | 本功能对 host 可见的状态：本文档定义的 BAR0 寄存器、BAR2 窗口、MSI-X，以及命令协议和 DMA 的状态；配置空间按 PCIe 规范保留或复位的部分除外。**管理 CPU 和固件不重启**，见 §13.2 |
 | HDI 控制器复位 | 命令协议的控制器使能位由 1 变 0 | 只复位命令协议的状态 |
 
@@ -695,6 +699,7 @@ host → 设备方向的带宽取决于 host 根复合体把读完成拆成多�
 - **FLR 与固件**：FLR 不重启管理 CPU，也不需要重新加载固件。
   - STAGE = 4 时发生 FLR：设备清零 `FW_READY`，固件清理命令协议、DMA 和各 Tile 中属于本功能的状态（`spec-mgmt-tile` §9），完成后重新置 `FW_READY`。STAGE 保持 4。驱动在 FLR 之后等待 `FW_READY` = 1，再重新初始化命令协议。固件的清理不计入 FLR 的 100 ms。
   - STAGE 为 1 – 3 时发生 FLR：ROM 放弃本次加载，装载区内容作废，`FW_SIZE` 和 ERROR 清零，回到（或继续进入）STAGE 2。
+  - 启动通路故障已锁存时（ERROR = LINK，§6.4），FLR 不清除它：STAGE 保持 0xF，启动窗口保持关闭，驱动必须使用设备完全复位。
   - 固件停止响应时，FLR 无法让 `FW_READY` 恢复，驱动应改用设备完全复位或热复位（§13.1）。
 
 ### 13.3 电源状态
@@ -702,11 +707,11 @@ host → 设备方向的带宽取决于 host 根复合体把读完成拆成多�
 | 状态 | 要求 |
 |---|---|
 | D0 | 正常工作 |
-| D3hot | 必须支持。进入前驱动必须先停用 HDI；进入后设备不得发起 DMA 或中断。`No_Soft_Reset` = 0：从 D3hot 回到 D0 时按 FLR 的范围复位（§13.2），固件不重启，驱动需要重新初始化 |
+| D3hot | 必须支持。进入前驱动必须先停用 HDI；进入后设备不得发起新的 DMA 或中断，生效点和对已排队请求、MSI-X 的处理见 `spec-clock-reset-power` §5.2。`No_Soft_Reset` = 0：从 D3hot 回到 D0 时按 FLR 的范围复位（§13.2），固件不重启，驱动需要重新初始化 |
 | D3cold | 由 PERST# 和板级电源控制，回到 D0 等同冷复位，驱动需要重新加载固件 |
 | ASPM L1 | 必须支持 |
 | ASPM L0s | 可不支持 |
-| L1 PM Substates | 可，TBD |
+| L1 PM Substates | 不支持（§4.2） |
 
 ---
 
@@ -725,13 +730,13 @@ host → 设备方向的带宽取决于 host 根复合体把读完成拆成多�
 | `pcie.bar2_window_count` | 16 | §7 |
 | `pcie.bar2_window_size` | 4 MiB（= `bar2_size` / `bar2_window_count`） | §7 |
 | `pcie.msix_table_size` | 32 | §8 |
-| `mgmt.fw_load_max` | TBD | §6.4、§7.2；取决于管理 Tile 片上 SRAM 的容量 |
+| `mgmt.fw_load_max` | 见 `spec-mgmt-tile` §13 | §6.4、§7.2 |
 | `pcie.dma_max_read_request` | 512 B | §10.3 |
 | `pcie.max_outstanding_reads` | 64 | §10.3 |
 | `pcie.completion_buffer` | 32 KiB（推算） | §10.3 |
 | `pcie.stale_tag_quarantine` | 250 ms | §10.3、§13.2，不小于设备支持的最长完成超时（范围 B 的上限） |
-| `addr.device_pa_bits` | TBD，默认 40 | §7 |
-| `dev.timestamp_hz` | TBD | §6 |
+| `addr.device_pa_bits` | 见 `spec-address-map` §10 | §7 |
+| `dev.timestamp_hz` | 见 `spec-clock-reset-power` §10 | §6 |
 
 ---
 
@@ -752,7 +757,7 @@ host → 设备方向的带宽取决于 host 根复合体把读完成拆成多�
 | F7 | BAR2：各阶段的打开与关闭符合 §7.1；调试窗口的配置、读写、移动窗口、未使能和无效目标的行为符合 §7.4 – §7.6 |
 | F8 | MSI-X：表读写、屏蔽与 Pending、各中断源发到正确的向量 |
 | F9 | INTx：MSI-X 未使能时按 §8.4 置位和撤销；Interrupt Disable 生效 |
-| F10 | 由 host 加载固件的启动流程（§6.4）：启动窗口的合法与非法写入、`FW_START` 之前的写入全部可见、`FW_START` 之后窗口关闭、各 ERROR 编码及失败后重新加载 |
+| F10 | 由 host 加载固件的启动流程（§6.4）：启动窗口的合法与非法写入、`FW_START` 之前的写入全部可见、`FW_START` 之后窗口关闭、各 ERROR 编码及失败后重新加载；启动通路故障（ERROR = LINK）锁存后 FLR 不清除，只能设备完全复位恢复 |
 | F11 | FLR：100 ms 内完成；完成后不再访问 host 内存；状态复位；固件不重启，`FW_READY` 按 §13.2 清零后重新置位 |
 | F12 | D3hot 往返后设备复位，驱动可重新初始化 |
 | F13 | DMA 读收到 UR、CA 或超时时按 §12.2 处理 |
@@ -774,19 +779,13 @@ host → 设备方向的带宽取决于 host 根复合体把读完成拆成多�
 | 事项 | 当前默认 | 影响 |
 |---|---|---|
 | Vendor ID、Device ID | 仿真中暂用 0x1234 / 0x1000，仅限仿真 | §4.1，需申请正式 ID |
-| 是否支持独立参考时钟（SRIS） | 不支持 | §3，板卡设计 |
-| L1 PM Substates | 不要求 | §13.3，功耗 |
-| 设备物理地址宽度 | 40 位 | §7 |
-| 接收信用与重传缓冲大小 | §10.4 的默认值 | 面积 |
-| P3、P4 的响应时间目标 | 500 ns、1 µs | §11.2 |
-| 由 host 加载固件的超时时间 | 等待 STAGE 2 为 1 s；等待 `FW_READY` 为 5 s | §6.4；后者包括设备内存训练，待 LPDDR5X PHY 确定后复核 |
-| 固件装载区大小 `mgmt.fw_load_max` | TBD | §6.4、§7.2；取决于管理 Tile 片上 SRAM 的容量 |
-| 从板载 SPI Flash 启动 | v0.1 不支持 | §6.4；支持时启动 ROM 需要增加 flash 驱动 |
-| 镜像校验算法、安全启动 | 不在本文档范围 | §6.4 的 ERROR = VERIFY |
-| 设备完全复位（`BOOT_CTRL.DEV_RESET`） | 暂定 | §6.4、§13.1；完成时间和对设备内存内容的影响待定 |
-| 调试窗口的开启方式与熔丝 | 由固件开启，host 经命令协议请求 | §7.3 |
-| PCIe 控制器 IP 的入站顺序 | 选型时必须验证入站 posted 写在 IP 内部不乱序 | §6.4 对 `FW_START` 的保证依赖它；不满足时需要增加显式的排空机制 |
 | 迟到完成与复用 tag 冲突的残留风险 | 作为已知限制接受，靠隔离、完成校验和复位降低 | §10.3；需在系统验证中评估是否需要更强的恢复条件 |
+| PCIe 规范中引用的数值（FLR 100 ms 等） | 按本文档执行 | 待回 PCIe Base Spec 原文核对 |
+| Subsystem Vendor ID、Subsystem ID 的取值 | 熔丝未烧写时等于 Vendor ID、Device ID | §4.1；由板卡厂商决定 |
+
+以下各项已按主流做法确定，选定 PCIe 控制器 IP 时作为验收项确认：入站 posted 写在控制器内部保持顺序（PCIe 顺序规则的要求，§6.4 对 `FW_START` 的保证依赖它）；控制器的核心时钟不依赖链路状态（`spec-clock-reset-power` §3.2）；§10.4 的接收信用与重传缓冲。
+
+v0.1 不支持、留待后续版本：独立参考时钟（SRIS）、L1 PM Substates、从板载 SPI Flash 启动、签名验证与安全启动（镜像只做 SHA-256 校验，`spec-mgmt-tile` §8.2）。
 
 ---
 
