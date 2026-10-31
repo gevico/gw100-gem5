@@ -84,6 +84,46 @@ make -C baremetal list             # 列出全部 test
 make -C baremetal disasm TEST=hello
 ```
 
+## 调试
+
+模型（gem5 的 C++ 代码）和裸机程序可以同时调试：左边用 lldb 调试 gem5 进程，右边用 aarch64 gdb 经 gem5 的远程 GDB 调试裸机程序。两者在同一个仿真进程里，共用同一条时间轴。
+
+- 右边停在断点时，仿真时间冻结，左边仍可查看设备的全部状态。
+- 左边停在断点时，整个 gem5 进程冻结，右边会等待，直到左边继续。典型的用法是在右边单步执行一条访问设备的指令，左边停在设备处理这次访问的代码里（例如 `Bar0Handler::access`）。
+- 远程 GDB 用 `127.0.0.1:7100`。不用 gem5 默认的 7000，也不要写 `localhost`：macOS 的"隔空播放接收器"监听 `*:7000`，`localhost` 解析到 `::1` 时会连到它上面并挂住。
+- macOS 上左边只能用 lldb：GDB 不支持在 Apple Silicon 上调试本机进程。
+
+**在 VS Code 中**（两侧都用 C/C++ 扩展 `ms-vscode.cpptools` 的 `cppdbg` 调试器：左边 `MIMode: lldb`，用扩展自带的 lldb-mi；右边 `MIMode: gdb`，用 aarch64 gdb）：
+
+1. 启用 C/C++ 扩展。代码提示仍用 clangd，`make vscode-config` 会关闭 cpptools 的 IntelliSense，两者不冲突。
+2. `make vscode-config TEST=pcie_regs`：生成 `.vscode/launch.json` 和 `tasks.json`；要调试的 test 记在工作区设置 `gw100.debugTest` 中，之后可以直接改这一项。
+3. 先 `make gem-build baremetal-build`。
+4. 在 `gem5-ext/src/` 和 `baremetal/` 的源码里设断点，启动"GW100 联合调试"。左边的 lldb-mi 启动 gem5 并等待 GDB，右边的 gdb 等 gem5 开始监听后连上，默认停在 test 的入口 `test_main`。入口函数由工作区设置 `gw100.debugEntry` 指定；要从第一条指令（`start.S` 的 `_start`）开始调试，把生成的配置中的 `stopAtConnect` 改为 `true`。aarch64 gdb 由 `make vscode-config` 自动查找（`aarch64-linux-gnu-gdb` 或 `gdb-multiarch`），也可以用 `AARCH64_GDB=` 指定。
+
+**在命令行中**（两个终端）：
+
+```sh
+# 终端 1：lldb 调试 gem5
+cd gem5
+lldb -o "process handle SIGIO -s false -n false -p true" \
+     -o "breakpoint set -n gem5::gw100::Bar0Handler::access" -o run -- \
+  ./build/ARM/gem5.opt --listener-mode=on ../gem5-ext/configs/run_gw100.py \
+  --kernel ../build/gw100-baremetal/pcie_regs.elf --wait-gdb
+
+# 终端 2：aarch64 gdb 调试裸机程序
+aarch64-linux-gnu-gdb build/gw100-baremetal/pcie_regs.elf \
+  -ex "target remote 127.0.0.1:7100" -ex "tbreak test_main" -ex continue
+```
+
+只调试裸机程序时，第一步改为 `make run TEST=pcie_regs GEM5_OPTS="--listener-mode=on" CONFIG_ARGS="--wait-gdb"`，不需要 lldb。
+
+注意：
+
+- gem5 用 `SIGIO` 处理监听套接字的事件，lldb 默认会因它停住进程，所以要用 `process handle SIGIO` 放行（VS Code 配置已包含）。
+- 不要在 VS Code 的断点面板中勾选 **"All C++ Exceptions"**（默认不勾选）。gem5 的远程 GDB 服务用 C++ 异常处理客户端发来的不支持的查询：每次连接、每次裸机程序停下，都会抛出并捕获几十个异常。勾选时左边会反复停在 `__cxa_throw`，右边随之等待，看起来像卡死。这与 macOS 无关，在 Linux 上开启"抛出时中断"也一样。
+- `gem5.opt` 是优化构建，lldb 中部分变量显示为 `<unavailable>`。
+- 裸机程序用 `-O2` 编译，gdb 单步时可能在源码行之间跳转。
+
 ## 新增一个 test
 
 1. 新建 `tests/<名字>.c`，按 `tools/templates/file-header.hh` 写文件头，实现 `int test_main(void)`。每个函数、宏函数和文件作用域变量都要有 `/** ... */` 注释，`test_main` 的注释与 `test.h` 中声明处相同（`CONTRIBUTING.md` §7）。
