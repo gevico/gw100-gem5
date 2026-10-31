@@ -2,7 +2,7 @@
  * @file  pcie_bar2.c
  * @brief BAR2 窗口：配置、经窗口读写设备内存、错误情形
  *
- * 对应 spec-pcie 验收项 F7。设备内存为 8 GiB，起始设备物理地址 0。
+ * 对应 spec-pcie 验收项 F7。设备内存为 32 GiB，起始设备物理地址 0。
  *
  * @see spec-pcie
  */
@@ -13,8 +13,8 @@
 #include "bm/mmio.h"
 #include "bm/test.h"
 
-/** 设备内存大小：8 GiB */
-#define DEVMEM_SIZE     0x200000000ull
+/** 设备内存大小：32 GiB */
+#define DEVMEM_SIZE     0x800000000ull
 
 /** 打开后的 GW100 */
 static gw100_t g;

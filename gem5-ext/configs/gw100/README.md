@@ -16,7 +16,7 @@
 | 配置空间 | Vendor/Device ID 0x1234/0x1000（仿真用占位值）、Class 0x12、INTA；capability：PM（0x40）、PCI Express（0x50） |
 | BAR0（1 MiB） | 全局寄存器（0x0000）、BAR2 窗口配置（0x1000）、启动寄存器（0x4000，上电即就绪的桩）；其余块按保留处理 |
 | BAR2（64 MiB，64 位可预取） | 调试窗口：16 个 4 MiB 窗口，只能指向设备内存。启动窗口未建模，桩模型始终报告调试窗口已开启 |
-| 设备内存 | 8 GiB 的 `SimpleMemory`，作为设备的子对象，不在 host 地址映射里 |
+| 设备内存 | 32 GiB 的 `SimpleMemory`，作为设备的子对象，不在 host 地址映射里 |
 | 复位 | FLR、D3hot→D0 |
 
 还没有中断投递、MSI-X、DMA 和命令协议，也还没有驱动。相关的理想化见
