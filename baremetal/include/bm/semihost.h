@@ -10,10 +10,10 @@
 #ifndef BM_SEMIHOST_H
 #define BM_SEMIHOST_H
 
-/* 输出一个以 0 结尾的字符串 */
+/** 经 semihosting 输出一个以 0 结尾的字符串 */
 void bm_semihost_write0(const char *s);
 
-/* 以 ADP_Stopped_ApplicationExit 结束仿真，code 为退出码；不返回 */
+/** 以 ADP_Stopped_ApplicationExit 结束仿真，code 为退出码；不返回 */
 __attribute__((noreturn)) void bm_semihost_exit(unsigned long code);
 
 #endif /* BM_SEMIHOST_H */

@@ -23,7 +23,7 @@ baremetal/
 | `pci.h` | ECAM 配置读写、按 ID 查找设备、BAR 探测与分配、使能 Command 位、遍历 capability 链 |
 | `gw100.h` | GW100 的寄存器偏移与位定义（照抄 spec-pcie）；`gw100_open()` 找到设备、分配 BAR0/BAR2 并使能内存解码，`gw100_win_set()` 配置 BAR2 窗口 |
 | `platform.h` | 平台地址常量（VExpress_GEM5_Foundation）；换平台只改这里 |
-| `string.c` | `memcpy`、`memmove`、`memset`、`memcmp`、`strlen`、`strcmp` |
+| `string.h` | `memcpy`、`memmove`、`memset`、`memcmp`、`strlen`、`strcmp`（编译器也会生成对它们的调用） |
 
 ## 运行环境
 
@@ -86,7 +86,7 @@ make -C baremetal disasm TEST=hello
 
 ## 新增一个 test
 
-1. 新建 `tests/<名字>.c`，按 `tools/templates/file-header.hh` 写文件头，实现 `int test_main(void)`。
+1. 新建 `tests/<名字>.c`，按 `tools/templates/file-header.hh` 写文件头，实现 `int test_main(void)`。每个函数、宏函数和文件作用域变量都要有 `/** ... */` 注释，`test_main` 的注释与 `test.h` 中声明处相同（`CONTRIBUTING.md` §7）。
 2. 用 `test.h` 的断言宏检查结果，用 `TEST_INFO` 打印关键过程，便于失败时定位。
 3. `make test TESTS=<名字>` 验证通过；再让它故意失败一次，确认失败信息能指出问题。
 

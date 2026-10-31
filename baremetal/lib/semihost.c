@@ -5,10 +5,14 @@
 
 #include "bm/semihost.h"
 
-#define SYS_WRITE0                  0x04
-#define SYS_EXIT                    0x18
-#define ADP_STOPPED_APPLICATION_EXIT 0x20026
+/** semihosting 操作号：输出字符串 */
+#define SYS_WRITE0                      0x04
+/** semihosting 操作号：结束程序 */
+#define SYS_EXIT                        0x18
+/** SYS_EXIT 的原因：应用程序正常退出 */
+#define ADP_STOPPED_APPLICATION_EXIT    0x20026
 
+/** 发起一次 semihosting 调用：x0 为操作号，x1 指向参数；返回 x0 */
 static long
 semihost_call(unsigned long op, const void *arg)
 {
@@ -18,12 +22,14 @@ semihost_call(unsigned long op, const void *arg)
     return (long)x0;
 }
 
+/** 经 semihosting 输出一个以 0 结尾的字符串 */
 void
 bm_semihost_write0(const char *s)
 {
     semihost_call(SYS_WRITE0, s);
 }
 
+/** 以 ADP_Stopped_ApplicationExit 结束仿真，code 为退出码；不返回 */
 void
 bm_semihost_exit(unsigned long code)
 {

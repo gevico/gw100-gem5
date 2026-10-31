@@ -7,6 +7,7 @@
 #include "bm/pci.h"
 #include "bm/platform.h"
 
+/** d 的配置空间 off 处在 ECAM 中的 CPU 地址 */
 static uintptr_t
 cfg_addr(bm_pci_bdf_t d, unsigned off)
 {
@@ -14,19 +15,49 @@ cfg_addr(bm_pci_bdf_t d, unsigned off)
            ((uintptr_t)d.dev << 15) + ((uintptr_t)d.fn << 12) + off;
 }
 
-uint8_t bm_pci_cfg_read8(bm_pci_bdf_t d, unsigned off)
-{ return bm_read8(cfg_addr(d, off)); }
-uint16_t bm_pci_cfg_read16(bm_pci_bdf_t d, unsigned off)
-{ return bm_read16(cfg_addr(d, off)); }
-uint32_t bm_pci_cfg_read32(bm_pci_bdf_t d, unsigned off)
-{ return bm_read32(cfg_addr(d, off)); }
-void bm_pci_cfg_write8(bm_pci_bdf_t d, unsigned off, uint8_t v)
-{ bm_write8(cfg_addr(d, off), v); }
-void bm_pci_cfg_write16(bm_pci_bdf_t d, unsigned off, uint16_t v)
-{ bm_write16(cfg_addr(d, off), v); }
-void bm_pci_cfg_write32(bm_pci_bdf_t d, unsigned off, uint32_t v)
-{ bm_write32(cfg_addr(d, off), v); }
+/** 读 d 的配置空间 off 处的 8 位值 */
+uint8_t
+bm_pci_cfg_read8(bm_pci_bdf_t d, unsigned off)
+{
+    return bm_read8(cfg_addr(d, off));
+}
 
+/** 读 d 的配置空间 off 处的 16 位值 */
+uint16_t
+bm_pci_cfg_read16(bm_pci_bdf_t d, unsigned off)
+{
+    return bm_read16(cfg_addr(d, off));
+}
+
+/** 读 d 的配置空间 off 处的 32 位值 */
+uint32_t
+bm_pci_cfg_read32(bm_pci_bdf_t d, unsigned off)
+{
+    return bm_read32(cfg_addr(d, off));
+}
+
+/** 写 d 的配置空间 off 处的 8 位值 */
+void
+bm_pci_cfg_write8(bm_pci_bdf_t d, unsigned off, uint8_t v)
+{
+    bm_write8(cfg_addr(d, off), v);
+}
+
+/** 写 d 的配置空间 off 处的 16 位值 */
+void
+bm_pci_cfg_write16(bm_pci_bdf_t d, unsigned off, uint16_t v)
+{
+    bm_write16(cfg_addr(d, off), v);
+}
+
+/** 写 d 的配置空间 off 处的 32 位值 */
+void
+bm_pci_cfg_write32(bm_pci_bdf_t d, unsigned off, uint32_t v)
+{
+    bm_write32(cfg_addr(d, off), v);
+}
+
+/** 在 0 号总线上查找设备；找到返回 0 并填写 *out，找不到返回 -1 */
 int
 bm_pci_find(uint16_t vendor, uint16_t device, bm_pci_bdf_t *out)
 {
@@ -52,6 +83,7 @@ bm_pci_find(uint16_t vendor, uint16_t device, bm_pci_bdf_t *out)
     return -1;
 }
 
+/** 探测 BAR 的类型和大小；探测期间暂时关闭内存解码，结束后恢复 */
 bm_pci_bar_t
 bm_pci_bar_probe(bm_pci_bdf_t d, unsigned bar)
 {
@@ -94,9 +126,16 @@ out:
     return r;
 }
 
+/** 下一个可分配给 32 位 BAR 的总线地址 */
 static uint64_t next_bus32 = BM_PCI_MEM32_BUS_BASE;
+/** 下一个可分配给 64 位 BAR 的总线地址 */
 static uint64_t next_bus64 = BM_PCI_MEM64_BUS_BASE;
 
+/**
+ * 为内存 BAR 分配总线地址并写入，返回 CPU 访问该 BAR 的地址。
+ * 32 位 BAR 和 64 位 BAR 分别从各自的地址范围按大小对齐分配。
+ * BAR 未实现、是 I/O BAR 或地址范围用尽时返回 0。
+ */
 uintptr_t
 bm_pci_bar_assign(bm_pci_bdf_t d, unsigned bar)
 {
@@ -118,6 +157,7 @@ bm_pci_bar_assign(bm_pci_bdf_t d, unsigned bar)
     return BM_PCI_MEM_CPU_BASE + addr;
 }
 
+/** 置位 Command 寄存器中的 bits */
 void
 bm_pci_enable(bm_pci_bdf_t d, uint16_t bits)
 {
