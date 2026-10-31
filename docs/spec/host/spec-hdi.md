@@ -23,7 +23,7 @@ Host-Device 接口（下称 HDI）是 host 软件（驱动和 runtime）使用 G
 - 上下文、设备内存隔离、中断、错误处理；
 - 性能要求和验收标准。
 
-下列内容不在本文档范围内：PCIe 链路、配置空间、BAR0 的全局寄存器和 MSI-X 机制本身（`spec-pcie`）；DMA 引擎的内部结构（`spec-host-dma`）；可执行镜像的格式（将由 `spec-exe-format` 定义）；固件的内部实现。本文档只在需要时说明它们对 host 可见的部分。
+下列内容不在本文档范围内：PCIe 链路、配置空间、BAR0 的全局寄存器和 MSI-X 机制本身（`spec-pcie`）；DMA 引擎的内部结构（`spec-host-dma`）；可执行镜像的格式（将由 `spec-exe-format`（待写） 定义）；固件的内部实现。本文档只在需要时说明它们对 host 可见的部分。
 
 ### 1.2 模型
 
@@ -62,7 +62,7 @@ flowchart LR
 | SQE / CQE | 提交队列条目（64 B）/ 完成队列条目（16 B） |
 | CID | 命令标识，由驱动分配，在完成记录中返回 |
 | 相位位 | CQE 中的一位，每绕环一圈翻转一次，驱动据此判断条目是否是新的 |
-| 设备物理地址 | 设备内部地址空间中的地址，宽度 `addr.device_pa_bits`（TBD，默认 40 位） |
+| 设备物理地址 | 设备内部地址空间中的地址，宽度 `addr.device_pa_bits` = 40 位；地址空间的划分见 `spec-address-map` |
 | 总线地址 | host 侧的 PCIe 地址，即驱动交给设备的 DMA 地址，64 位 |
 
 ### 1.4 约定
@@ -592,6 +592,14 @@ GET_FEATURE 的结果放在 CQE 的 RESULT_LO。
 |---|---|---|---|
 | 0x01 | INT_COALESCE（按上下文） | [7:0] THR：累积多少条完成记录后中断，0 视为 1；[15:8] TIME：第一条未通知的完成记录写出后最多等多久就中断，单位 10 µs，0 表示不等待 | THR = 1，TIME = 0 |
 | 0x02 | ARB_WEIGHT（按上下文） | [3:0] 同一优先级内的调度权重 1 – 15，0 视为 1 | 1 |
+| 0x03 | DEBUG_WINDOW（全局，CDW10 [15:8] 忽略） | [0] EN：开启 BAR2 调试窗口（`spec-pcie` §7.3）。[31:1] RsvdZ | 0 |
+
+DEBUG_WINDOW 的规则：
+
+- 只能经管理队列设置（管理队列只供内核驱动使用，§1.3）。开启后 host 可以读写任意设备内存，绕过上下文隔离，驱动不得把它开放给不可信的用户。
+- SET_FEATURE 完成时，新状态已经生效：`DEV_STATUS.DEBUG_WIN` 已等于 EN。关闭时，完成之前到达的 BAR2 访问按开启状态处理，之后到达的按关闭处理。
+- GET_FEATURE 返回实际状态。熔丝禁止调试时，SET_FEATURE 写 EN = 1 以 ACCESS_VIOLATION 失败，GET_FEATURE 返回 0。保留位不为 0 时以 INVALID_FIELD 失败。
+- 设备复位、热复位、FLR 后为 0。
 
 ### 9.8 GET_LOG（0x08）
 
@@ -784,7 +792,7 @@ stateDiagram-v2
 | COPY、FILL、LOAD_PROGRAM、LAUNCH 中的设备地址 | 整个范围落在本上下文一个区间内，且权限满足要求 | ACCESS_VIOLATION，不执行 |
 | SIGNAL_EVENT、WAIT_EVENT 的事件编号 | 在本上下文的事件权限内 | ACCESS_VIOLATION |
 | 程序句柄 | 属于本上下文 | PROGRAM_NOT_FOUND |
-| 程序执行期间的设备内存访问 | 应限制在本上下文带 X 权限的区间内，越界时 LAUNCH 以 PROGRAM_FAULT 结束（TBD：取决于 Tile 是否实现地址检查；设备是否支持见 IDENTIFY 的 FEATURES[1]） | PROGRAM_FAULT |
+| 程序执行期间的设备内存访问 | 限制在本上下文带 X 权限的区间内，越界时 LAUNCH 以 PROGRAM_FAULT 结束。由 Compute Tile 网络接口的执行期区间检查实现（`spec-address-map` §5.2），IDENTIFY 的 FEATURES[1] 为 1。v0.1 中不同上下文的 LAUNCH 按顺序执行，信任边界见 `spec-address-map` §5.1 | PROGRAM_FAULT |
 | SQE 的保留字段 | 必须为 0 | INVALID_FIELD |
 
 设备**不检查** host 侧的地址：DPTR、SGL、队列地址都由驱动负责。host 内存的隔离依赖 host 的 IOMMU。
@@ -910,7 +918,7 @@ A 的 SIGNAL_EVENT 在 LAUNCH 之后，且 CONCURRENT = 0，因此计数器增�
 | `hdi.sq_prefetch` | 8（TBD） | 每个上下文预取的 SQE 上限 |
 | `hdi.error_log_entries` | 64 | 错误日志条目数 |
 | `hdi.ready_timeout` | 2 s（`HDI_CAP_LO.TO` = 4） | 控制器使能、复位的最长时间 |
-| `addr.device_pa_bits` | TBD，默认 40 | 设备物理地址宽度 |
+| `addr.device_pa_bits` | 见 `spec-address-map` §10 | 设备物理地址宽度 |
 
 ---
 
@@ -951,7 +959,6 @@ A 的 SIGNAL_EVENT 在 LAUNCH 之后，且 CONCURRENT = 0，因此计数器增�
 
 | 事项 | 当前默认 | 影响 |
 |---|---|---|
-| 程序执行期间的设备内存地址检查 | 应支持，由 FEATURES[1] 报告 | §11.3、§11.4，需要 Tile 的硬件支持 |
 | 设备内部程序能否更新事件计数器 | 未定 | §10.9 |
 | PROGRAM_FAULT 的出错信息格式 | v0.1 不定义 | §10.7 |
 | 统计日志（LID 0x02）的格式 | v0.1 不支持 | §9.8 |
