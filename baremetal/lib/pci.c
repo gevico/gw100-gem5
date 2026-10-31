@@ -124,3 +124,22 @@ bm_pci_enable(bm_pci_bdf_t d, uint16_t bits)
     uint16_t cmd = bm_pci_cfg_read16(d, BM_PCI_COMMAND);
     bm_pci_cfg_write16(d, BM_PCI_COMMAND, cmd | bits);
 }
+
+/**
+ * 沿 capability 链查找 id，返回它在配置空间中的偏移；找不到返回 0。
+ * 链表过长（成环）时也返回 0。
+ */
+unsigned
+bm_pci_find_cap(bm_pci_bdf_t d, uint8_t id)
+{
+    if (!(bm_pci_cfg_read16(d, BM_PCI_STATUS) & BM_PCI_STATUS_CAP_LIST))
+        return 0;
+    unsigned off = bm_pci_cfg_read8(d, BM_PCI_CAP_PTR) & ~3u;
+    /* 标准配置空间最多容纳 48 个 capability，超过即视为成环 */
+    for (int n = 0; off >= 0x40 && n < 48; n++) {
+        if (bm_pci_cfg_read8(d, off) == id)
+            return off;
+        off = bm_pci_cfg_read8(d, off + 1) & ~3u;
+    }
+    return 0;
+}
