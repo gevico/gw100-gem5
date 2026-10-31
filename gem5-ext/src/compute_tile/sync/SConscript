@@ -1,4 +1,0 @@
-Import('*')
-
-SimObject('SyncUnit.py', sim_objects=['Gw100SyncUnit'])
-Source('sync_unit.cc')

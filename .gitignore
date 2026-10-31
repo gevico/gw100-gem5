@@ -6,7 +6,6 @@ __pycache__/
 
 # 构建产物与测试输出（/build/ 是测试包；gem5 自己的 build/ 由子模块的 .gitignore 管理）
 /build/
-gem5-ext/func-core/build/
 
 # Claude Code 的个人配置（项目共享配置 .claude/settings.json 入库）
 .claude/settings.local.json
@@ -16,3 +15,7 @@ gem5-ext/func-core/build/
 .idea/
 .vscode/
 *.swp
+
+# clangd：.clangd 由 make vscode-config 生成，.cache/ 是索引缓存
+.clangd
+.cache/

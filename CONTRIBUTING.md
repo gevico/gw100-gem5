@@ -19,7 +19,14 @@ git config user.name  "<姓名或账号名>"         # 不要求真实姓名；D
 git config user.email "<邮箱>"
 ```
 
-开发环境、构建和测试命令见 `CLAUDE.md` 的"常用命令"一节。
+调研资料在子模块 `reference/`（约 170 MB），默认不拉取。需要查资料、写 SPEC 时，在本克隆中开启一次，以后 `git submodule update` 会一并更新它：
+
+```sh
+git config submodule.reference.update checkout
+git submodule update --init reference
+```
+
+构建 gem5 见 `gem5-ext/README.md`。
 
 不得用 `--no-verify` 绕过钩子。钩子误判时，请修钩子，并把修复单独提交（scope 用 `git`）。
 
@@ -34,13 +41,13 @@ git config user.email "<邮箱>"
 | `main` | 唯一的长期分支 | 任何时候都能构建、测试全部通过。不得直接推送，只能经评审后合并；保持线性历史，不产生合并提交 |
 | `<类型>/<scope>-<简述>` | 日常开发 | 从最新的 `main` 拉出，生命周期尽量不超过一周，合并后删除 |
 | `exp/<简述>` | 设计空间探索 | 可以长期存在，不要求测试通过，但不得直接合入 `main`。结论先写进 SPEC 或 ADR，再把需要保留的模型改动整理成正式分支合入 |
-| `release/spec-v<主>.<次>` | 交付版本冻结（对应 `docs/README.md` §4 的 v0.5 / v0.8 / v1.0） | 只接受修正。每个修正也必须合回 `main` |
+| `release/spec-v<主>.<次>` | 交付版本冻结（如 v0.5 / v0.8 / v1.0） | 只接受修正。每个修正也必须合回 `main` |
 
 ### 2.2 命名
 
 - 全小写，单词之间用连字符；`<类型>` 与提交类型（§3.3）相同，`<scope>` 取自 `tools/git-hooks/scopes.txt`；
 - 有工单号时放在类型后面，例如 `fix/123-ct-dma-backpressure`；
-- 例子：`feat/noc-mesh-xy`、`fix/ct-dma-backpressure`、`spec/spec-110-local-window`、`docs/contributing`、`exp/dma-outstanding-sweep`。
+- 例子：`feat/noc-mesh-xy`、`fix/ct-dma-backpressure`、`spec/spec-address-map-local-window`、`docs/contributing`、`exp/dma-outstanding-sweep`。
 
 ### 2.3 同步与改写历史
 
@@ -63,7 +70,7 @@ git config user.email "<邮箱>"
 
 - **一个提交只做一件逻辑上完整的事。** 格式调整、重命名、移动文件，要与逻辑修改分开提交。
 - **每个提交都必须能构建，测试全部通过。** 这样才能用 `git bisect` 定位问题。
-- **生成物和源文件放在同一个提交里。** 例如改了 `spec-src/isa/*.yaml`，就同时提交重新生成的 `isa_defs.*`。不得手改生成物。
+- **生成物和源文件放在同一个提交里。** 例如改了 ISA 的单一真源 YAML，就同时提交重新生成的 `isa_defs.*`。不得手改生成物。
 - **不得提交：** 构建产物、虚拟环境、测试包输出、个人编辑器配置、密钥。`.gitignore` 已覆盖常见情况。超过 5 MB 的文件先在评审中说明理由。
 - **不得修改 `gem5/` 子模块的内容。** 确实需要改 gem5 本体时，做成补丁放进 `gem5-ext/patches/`，并注明原因。升级 gem5 时，把子模块指针的变更单独提交，scope 用 `gem5`。
 
@@ -100,13 +107,13 @@ git config user.email "<邮箱>"
 |---|---|
 | `feat` | 新功能：新的硬件模型、新指令、新工具能力 |
 | `fix` | 修正错误，包括模型与真实硬件不符的错误 |
-| `spec` | SPEC 文档或单一真源（`arch_params.yaml`、`isa/*.yaml`）的内容变更 |
+| `spec` | SPEC 文档或单一真源的内容变更 |
 | `perf` | **只指**仿真器和工具自身运行得更快。被测硬件的性能变化不属于 `perf`，要用 `feat`、`fix` 或 `spec`，并遵守 §5 |
 | `refactor` | 不改变行为的代码重构 |
 | `style` | 只改格式，例如 clang-format、Black |
 | `test` | 只增改测试 |
 | `docs` | 手册、README、注释等文档 |
-| `build` | 构建系统、Dockerfile、依赖、gem5 子模块 |
+| `build` | 构建系统、依赖、gem5 子模块 |
 | `ci` | 持续集成配置 |
 | `chore` | 其他杂项 |
 | `revert` | 撤销之前的提交。正文写明被撤销提交的哈希和撤销原因 |
@@ -117,7 +124,7 @@ git config user.email "<邮箱>"
 以下改动属于破坏兼容性，标题必须带 `!`，并加 `BREAKING CHANGE:` 脚注说明迁移方法：
 
 - ISA 的编码或语义；
-- `arch_params.yaml` 里参数的名字或语义；
+- 单一真源里参数的名字或语义；
 - 地址映射；
 - Host 接口的命令记录、完成记录和管理 Tile 寄存器；
 - 测试包格式。
@@ -136,18 +143,6 @@ git config user.email "<邮箱>"
 
 ### 3.6 示例
 
-以下是真实发生过的改动：
-
-```
-fix(mem-tile): LPDDR5X 的 tCL 不再随时钟缩短
-
-从 LPDDR5-6400 派生 8533 的时序时，把 tCL 也按 6400/8533 缩短了，
-读延迟凭空少了约 5 ns。JEDEC 的 RL 以 CK 计，频率提高时 CK 数随之
-增加，纳秒值大致不变，所以 tCL 保持 21.25 ns，确切值待按 JEDEC 核对。
-
-L1 各用例变慢 20~28 个周期，结果仍与 golden 逐位一致。
-```
-
 ```
 feat(ct-ctrl,mgmt): SRAM 操作数改为 Tile 相对寻址
 
@@ -161,14 +156,6 @@ Tile 的全局地址。指令中落在本地窗口 local_sram_base 内的地址�
 测试：L0 97/97，L1 11/11。16 Tile SPMD 用例的派发条目由 80 降到 50。
 
 Idealization: add #5
-```
-
-下面这个是虚构的破坏性改动，只用来演示格式：
-
-```
-spec(isa)!: 示例——VEC_SCALAR 的立即数改为 FP16
-
-BREAKING CHANGE: 汇编器和编译器按新的 imm 编码生成指令；isa 升到下一个版本。
 ```
 
 ### 3.7 DCO 签署
@@ -192,23 +179,14 @@ Co-Authored-By: 李四 <lisi@example.com>
 Signed-off-by: 张三 <zhangsan@example.com>
 ```
 
-**检查**：
-- commit-msg 钩子：签署者的姓名或邮箱像 AI（含 Claude、Anthropic、Copilot、OpenAI、ChatGPT、GPT、Codex、Gemini）时拒绝；在 AI 助手的会话里提交时（例如 Claude Code 会设置 `CLAUDECODE=1`），只要带有 `Signed-off-by` 就拒绝。
-- pre-push 钩子：推送到 `main` 或 `release/*` 的提交缺少人类签署时拒绝。
-- 本地合并前手动检查：`tools/git-hooks/pre-push --check-dco main..<分支>`。
-- 钩子识别不了"AI 冒用人类姓名签署"，这一点靠本规则和评审约束。识别规则在 `tools/git-hooks/dco.py`，两个钩子共用。
-
-现状：本规则建立之前进入 `main` 的提交都没有签署。要不要补签由仓库维护者决定；补签只能由人类自己执行（`git rebase --signoff --root`）。这会改写历史，只能在推送到任何远端之前做。
+commit-msg 和 pre-push 钩子会拦住明显的违规（识别规则见 `tools/git-hooks/dco.py`），本地合并前可以用 `tools/git-hooks/pre-push --check-dco main..<分支>` 检查。AI 冒用人类姓名签署，钩子识别不了，靠本规则和评审约束。
 
 ### 3.8 不接受 AI 署名
 
 本仓库不接受 AI 署名为作者或共同作者。提交信息和合并请求描述里，不得出现 AI 的 `Co-Authored-By`，也不得出现"Generated with Claude Code"之类的署名行。改动由提交它、签署它的人类负责。
 
-- Claude Code 默认会自动加署名，本仓库已在 `.claude/settings.json` 中关闭（`attribution` 设为空，并为旧版本设了 `includeCoAuthoredBy: false`）。这份配置入库，对所有在本仓库使用 Claude Code 的人生效；个人配置 `.claude/settings.local.json` 不入库，不得在其中重新打开署名。
-- 使用其他 AI 助手时，也要关闭它的自动署名。
-- commit-msg 钩子会拒绝 AI 的 `Co-Authored-By` 和"Generated with Claude Code"署名行，识别规则与 §3.7 共用 `tools/git-hooks/dco.py`。
-
-现状：本规则建立之前的提交信息里都带有 Claude 的 `Co-Authored-By`。要不要清理由仓库维护者决定；清理需要改写历史，只能在推送到任何远端之前做。
+- 本仓库的 `.claude/settings.json` 已关闭 Claude Code 的自动署名，个人配置 `.claude/settings.local.json` 不得重新打开。用其他 AI 助手时，也要关闭它的自动署名。
+- commit-msg 钩子会拒绝 AI 的 `Co-Authored-By` 和"Generated with Claude Code"署名行。
 
 ---
 
@@ -235,12 +213,12 @@ Signed-off-by: 张三 <zhangsan@example.com>
 
 ### 4.3 评审人
 
-所有改动至少要有一名评审人通过。下列改动还需要相应团队评审：
+合并请求至少要有一名评审人批准。仓库 admin 合并时可以不等批准（GitHub 规则集为 admin 设置了经 PR 的豁免），但下列改动仍应先请相应团队评审：
 
-| 改动 | 必须参与评审 |
+| 改动 | 应参与评审 |
 |---|---|
-| `spec-src/isa/`、Host 接口记录、管理 Tile 寄存器 | 驱动团队、AI 编译器团队 |
-| `arch_params.yaml` 中软件可见的参数（地址映射、SRAM 容量、Tile 数等） | AI 编译器团队 |
+| ISA 单一真源、Host 接口记录、管理 Tile 寄存器 | 驱动团队、AI 编译器团队 |
+| 单一真源中软件可见的参数（地址映射、SRAM 容量、Tile 数等） | AI 编译器团队 |
 | 破坏性改动（§3.4） | 所有受影响团队 |
 | `docs/spec/` 中的某份 SPEC | 该 SPEC 的主要读者团队 |
 
@@ -252,30 +230,24 @@ Signed-off-by: 张三 <zhangsan@example.com>
 
 改动 `gem5-ext/` 时，合并请求里要逐项确认：
 
-- [ ] 新增的缓冲、队列、端口和在途请求数都有上限，容量取自 `arch_params.yaml`；
+- [ ] 新增的缓冲、队列、端口和在途请求数都有上限，容量取自单一真源；
 - [ ] 数据搬运和控制动作都花了时间。暂时做了理想化的，已经登记进 `gem5-ext/README.md` 的"理想化清单"，注明偏乐观还是偏悲观，并在提交里写了 `Idealization:` 脚注；
 - [ ] 如果改动让被测硬件的性能变好了，已写明对应的硬件代价（面积、功耗、复杂度）和依据（参考设计或推算）；
-- [ ] 测试基础设施（TestHost、后门加载、harness）的改动没有改变被测硬件的结构、容量和时序；
+- [ ] 未来的测试基础设施（全栈 E2E 平台）的改动没有改变被测硬件的结构、容量和时序；
 - [ ] 从参考设计派生的参数，只缩放了确实随时钟变化的量，以纳秒计的物理延迟没有跟着缩。
 
 ---
 
 ## 6. 提交前的检查
 
-在仓库根目录执行：
+> 设备级裸机测试已经建立（`baremetal/tests/`，2026-10-30）；全栈 E2E 测试方案尚未落地。
 
-```sh
-.venv/bin/python tools/isagen/gen.py --check   # 生成物是否最新
-make -C gem5-ext/func-core                     # 编出 L0 测试用的 libgw100fc.so
-.venv/bin/python -m pytest                     # 全部测试：L0 + harness 自检 + L1（L1 需要已编译的 gem5）
-```
-
-改了 `gem5-ext/src/` 或 SimObject 的 Python 参数之后，先重新构建 gem5。命令见 `CLAUDE.md`。
+合并前，生成物要是最新的，构建要通过，`make test` 要全部通过。改了 `gem5-ext/src/` 或 SimObject 的 Python 参数，先重新构建 gem5，见 `gem5-ext/README.md`。
 
 测试要求：
 
-- 测试统一放在仓库根目录的 `tests/`，按验证层次分目录（`l0_func_core/`、`l1_inst/` 等），不放进被测代码的目录。
-- 新指令要同时有 L0 用例（func-core 与 golden 逐位比对）和 L1 用例（端到端）。
+- 设备级测试写成裸机 test，放在 `baremetal/tests/`，每个 test 独立运行，共用 `baremetal/lib/` 的公共库；约定见 `baremetal/README.md`。全栈 E2E 测试的位置随新方案确定，旧的根目录 `tests/` 与 `l0_func_core/`、`l1_inst/` 布局不再沿用。
+- 设备模型的新功能要同时增加验证它的 test。
 - 修 bug 要先写一个能复现问题的测试。
 - 改了时序模型，要附上 L2 微基准或手算对比的结果，偏差在 ±5% 以内。暂时做不到的，在合并请求里说明原因。
 
@@ -285,20 +257,26 @@ make -C gem5-ext/func-core                     # 编出 L0 测试用的 libgw100
 
 - **C++ 和 Python** 遵循 gem5 的规范（`gem5/AGENTS.md`）：4 空格缩进，每行不超过 79 列，用 clang-format / Black 格式化。注释用中文，标识符用英文，注释密度与周围代码保持一致。
   - 现状：现有代码中有不少行超过 79 列，将用一个单独的 `style` 提交统一整改。整改之前，新增和修改的行就要符合要求。
-- **文档**：遵循 `docs/README.md` §7 的编写约定。参数只在单一真源中维护，文档里引用参数名，不写死数字。
+  - **每个成员和函数都要有注释**：C++ 的类、嵌套类和结构体中的每个成员（方法、数据成员、常量、枚举值），以及 C 代码（`baremetal/`）中的每个函数、宏函数、结构体字段、枚举值和文件作用域变量，都要在声明处用 Doxygen 风格的 `/** ... */` 写注释，说明它是什么，有单位或取值范围的写明；寄存器写明偏移和访问类型。
+  - **声明处与实现处的注释相同**：在头文件中声明、在 `.cc` 或 `.c` 中实现的函数，定义前放一份与声明处逐字相同的注释；修改其中一处时，必须同步修改另一处。函数体内的实现细节用 `//` 注释，不要与这份注释重复。
+- **文档**：
+  - 用 Markdown 写；框图用 Mermaid，时序图用 WaveDrom，包格式和位域用表格。
+  - 交付文档按 `docs/README.md` 分目录和命名：文件名就是文档 ID（`<类别>-<主题>.md`），例如 `docs/spec/compute/spec-matrix-engine.md`；新增文档先在 `tools/git-hooks/scopes.txt` 登记。
+  - "必须""应""可"分别对应 MUST、SHOULD、MAY，只在 SPEC 里使用；还没定的内容标 `TBD`。
+  - 参数只在单一真源中维护，文档里引用参数名，不写死数字。
+  - 引用调研资料写"代号 p.N"；写进 SPEC 的数字要回 PDF 原页核对；自己推算的标"推算"，跨资料对比得出的判断标"观察"。
+- **文件名不带版本号**：不要写 `isa-v0.yaml`、`spec-v2.md` 这样的名字。历史版本由 git 记录；需要标明版本时，写在文件内的 `version` 字段里，交付时再打 git 标签（§2.4）。
 
 ### 7.1 文件头注释
 
-每个**新增**的源文件都必须带文件头注释，格式参照 Doxygen。文件头的作用是让人和 agent 打开文件时，立刻知道它是什么、对应哪份规格。
+每个**新增**的源文件都必须带 Doxygen 风格的文件头注释，让人和 agent 打开文件就知道它是什么、对应哪份规格。
 
 **适用范围**：`gem5-ext/`、`tools/`、`tests/` 下的 C++ 文件（`.hh`、`.h`、`.cc`、`.cpp`、`.hpp`）和 Python 文件（`.py`）。下列文件不要求：
 - 生成文件，前几行注明了"请勿手改"；
 - `SConscript`、`Makefile` 等构建脚本；
 - `reference/`、`gem5/` 下的第三方内容。
 
-**模板**：[`tools/templates/`](tools/templates/)。新建文件时复制对应模板，替换掉全部占位符。
-
-C++ 的文件头是文件开头的第一个 `/** ... */` 块：
+新建文件时复制 [`tools/templates/`](tools/templates/) 里的模板，替换掉全部占位符。C++ 的文件头是文件开头的第一个 `/** ... */` 块，Python 的是模块 docstring，字段相同：
 
 ```cpp
 /**
@@ -307,19 +285,8 @@ C++ 的文件头是文件开头的第一个 `/** ... */` 块：
  *
  * 本地口直连本 Tile SRAM，远端口接 NoC，边读边写。
  *
- * @see SPEC-250, SPEC-320
+ * @see spec-tile-sync, spec-host-dma
  */
-```
-
-Python 的文件头是模块 docstring，字段相同；脚本的 shebang 行可以放在它前面：
-
-```python
-"""
-@file  harness.py
-@brief 算子测试框架：生成测试包、调用 gem5、读回结果并与 golden 比对
-
-@see MAN-060
-"""
 ```
 
 | 字段 | 要求 |
@@ -327,19 +294,20 @@ Python 的文件头是模块 docstring，字段相同；脚本的 shebang 行可
 | `@file` | 必填。只写文件名，不带路径，必须与实际文件名一致；改名时同步修改 |
 | `@brief` | 必填。一行中文，说明这个文件是什么，末尾不加句号。`.cc` 文件可以写"XXX 的实现" |
 | 详细说明 | 可选。与 `@brief` 之间空一行，写职责、关键设计取舍、与其他组件的关系、已知简化；不复述代码 |
-| `@see` | 有对应的 SPEC 或 MAN 时必填，写编号，多个用逗号分隔。纯工具或测试文件没有对应规格时可以省略 |
+| `@see` | 有对应的规格或手册时必填，写文档 ID（如 `spec-pcie`），多个用逗号分隔。纯工具或测试文件没有对应规格时可以省略 |
 
 **不写**：作者、日期、修改记录，因为 git 已经记录了这些，写在文件头里很快会过时；也不写版权和许可证声明。
 
-**检查**：`tools/git-hooks/pre-commit` 检查本次提交中新增的文件。重命名和修改已有文件不检查；改名时要同步修改 `@file`，这一点由评审把关。
+pre-commit 钩子只检查新增的文件；改名时要同步修改 `@file`，这一点由评审把关。
 
 ---
 
 ## 8. 第三方代码与资料
 
 - **gem5**：以子模块方式引入，固定在 `.gitmodules` 和子模块指针记录的 commit。规则见 §3.1。
-- **调研资料（`reference/`）**：仅供内部参考。
+- **调研资料（`reference/`）**：放在独立仓库 [`gevico/gw100-references`](https://github.com/gevico/gw100-references)，以子模块挂在 `reference/`（2026-10-21 拆出）。本项目是开源的，调研资料随仓库公开托管、对外分发（2026-10-18 确认）。资料的版权仍归原作者或出版方所有，引用时注明出处；新增资料只收官方或开放渠道发布的版本。
+  - 增改资料先在 `gw100-references` 合入，再在本仓库单独提交子模块指针的更新，scope 用 `reference`。
   - PDF 原件和转换出的图片直接入库，不用 Git LFS（2026-10-18 决定）。资料会永久留在 git 历史里，所以只收确有参考价值的资料，单个文件超过 5 MB 时，在合并请求里说明理由。
-  - Hailo 的文档标有 Confidential，不得外传；本仓库不得推送到任何公开的托管平台。
+  - Hailo 的文档每页标有 Confidential。这些文档取自 Hailo 官网公开下载的版本，维护者已确认可以随仓库公开（2026-10-18）。
   - `reference/hailo/hailort-drivers/` 是 GPL-2.0 代码，只能阅读，不得把其中的代码复制进我们的代码。
-  - 新增资料的流程见 `CLAUDE.md` 的"文档与资料约定"。
+  - 新增资料的流程见 `reference/README.md` 的"新增资料的方式"。

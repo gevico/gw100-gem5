@@ -1,0 +1,6 @@
+# config/capability/：Capability 基类与各 capability
+Import('*')
+
+# 标签供 gem5-ext/tests/unit/ 下的单元测试按组件引用源文件
+Source('pm_capability.cc', add_tags='gw100 pcie capability')
+Source('pcie_capability.cc', add_tags='gw100 pcie capability')

@@ -1,0 +1,12 @@
+# pcie/：Gw100PciDevice 外壳与 Gw100PcieFactory。
+# 目录树即组件树：每个子目录是一个组件节点，各自的 SConscript 只声明
+# 本目录的源文件；gem5 的 EXTRAS 会递归读取全部子目录。
+Import('*')
+
+SimObject('Gw100PciDevice.py',
+          sim_objects=['Gw100PciDevice', 'Gw100PrefetchMemBar'])
+
+Source('gw100_pci_device.cc')
+Source('pcie_factory.cc')
+
+DebugFlag('Gw100Pcie', 'GW100 PCIe endpoint 的寄存器与配置空间访问')

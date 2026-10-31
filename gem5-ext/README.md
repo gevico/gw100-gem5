@@ -1,49 +1,98 @@
 # gem5-ext：GW100 的 gem5 模型
 
-通过 `EXTRAS` 编译进上游 gem5（NULL 构建），不修改 `gem5/`。构建和测试命令见仓库根目录的 `CLAUDE.md`；完整的开发者指南将写成 MAN-060。
+通过 `EXTRAS` 编译进上游 gem5 的 ARM 构建（host 为 AArch64），不修改 `gem5/`。完整的开发者指南将写成 `man-gem5-dev`。
+
+## 构建
+
+命令都从仓库根目录开始执行。第一次构建是全量的，要十分钟以上；之后只改 gem5-ext 时，增量构建一两分钟。改了 C++ 或 SimObject 的 Python 参数之后要重新构建：`make gem-build`、`make run`、`make test` 会比较 `gem5-ext/src/` 下的源文件和 gem5 子模块的提交号，有变化才调用 scons，没有变化时直接跳过。改了 `PYTHON_CONFIG` 等构建选项时，用 `make -B gem-build` 强制构建。只改 `gem5-ext/configs/` 下的配置脚本不需要重新构建。
+
+```sh
+uv pip install --python .venv/bin/python -r requirements-dev.txt   # 含 scons
+make check        # 检查工具链、Python，以及 gem5.opt 链接的 Python 版本
+make gem-build    # 构建 gem5/build/ARM/gem5.opt 和 compile_commands.json
+```
+
+gem5 嵌入的 Python 要与 `.venv` 同一版本（3.12），`make gem-build` 会自动找对应的 `python3.12-config`。手工构建时注意：gem5 只从**环境变量**读 `PYTHON_CONFIG`，写成 scons 参数不生效，会退回系统默认的 `python3-config`（macOS 上是 Homebrew 的 3.14）：
+
+```sh
+cd gem5
+PYTHON_CONFIG=/opt/homebrew/bin/python3.12-config ../.venv/bin/scons \
+    --ignore-style build/ARM/gem5.opt EXTRAS="$PWD/../gem5-ext" -j8
+```
+
+Linux（以 Ubuntu 24.04 为例）：先装好 `build-essential m4 scons python3-dev`，这是 gem5 上游列出的最小依赖（`gem5/util/dockerfiles/ubuntu-24.04_min-dependencies/Dockerfile`），裸机程序另需 `gcc-aarch64-linux-gnu`，然后同样执行 `make gem-build`。
+
+## 建模约定
+
+建模的最高原则见 [CONTRIBUTING.md](../CONTRIBUTING.md) §5：模型是在模拟硬件，不能为了软件或测试的方便脱离实际。在此之下：
+
+- 代码全部放在 `gem5-ext/`，通过 `EXTRAS` 编进 gem5，不改 gem5 本体。确实绕不开的本体改动，做成补丁放进 `gem5-ext/patches/`，并注明原因。
+- **目录树即组件树**：一个目录是组件树上的一个节点，放这个节点自己的类；只有一个类的叶子组件作为文件放在父目录中，自身还有子组件的建子目录；被多个子树共用的组件放在它们的最近公共祖先下。组件之间的接口放在共同父节点的 `*_types.hh` 中。每个目录一个 `SConscript`，只声明本目录的源文件；单元测试不放在 `src/` 中（见"测试"）。目录关系因此就是组成关系；跨子树的引用（例如 `bar0/window_regs` 使用 `window/window_table`）只经头文件，并在类注释中写明。
+- 按张量指令粒度建模，不逐个 MAC 仿真。
+- ISA 不放进 `gem5/src/arch`：张量指令由 Tile 的 SimObject 自己译码；编码将由重建后的单一真源生成（旧的 `isa_defs.hh` 已随 func-core 删除）。
+- 片上网络计划用自研的轻量 2D Mesh，粒度是 DMA 传输，支持多播；Garnet 只用来交叉验证。Compute Tile 重建之前还没有片上互连。
+- DRAM 为 LPDDR5X-8533，从 gem5 自带的 LPDDR5-6400 派生，共 8 个 x16 通道。
 
 ## 组件与规格的对应
 
-| 目录 | SimObject / 模块 | 对应规格 | 状态（L1 = 端到端功能正确，未做时序校准） |
+| 目录 | SimObject / 模块 | 对应规格 | 状态 |
 |---|---|---|---|
-| `func-core/` | 数值规则、指令编解码、Tile 相对地址换算、向量运算（不依赖 gem5） | SPEC-110 / 230 / 240 | L0 通过 |
-| `src/compute_tile/sram/` | `Gw100BankedSram`：多端口、分 bank 的 Tile SRAM | SPEC-200 | L1 通过 |
-| `src/compute_tile/sync/` | `Gw100SyncUnit`：同步计数器 | SPEC-250 | L1 通过；跨 Tile 通知未实现 |
-| `src/compute_tile/vector/` | `Gw100VectorEngine` | SPEC-220 | L1 通过；VEC_BINARY / VEC_SCALAR |
-| `src/compute_tile/dma/` | `Gw100DmaEngine`：本地口直连 SRAM，远端口接 NoC | SPEC-250 / 320 | L1 通过 |
-| `src/compute_tile/controller/` | `Gw100TileController`：接收指令、换算本地窗口地址、分发到各单元、处理 NOP/SYNC/END | SPEC-200 / 230 | L1 通过 |
-| （待建）`src/compute_tile/matrix/` | 矩阵引擎 | SPEC-210 | 未开始 |
-| `src/mgmt_tile/` | `Gw100Dispatcher`：寄存器、doorbell、命令记录、集中派发 | SPEC-330 / 400 | L1 通过 |
-| （待建）`src/noc/` | 轻量 2D Mesh，支持多播；目前用 `NoncoherentXBar` 代替 | SPEC-120 | 未开始 |
-| `configs/lpddr5x.py` | LPDDR5X-8533 近似时序 | SPEC-300 | 待按 JEDEC 校准 |
-| `src/testhost/` | `Gw100TestHost`：代替 Host 的测试平台，不是硬件 | — | 可用 |
-| `src/common/` | `MemStreamer`：把字节段拆成访存请求，跟踪完成前缀 | — | 可用 |
+| `src/gw100/pcie/` | `Gw100PciDevice`：外壳，只负责 PciEndpoint 的入口、`mem_port`、功能级复位的编排和 checkpoint；`Gw100PcieFactory` 组装下列组件，接口见 `pcie_types.hh`。`status/`：`StatusUnit`（ERR/INT）；`window/`：`WindowTable`（BAR2 窗口）；`config/`：`ConfigSpace`，其下 `capability/`：`Capability` 基类、`PmCapability`、`PcieCapability`；`bar0/`：`Bar0Handler` 与 `GlobalRegs`、`WindowRegs`、`BootRegs`；`bar2/`：`Bar2Handler`、`DevmemBackend`、`Gw100PrefetchMemBar` | `spec-pcie` | 寄存器层完成，裸机测试 `pcie_config`、`pcie_regs`、`pcie_bar2`、`pcie_flr` 覆盖 F1–F7、F11/F12 的寄存器部分；`ConfigSpace`、`WindowTable`、`StatusUnit` 有单元测试。中断投递、MSI-X、DMA、HDI 未实现；新增的 BAR0 寄存器块实现 `RegBlock`，放进 `bar0/` 并在 factory 中登记即可 |
+| （待建）`src/noc/` | 轻量 2D Mesh，支持多播 | `spec-noc` | 未开始 |
 
-## 一次算子测试的流程
+当前只恢复了 PCIe endpoint 骨架；原来的 func-core、Compute Tile、管理 Tile 和 common 已删除，后续按新的 PCIe 模型逐步重建。
 
-1. 仓库根目录下 `tools/gw100_testkit/harness.py` 的 `OpTest` 分配张量、用 `asm.py` 写程序、用 `golden.py` 算期望值，然后在仓库根目录生成测试包 `build/op-tests/<名字>/package.json`。用例本身放在仓库根目录的 `tests/`。
-2. `configs/run_op.py` 读测试包，由 `chip.py` 搭建芯片，挂上 `Gw100TestHost`。
-3. TestHost 后门加载输入、程序和命令记录，然后写 `CMD_ADDR`、敲 `DOORBELL`，并轮询完成记录。
-4. 派发器取命令记录和程序并校验，包括每个目标 Tile 上的本地地址是否越界。之后按 tile_mask 下发指令：一条多播指令只占用一次指令通道。各 Tile 控制器收到指令后，先把本地窗口地址换算成本 Tile SRAM 的全局地址，再交给功能单元。所有 Tile 执行完 END 后，派发器写回完成记录。
-5. TestHost 后门读回输出，写 `result.json`，结束仿真。harness 读回结果与 golden 比对，并解析 `m5out/stats.txt`。
+## 测试
 
-测量窗口是完成记录里的 `start_tick` 到 `end_tick`：从派发器收到 doorbell 开始，到最后一个 Tile 执行完 END 为止。
+设备级测试是在 host 上运行的裸机程序，放在 `baremetal/tests/`，每个 test 独立运行，共用 `baremetal/lib/` 的公共库。在仓库根目录执行 `make test`，默认在 `timing` 和 `atomic` 两个 host 预设下各跑一遍；架构、约定和用法见 `baremetal/README.md`。
+
+组件的单元测试用 gem5 自带的 GTest，放在 `tests/unit/` 下，目录结构与 `src/` 一一对应，例如 `src/gw100/pcie/config/config_space.cc` 的测试是 `tests/unit/gw100/pcie/config/config_space.test.cc`。只为不依赖 gem5 `Packet` 的纯逻辑组件写单元测试，例如 `ConfigSpace`、`WindowTable`、`StatusUnit`。
+
+测试按标签引用被测的源文件，不写相对路径：组件的 `SConscript` 用 `Source(..., add_tags='gw100 pcie config')` 给源文件打标签，测试目录的 `SConscript` 用 `GTest(..., with_tag('gw100 pcie config'), with_tag('gem5 serialize'))` 取用。组件移动位置时测试不受影响。
+
+构建并运行一个测试（在 `gem5/` 目录，`PYTHON_CONFIG` 与 `make gem-build` 相同）：
+
+```sh
+scons --ignore-style EXTRAS=<仓库根目录>/gem5-ext \
+    build/ARM/gem5-ext/tests/unit/gw100/pcie/config/config_space.test.opt
+./build/ARM/gem5-ext/tests/unit/gw100/pcie/config/config_space.test.opt
+```
+
+全栈 E2E 测试（应用 → runtime → 驱动 → Linux → PCIe → 设备）的方案尚未落地。原有的 `tests/l1_inst/`、L0 单元测试、TestHost 和 testkit 已于 2026-10-24 删除，不要恢复。
+
+## 开发注意
+
+- PCIe endpoint 继承 `PciEndpoint`，Host 使用 `VExpress_GEM5_Foundation` 的 `GenericArmPciHost`；BAR0 为 1 MiB，BAR2 为 64 MiB（spec-pcie §5）。
+- `VExpress_GEM5_Foundation` 没有接 GICv3 ITS，目前只能用 INTx；做 MSI/MSI-X 时要换成 `VExpress_GEM5_V2` 或加上 ITS。
+- 旧的 TestHost 和 device-side 配置已删除；GW100 现在走 ARM board 的 VExpress PCIe。
 
 ## 理想化清单
 
 原则见仓库根目录 `CLAUDE.md`：模型是在模拟硬件，凡是与真实硬件不一致的简化都必须登记在这里。"方向"指这项简化让性能结果偏乐观还是偏悲观。L2 校准前要先消除标为"高"的项，否则校准的是一个不符合物理的模型。
 
+编号沿用，不复用；`Idealization:` 脚注引用的是这里的编号。
+
 | # | 位置 | 现状 | 方向 | 优先级 | 计划 |
 |---|---|---|---|---|---|
-| 1 | NoC | 用一个 `NoncoherentXBar` 代替 2D Mesh：没有多跳延迟，也没有沿 XY 路径的链路竞争 | 乐观 | 高 | 自研轻量 Mesh（SPEC-120） |
-| 2 | Host 通路 | Host 内存直接挂在片上交叉开关上，延迟 100 ns，没有 PCIe Gen4 x4 的带宽和往返延迟。TestHost 轮询完成记录也要经过片上交叉开关 | 乐观 | 高 | 建 PCIe Tile，Host 内存放到它后面；TestHost 接在 Host 一侧 |
-| 3 | DMA 暂存缓冲 | `buf` 按整次传输的大小分配，读方从不因写方慢而被反压 | 写比读慢时乐观 | 高 | 加有限暂存缓冲参数，读方受缓冲剩余空间限制 |
-| 4 | 向量引擎 | 先把操作数整块读进内部缓冲，再计算，再整块写回。缓冲大小不受限，读、算、写之间也没有重叠 | 结构不符；大张量隐含无限缓冲，时序上又没有流水重叠 | 高 | 改成有限缓冲的流式流水线，缓冲大小进 `arch_params` |
-| 5 | 派发器 | 整个程序先读进一块不限大小的缓冲，再零时间完成译码和校验（END 检查、本地地址越界检查），然后才开始派发 | 校验免费，偏乐观；必须等整个程序取完才开始，偏悲观 | 中 | 有限指令缓冲、流式取指、译码要花周期。越界改为 Tile 换算地址时报错，再由派发器结束命令；整程序检查移到软件（汇编器、编译器、驱动） |
-| 6 | 指令多播 | 一条多播指令无论发给多少个 Tile，都只占用一次指令通道 | 依赖物理通道 | 中 | 随"指令通道"决策（docs/README §8.2）定下物理形态，再按该形态计时 |
-| 7 | DRAM 时序 | LPDDR5X-8533 由 LPDDR5-6400 派生，tCL 暂沿用 6400 的纳秒值 | 未知 | 中 | 按 JEDEC LPDDR5X 规范逐项核对 |
-| 8 | 向量引擎吞吐 | 各种数据类型都按 32 元素/周期计 | 低精度偏悲观 | 低 | 在 SPEC-220 中定义各类型吞吐后再改 |
+| 2 | PCIe 通路 | VExpress 的 PCIe 是功能模型，没有 Gen4 x4 的链路时序和带宽；BAR 访问固定花 `pioDelay` | 未知 | 中 | 加 PCIe 链路 shim |
+| 9 | BAR2 窗口 | 经 `mem_port` 以功能访问读写设备内存，固定花 `bar2_latency`（200 ns），不与设备内部的其他访问竞争 | 乐观 | 中 | 性能建模阶段改为 timing 访问 |
+| 10 | 设备内存 | 用 `SimpleMemory` 代替 LPDDR5X（32 GiB），没有 DRAM 的时序、带宽和通道 | 乐观 | 高（DMA 接入后） | 接入 LPDDR5X 控制器模型 |
+| 11 | 启动寄存器 | 上电即处于 STAGE 4 且 `FW_READY`，相当于固件已在运行并开启了 BAR2 调试窗口（`DEV_STATUS.DEBUG_WIN` = 1）；启动窗口、固件加载与校验不建模，`FW_SIZE` 的写入被忽略 | 乐观 | 低 | 管理 Tile 与固件建模后 |
+| 12 | FLR、D3hot→D0 | 复位立即完成，不占时间 | 乐观 | 低 | 加复位时间参数 |
+| 13 | PCIe capability | 只实现 PM 和 PCI Express；AER、DSN、LTR、MSI-X 未实现，Device Status 的错误位和 Transactions Pending 从不置位；中断只更新 `INT_STATUS`，不投递 | 功能缺失 | 中 | MSI-X 与 INTx 在中断阶段实现，AER 随错误处理实现 |
+
+随旧模型删除而失效（2026-10-24），重建对应组件时不得重犯：
+
+| # | 原位置 | 当时的理想化 | 重建时的要求 |
+|---|---|---|---|
+| 1 | NoC | 用 `NoncoherentXBar` 代替 2D Mesh，没有多跳延迟和链路竞争 | 自研轻量 Mesh（`spec-noc`） |
+| 3 | DMA 暂存缓冲 | 按整次传输大小分配，读方从不被反压 | 有限暂存缓冲，读方受剩余空间限制 |
+| 4 | 向量引擎 | 操作数整块读入不限大小的缓冲，读、算、写不重叠 | 有限缓冲的流式流水线，缓冲大小进架构参数 |
+| 5 | 派发器 | 整个程序读进不限大小的缓冲，零时间译码和校验 | 有限指令缓冲、流式取指，译码花周期；整程序检查移到软件 |
+| 6 | 指令多播 | 多播指令无论发给多少 Tile 都只占一次指令通道 | 定下指令通道的物理形态后，按该形态计时 |
+| 7 | DRAM 时序 | LPDDR5X-8533 由 LPDDR5-6400 派生，tCL 沿用 6400 的纳秒值 | 按 JEDEC LPDDR5X 规范逐项核对 |
+| 8 | 向量引擎吞吐 | 各数据类型都按 32 元素/周期计 | 按 `spec-vector-engine` 定义的各类型吞吐 |
 
 已消除：
-- 2026-10-18：DRAM 容量随测试缩小，器件规格也跟着变。现在只取自 `arch_params`。
+- 2026-10-18：DRAM 容量随测试缩小，器件规格也跟着变。现在只取自架构参数。
 - 2026-10-18：派生 LPDDR5X 时把 tCL 也按时钟缩短了，让 DRAM 延迟凭空变小。现在 tCL 保持纳秒值不变。
