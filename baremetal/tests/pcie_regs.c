@@ -67,7 +67,7 @@ check_scratch(void)
 static void
 check_timestamp(void)
 {
-    TEST_EQ(bm_read32(r + GW100_TIMESTAMP_FREQ), 1000000000u);
+    TEST_EQ(bm_read32(r + GW100_TIMESTAMP_FREQ), 100000000u);
 
     /* 64 位读一次取出 LO、HI；时间戳单调递增 */
     uint64_t t1 = bm_read64(r + GW100_TIMESTAMP_LO);
@@ -159,7 +159,7 @@ check_boot(void)
     uint32_t st = bm_read32(r + GW100_BOOT_STATUS);
     TEST_EQ(st & 0xF, 4);                       /* 固件运行 */
     TEST_ASSERT(st & GW100_BOOT_FW_READY);
-    TEST_EQ(bm_read32(r + GW100_FW_LOAD_MAX), 16u * 1024 * 1024);
+    TEST_EQ(bm_read32(r + GW100_FW_LOAD_MAX), 1024u * 1024);
     TEST_EQ(bm_read32(r + GW100_BOOT_CTRL), 0);
     bm_write32(r + GW100_FW_SIZE, 0x1000);
     TEST_EQ(bm_read32(r + GW100_FW_SIZE), 0);

@@ -47,8 +47,8 @@ constexpr uint32_t BootStatusReady = 4u | (1u << 8);
 /** DEV_STATUS 的 DEBUG_WIN 位：固件已开启 BAR2 调试窗口 */
 constexpr uint32_t DevStatusDebugWin = 1u << 17;
 
-/** 允许 host 写入的最大固件大小（暂定） */
-constexpr uint32_t FwLoadMax = 16 * 1024 * 1024;
+/** 启动窗口与镜像大小的上限 mgmt.fw_load_max（spec-mgmt-tile §4.1） */
+constexpr uint32_t FwLoadMax = 1024 * 1024;
 
 /** off 是否在 list 中 */
 template <size_t N>
