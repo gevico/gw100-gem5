@@ -82,6 +82,8 @@ BMTEST = $(PYTHON) tools/bmtest.py --gem5 gem5/$(GEM5_TARGET) --config $(GEM5_CO
 CLANGD_CONFIG := .clangd
 VSCODE_SETTINGS := .vscode/settings.json
 VSCODE_CDB := gem5/$(GEM5_CDB)
+# 联合调试时负载一侧用的 aarch64 gdb
+AARCH64_GDB ?= $(shell command -v aarch64-linux-gnu-gdb 2>/dev/null || command -v gdb-multiarch 2>/dev/null)
 
 .DEFAULT_GOAL := help
 .PHONY: all run test gem-build FORCE baremetal-build vscode-config commit-check clean check format help
@@ -120,6 +122,9 @@ vscode-config:
 		> baremetal/$(CLANGD_CONFIG)
 	@echo "已生成 $(CLANGD_CONFIG)、baremetal/$(CLANGD_CONFIG)"
 	@$(PYTHON) tools/vscode_settings.py $(VSCODE_SETTINGS)
+	@$(PYTHON) tools/vscode_launch.py --vscode-dir $(dir $(VSCODE_SETTINGS)) \
+		--gem5 $(GEM5_TARGET) --elf-dir $(BAREMETAL_DIR) --gdb "$(AARCH64_GDB)" \
+		$(if $(filter command line,$(origin TEST)),--test $(TEST))
 	@test -f $(VSCODE_CDB) || echo "[WARN] 还没有 $(VSCODE_CDB)；运行 make gem-build 生成"
 
 baremetal-build:
@@ -216,7 +221,7 @@ help:
 	@echo "  gem-build        gem5-ext 源码或 gem5 子模块有变化时，构建 gem5/$(GEM5_TARGET) 和编译数据库；"
 	@echo "                   make -B gem-build 强制构建（改了构建选项时用）"
 	@echo "  baremetal-build  构建全部裸机测试（调用 baremetal/Makefile）"
-	@echo "  vscode-config    生成 .clangd 和 baremetal/.clangd，关闭 cpptools IntelliSense"
+	@echo "  vscode-config    生成 .clangd、联合调试配置，关闭 cpptools IntelliSense（TEST= 指定 test）"
 	@echo "  commit-check     检查暂存文件头、最近提交信息和 DCO"
 	@echo "  check            检查 macOS、编译工具链、Python 和目录"
 	@echo "  format           用 gem5/.clang-format 格式化 gem5-ext 的 C++ 文件"
