@@ -59,10 +59,10 @@ class Gw100PciDevice(PciEndpoint):
     )
 
     devmem_base = Param.Addr(0x0, "设备内存的起始设备物理地址")
-    devmem_size = Param.MemorySize("8GiB", "设备内存大小")
+    devmem_size = Param.MemorySize("32GiB", "设备内存大小")
     device_pa_bits = Param.Unsigned(40, "设备物理地址宽度")
 
-    timestamp_hz = Param.UInt32(1000000000, "设备时间戳频率，Hz")
+    timestamp_hz = Param.UInt32(100000000, "设备时间戳频率，Hz")
     link_speed = Param.UInt8(4, "当前链路速率：1 = Gen1 … 4 = Gen4")
     link_width = Param.UInt8(4, "当前链路宽度")
 
