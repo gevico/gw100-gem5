@@ -2,3 +2,7 @@
 Import('*')
 
 Source('config_space.cc')
+
+GTest('config_space.test', 'config_space.test.cc', 'config_space.cc',
+      'capability/pm_capability.cc', 'capability/pcie_capability.cc',
+      with_tag('gem5 serialize'))

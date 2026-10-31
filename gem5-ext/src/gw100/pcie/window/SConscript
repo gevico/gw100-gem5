@@ -2,3 +2,6 @@
 Import('*')
 
 Source('window_table.cc')
+
+GTest('window_table.test', 'window_table.test.cc', 'window_table.cc',
+      with_tag('gem5 serialize'))
