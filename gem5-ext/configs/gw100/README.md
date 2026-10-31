@@ -6,19 +6,21 @@
 第一步验证：
 
 1. ARM 裸机程序能在 `VExpress_GEM5_Foundation` 上执行；
-2. PCIe 总线上已经挂了 `Gw100PciDevice`，裸机测试 `pcie_enum` 能枚举它并读写
-   BAR0 寄存器。裸机测试的架构见 `baremetal/README.md`。
+2. PCIe 总线上挂着 `Gw100PciDevice`，它的寄存器层按 `docs/spec/host/spec-pcie.md`
+   实现，由裸机测试 `pcie_*` 验证。裸机测试的架构见 `baremetal/README.md`。
 
-设备目前只有配置空间、BAR0（4 KiB）和几个最小寄存器：
+设备目前已实现（寄存器的完整定义见 spec-pcie）：
 
-| BAR0 偏移 | 内容 |
+| 部分 | 内容 |
 |---|---|
-| `0x00` | VERSION，读回 `1` |
-| `0x04` | STATUS，当前读回 `0` |
-| `0x08` | CMD_ADDR（8 字节，可读写） |
-| `0x10` | DOORBELL（4 字节，可读写） |
+| 配置空间 | Vendor/Device ID 0x1234/0x1000（仿真用占位值）、Class 0x12、INTA；capability：PM（0x40）、PCI Express（0x50） |
+| BAR0（1 MiB） | 全局寄存器（0x0000）、BAR2 窗口配置（0x1000）、启动寄存器（0x4000，上电即就绪的桩）；其余块按保留处理 |
+| BAR2（64 MiB，64 位可预取） | 调试窗口：16 个 4 MiB 窗口，只能指向设备内存。启动窗口未建模，桩模型始终报告调试窗口已开启 |
+| 设备内存 | 8 GiB 的 `SimpleMemory`，作为设备的子对象，不在 host 地址映射里 |
+| 复位 | FLR、D3hot→D0 |
 
-没有 DMA、没有中断、没有命令/完成记录，也还没有驱动。
+还没有中断投递、MSI-X、DMA 和命令协议，也还没有驱动。相关的理想化见
+`gem5-ext/README.md` 的理想化清单 #9–#13。
 
 ## 构建 gem5
 
@@ -31,9 +33,9 @@
 
 ```sh
 make run                              # 按需构建 gem5 和裸机测试，运行 hello
-make run TEST=pcie_enum               # 改跑 baremetal/tests/pcie_enum.c
+make run TEST=pcie_regs               # 改跑 baremetal/tests/pcie_regs.c
 make run HOST=o3                      # 换成 O3 host 预设
-make run GEM5_OPTS="--debug-flags=PciDevice"   # gem5 本身的选项
+make run GEM5_OPTS="--debug-flags=Gw100Pcie"   # gem5 本身的选项，例如设备的调试输出
 make test                             # 批量运行全部裸机测试并汇总
 ```
 
@@ -112,7 +114,6 @@ for h in timing o3; do make run HOST=$h; done
 
 ## 下一步
 
-- 把 BAR0 接到派发器寄存器；
-- 加命令记录/完成记录和 DMA；
-- 加 legacy INTx，再考虑 MSI-X；
+- 中断：INTx 投递，MSI-X 表与消息发送；
+- Host DMA 引擎与命令协议（HDI）；
 - 把地址映射、BAR 和 ABI 常量从 `devices/gw100.py` 迁移到重建后的单一真源。
