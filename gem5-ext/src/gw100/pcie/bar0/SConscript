@@ -1,0 +1,7 @@
+# bar0/：Bar0Handler 与它登记的寄存器块
+Import('*')
+
+Source('bar0_handler.cc')
+Source('global_regs.cc')
+Source('window_regs.cc')
+Source('boot_regs.cc')
