@@ -24,7 +24,7 @@ Host DMA 引擎（下称 HDMA）负责在 host 内存和设备内存之间搬运
 - 寄存器；
 - 错误处理、复位、性能要求和验收标准。
 
-下列内容不在本文档范围内：PCIe 链路和配置空间（`spec-pcie`）；命令协议（命令队列、命令格式、上下文，`spec-hdi`）；设备内部的同步机制和片上网络的协议（将由 `spec-tile-sync`、`spec-noc` 定义）。本文档只在需要时说明 HDMA 与它们的接口。
+下列内容不在本文档范围内：PCIe 链路和配置空间（`spec-pcie`）；命令协议（命令队列、命令格式、上下文，`spec-hdi`）；设备内部的同步机制和片上网络的协议（将由 `spec-tile-sync`（待写）、`spec-noc`（待写） 定义）。本文档只在需要时说明 HDMA 与它们的接口。
 
 ### 1.2 使用模型
 
@@ -80,7 +80,7 @@ flowchart LR
 |---|---|
 | H2D | host 到设备：从 host 内存读，写入设备内存 |
 | D2H | 设备到 host：从设备内存读，写入 host 内存 |
-| 设备物理地址 | 设备内部地址空间中的地址，宽度 `addr.device_pa_bits`（TBD，默认 40 位） |
+| 设备物理地址 | 设备内部地址空间中的地址，宽度 `addr.device_pa_bits` = 40 位；地址空间的划分见 `spec-address-map` |
 | 总线地址 | host 侧的 PCIe 地址，即驱动交给设备的 DMA 地址，64 位 |
 | MPS / MRRS | PCIe 的最大载荷 / 最大读请求长度，由 host 在设备的 Device Control 寄存器中设置 |
 
@@ -336,7 +336,7 @@ HDMA 不假设 host 的 DMA 与 CPU cache 一致。驱动必须用操作系统�
 
 ### 7.1 位置
 
-HDMA 寄存器文件位于设备物理地址空间中的 `HDMA_BASE`（TBD），由固件读写。下表偏移都相对于 `HDMA_BASE`。
+HDMA 寄存器文件位于 `HDMA_BASE`，由固件经管理链路读写。`HDMA_BASE` 是管理 CPU 本地地址空间中主机接口寄存器区的起始（`spec-mgmt-tile` §3.3），HDMA 寄存器不在设备物理地址空间中（`spec-address-map` §4.4）。下表偏移都相对于 `HDMA_BASE`。
 
 ### 7.2 全局寄存器
 
@@ -508,8 +508,6 @@ H2D 带宽取决于 host 根复合体把读完成拆成多大，设备无法控�
 
 | 事项 | 当前默认 | 影响 |
 |---|---|---|
-| `HDMA_BASE` 在设备地址空间中的位置 | TBD | §7.1 |
-| 管理 Tile 的 SRAM 在设备地址空间中的位置与容量 | TBD | §3.1，描述符环的地址 |
 | D2H 暂存缓冲大小 | 16 KiB | §6，面积 |
 | 描述符预取深度 | 每通道 2 个 | §6 |
 | P4、P5 的数值 | 10%、200 ns | §9.2 |
@@ -532,5 +530,5 @@ H2D 带宽取决于 host 根复合体把读完成拆成多大，设备无法控�
 | `hdma.max_outstanding_reads` | 64 | §6 |
 | `hdma.completion_buffer` | 32 KiB（推算） | §6 |
 | `hdma.d2h_buffer` | 16 KiB（TBD） | §6 |
-| `addr.device_pa_bits` | TBD，默认 40 | §1.3 |
+| `addr.device_pa_bits` | 见 `spec-address-map` §10 | §1.3 |
 
