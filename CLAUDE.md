@@ -31,7 +31,7 @@ GW100：面向端侧大模型推理的数据流架构 ASIC，以 PCIe 设备接�
 - 单一真源重建后，改 ISA YAML 要运行 `tools/isagen/gen.py`，生成物和 YAML 放在同一个提交里。
 - 新建源文件时，复制 `tools/templates/` 里的模板写文件头（`CONTRIBUTING.md` §7.1）。文件名不带版本号。
 - 改了 gem5-ext 的 C++ 或 SimObject 参数，先重新构建 gem5（`gem5-ext/README.md` 的"构建"）。
-- 测试：设备级裸机测试放在 `baremetal/tests/`，用 `make test` 运行，约定见 `baremetal/README.md`；改了设备模型或配置要跑一遍。全栈 E2E 测试方案尚未落地，不要恢复旧的根目录 `tests/` 入口，也不要用旧的 pytest 命令。
+- 测试：设备级裸机测试放在 `baremetal/tests/`，用 `make test` 运行，约定见 `baremetal/README.md`；改了设备模型或配置要跑一遍。组件的 GTest 单元测试放在 `gem5-ext/tests/unit/`，目录与 `gem5-ext/src/` 对应，不和源文件放在一起，约定见 `gem5-ext/README.md` 的"测试"。全栈 E2E 测试方案尚未落地，不要恢复旧的根目录 `tests/` 入口，也不要用旧的 pytest 命令。
 - `reference/hailo/hailort-drivers/` 是 GPL-2.0 代码，只能阅读，不能复制进我们的代码。
 - 写进 SPEC 的数字要回 PDF 原页核对，自动转换的表格偶尔会错位。引用资料写"代号 p.N"，自己推算的标"推算"。
 
