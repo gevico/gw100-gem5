@@ -2,3 +2,6 @@
 Import('*')
 
 Source('status_unit.cc')
+
+GTest('status_unit.test', 'status_unit.test.cc', 'status_unit.cc',
+      with_tag('gem5 serialize'))
