@@ -48,7 +48,7 @@ GEM5_SCONS = cd gem5 && $(if $(PYTHON_CONFIG),PYTHON_CONFIG=$(PYTHON_CONFIG) )$(
 	-j$(JOBS)
 
 # 运行配置。GEM5_OPTS 给 gem5 本身（写在配置脚本之前），CONFIG_ARGS 给配置脚本。
-# 例：make run TEST=pcie_enum GEM5_OPTS="--debug-flags=PciDevice"
+# 例：make run TEST=pcie_regs GEM5_OPTS="--debug-flags=Gw100Pcie"
 BAREMETAL_DIR := build/gw100-baremetal
 TEST ?= hello
 BAREMETAL_ELF := $(BAREMETAL_DIR)/$(TEST).elf
