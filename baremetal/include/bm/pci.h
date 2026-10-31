@@ -22,7 +22,17 @@
 #define BM_PCI_CLASS_BASE       0x0B
 #define BM_PCI_HEADER_TYPE      0x0E
 #define BM_PCI_BAR0             0x10
+#define BM_PCI_CAP_PTR          0x34
 #define BM_PCI_INTERRUPT_PIN    0x3D
+
+/* Status 寄存器的位 */
+#define BM_PCI_STATUS_CAP_LIST  (1u << 4)
+
+/* Capability ID */
+#define BM_PCI_CAP_ID_PM        0x01
+#define BM_PCI_CAP_ID_MSI       0x05
+#define BM_PCI_CAP_ID_PCIE      0x10
+#define BM_PCI_CAP_ID_MSIX      0x11
 
 /* Command 寄存器的位 */
 #define BM_PCI_CMD_MEM          (1u << 1)
@@ -65,5 +75,11 @@ uintptr_t bm_pci_bar_assign(bm_pci_bdf_t d, unsigned bar);
 
 /* 置位 Command 寄存器中的 bits */
 void bm_pci_enable(bm_pci_bdf_t d, uint16_t bits);
+
+/**
+ * 沿 capability 链查找 id，返回它在配置空间中的偏移；找不到返回 0。
+ * 链表过长（成环）时也返回 0。
+ */
+unsigned bm_pci_find_cap(bm_pci_bdf_t d, uint8_t id);
 
 #endif /* BM_PCI_H */
