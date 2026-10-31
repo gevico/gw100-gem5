@@ -37,7 +37,7 @@ Linux（以 Ubuntu 24.04 为例）：先装好 `build-essential m4 scons python3
 
 | 目录 | SimObject / 模块 | 对应规格 | 状态 |
 |---|---|---|---|
-| `src/gw100/pcie/` | `Gw100PciDevice`：外壳，只负责 PciEndpoint 的入口、`mem_port`、功能级复位的编排和 checkpoint；`Gw100PcieFactory` 组装下列组件，接口见 `pcie_types.hh`。`status/`：`StatusUnit`（ERR/INT）；`window/`：`WindowTable`（BAR2 窗口）；`config/`：`ConfigSpace`，其下 `capability/`：`Capability` 基类、`PmCapability`、`PcieCapability`；`bar0/`：`Bar0Handler` 与 `GlobalRegs`、`WindowRegs`、`BootRegs`；`bar2/`：`Bar2Handler`、`DevmemBackend`、`Gw100PrefetchMemBar` | `spec-pcie` | 寄存器层完成，裸机测试 `pcie_config`、`pcie_regs`、`pcie_bar2`、`pcie_flr` 覆盖 F1–F7、F11/F12 的寄存器部分。中断投递、MSI-X、DMA、HDI 未实现；新增的 BAR0 寄存器块实现 `RegBlock`，放进 `bar0/` 并在 factory 中登记即可 |
+| `src/gw100/pcie/` | `Gw100PciDevice`：外壳，只负责 PciEndpoint 的入口、`mem_port`、功能级复位的编排和 checkpoint；`Gw100PcieFactory` 组装下列组件，接口见 `pcie_types.hh`。`status/`：`StatusUnit`（ERR/INT）；`window/`：`WindowTable`（BAR2 窗口）；`config/`：`ConfigSpace`，其下 `capability/`：`Capability` 基类、`PmCapability`、`PcieCapability`；`bar0/`：`Bar0Handler` 与 `GlobalRegs`、`WindowRegs`、`BootRegs`；`bar2/`：`Bar2Handler`、`DevmemBackend`、`Gw100PrefetchMemBar` | `spec-pcie` | 寄存器层完成，裸机测试 `pcie_config`、`pcie_regs`、`pcie_bar2`、`pcie_flr` 覆盖 F1–F7、F11/F12 的寄存器部分；`ConfigSpace`、`WindowTable`、`StatusUnit` 有单元测试。中断投递、MSI-X、DMA、HDI 未实现；新增的 BAR0 寄存器块实现 `RegBlock`，放进 `bar0/` 并在 factory 中登记即可 |
 | （待建）`src/noc/` | 轻量 2D Mesh，支持多播 | `spec-noc` | 未开始 |
 
 当前只恢复了 PCIe endpoint 骨架；原来的 func-core、Compute Tile、管理 Tile 和 common 已删除，后续按新的 PCIe 模型逐步重建。
@@ -45,6 +45,14 @@ Linux（以 Ubuntu 24.04 为例）：先装好 `build-essential m4 scons python3
 ## 测试
 
 设备级测试是在 host 上运行的裸机程序，放在 `baremetal/tests/`，每个 test 独立运行，共用 `baremetal/lib/` 的公共库。在仓库根目录执行 `make test`，默认在 `timing` 和 `atomic` 两个 host 预设下各跑一遍；架构、约定和用法见 `baremetal/README.md`。
+
+组件的单元测试用 gem5 自带的 GTest，测试文件与被测组件放在一起（`*.test.cc`），在组件目录的 `SConscript` 中用 `GTest(...)` 声明。只为不依赖 gem5 `Packet` 的纯逻辑组件写单元测试，例如 `src/gw100/pcie/` 的 `ConfigSpace`、`WindowTable`、`StatusUnit`。构建并运行一个测试（在 `gem5/` 目录，`PYTHON_CONFIG` 与 `make gem-build` 相同）：
+
+```sh
+scons --ignore-style EXTRAS=<仓库根目录>/gem5-ext \
+    build/ARM/gem5-ext/src/gw100/pcie/config/config_space.test.opt
+./build/ARM/gem5-ext/src/gw100/pcie/config/config_space.test.opt
+```
 
 全栈 E2E 测试（应用 → runtime → 驱动 → Linux → PCIe → 设备）的方案尚未落地。原有的 `tests/l1_inst/`、L0 单元测试、TestHost 和 testkit 已于 2026-10-24 删除，不要恢复。
 
