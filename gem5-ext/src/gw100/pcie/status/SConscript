@@ -1,0 +1,4 @@
+# status/：StatusUnit（ERR_* 与 INT_*），bar0、bar2 共用
+Import('*')
+
+Source('status_unit.cc')

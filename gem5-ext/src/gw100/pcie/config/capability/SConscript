@@ -1,0 +1,5 @@
+# config/capability/：Capability 基类与各 capability
+Import('*')
+
+Source('pm_capability.cc')
+Source('pcie_capability.cc')

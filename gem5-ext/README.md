@@ -27,6 +27,7 @@ Linux（以 Ubuntu 24.04 为例）：先装好 `build-essential m4 scons python3
 建模的最高原则见 [CONTRIBUTING.md](../CONTRIBUTING.md) §5：模型是在模拟硬件，不能为了软件或测试的方便脱离实际。在此之下：
 
 - 代码全部放在 `gem5-ext/`，通过 `EXTRAS` 编进 gem5，不改 gem5 本体。确实绕不开的本体改动，做成补丁放进 `gem5-ext/patches/`，并注明原因。
+- **目录树即组件树**：一个目录是组件树上的一个节点，放这个节点自己的类；只有一个类的叶子组件作为文件放在父目录中，自身还有子组件的建子目录；被多个子树共用的组件放在它们的最近公共祖先下。组件之间的接口放在共同父节点的 `*_types.hh` 中。每个目录一个 `SConscript`，只声明本目录的源文件和单元测试。目录关系因此就是组成关系；跨子树的引用（例如 `bar0/window_regs` 使用 `window/window_table`）只经头文件，并在类注释中写明。
 - 按张量指令粒度建模，不逐个 MAC 仿真。
 - ISA 不放进 `gem5/src/arch`：张量指令由 Tile 的 SimObject 自己译码；编码将由重建后的单一真源生成（旧的 `isa_defs.hh` 已随 func-core 删除）。
 - 片上网络计划用自研的轻量 2D Mesh，粒度是 DMA 传输，支持多播；Garnet 只用来交叉验证。Compute Tile 重建之前还没有片上互连。
@@ -36,7 +37,7 @@ Linux（以 Ubuntu 24.04 为例）：先装好 `build-essential m4 scons python3
 
 | 目录 | SimObject / 模块 | 对应规格 | 状态 |
 |---|---|---|---|
-| `src/gw100/pcie/` | `Gw100PciDevice`：配置空间与 capability（PM、PCI Express）、BAR0 全局寄存器与访问规则、BAR2 窗口、启动寄存器（桩）、FLR 与 D3hot→D0 复位；`Gw100PrefetchMemBar` | `spec-pcie` | 寄存器层完成，裸机测试 `pcie_config`、`pcie_regs`、`pcie_bar2`、`pcie_flr` 覆盖 F1–F7、F11/F12 的寄存器部分。中断投递、MSI-X、DMA、HDI 未实现 |
+| `src/gw100/pcie/` | `Gw100PciDevice`：外壳，只负责 PciEndpoint 的入口、`mem_port`、功能级复位的编排和 checkpoint；`Gw100PcieFactory` 组装下列组件，接口见 `pcie_types.hh`。`status/`：`StatusUnit`（ERR/INT）；`window/`：`WindowTable`（BAR2 窗口）；`config/`：`ConfigSpace`，其下 `capability/`：`Capability` 基类、`PmCapability`、`PcieCapability`；`bar0/`：`Bar0Handler` 与 `GlobalRegs`、`WindowRegs`、`BootRegs`；`bar2/`：`Bar2Handler`、`DevmemBackend`、`Gw100PrefetchMemBar` | `spec-pcie` | 寄存器层完成，裸机测试 `pcie_config`、`pcie_regs`、`pcie_bar2`、`pcie_flr` 覆盖 F1–F7、F11/F12 的寄存器部分。中断投递、MSI-X、DMA、HDI 未实现；新增的 BAR0 寄存器块实现 `RegBlock`，放进 `bar0/` 并在 factory 中登记即可 |
 | （待建）`src/noc/` | 轻量 2D Mesh，支持多播 | `spec-noc` | 未开始 |
 
 当前只恢复了 PCIe endpoint 骨架；原来的 func-core、Compute Tile、管理 Tile 和 common 已删除，后续按新的 PCIe 模型逐步重建。
@@ -49,7 +50,7 @@ Linux（以 Ubuntu 24.04 为例）：先装好 `build-essential m4 scons python3
 
 ## 开发注意
 
-- PCIe endpoint 继承 `PciEndpoint`，Host 使用 `VExpress_GEM5_Foundation` 的 `GenericArmPciHost`；BAR0 为 4 KiB。
+- PCIe endpoint 继承 `PciEndpoint`，Host 使用 `VExpress_GEM5_Foundation` 的 `GenericArmPciHost`；BAR0 为 1 MiB，BAR2 为 64 MiB（spec-pcie §5）。
 - `VExpress_GEM5_Foundation` 没有接 GICv3 ITS，目前只能用 INTx；做 MSI/MSI-X 时要换成 `VExpress_GEM5_V2` 或加上 ITS。
 - 旧的 TestHost 和 device-side 配置已删除；GW100 现在走 ARM board 的 VExpress PCIe。
 

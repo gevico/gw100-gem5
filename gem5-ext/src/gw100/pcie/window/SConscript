@@ -1,0 +1,4 @@
+# window/：WindowTable（BAR2 窗口的配置与地址转换），bar0、bar2 共用
+Import('*')
+
+Source('window_table.cc')

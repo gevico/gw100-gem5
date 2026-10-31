@@ -19,7 +19,7 @@ class Gw100PrefetchMemBar(PciMemBar):
     """可预取的内存 BAR：gem5 的 PciMemBar 不支持 prefetchable 位。"""
 
     type = "Gw100PrefetchMemBar"
-    cxx_header = "src/gw100/pcie/gw100_pci_device.hh"
+    cxx_header = "src/gw100/pcie/bar2/prefetch_mem_bar.hh"
     cxx_class = "gem5::gw100::Gw100PrefetchMemBar"
 
 

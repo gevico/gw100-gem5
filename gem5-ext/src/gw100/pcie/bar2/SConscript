@@ -1,0 +1,6 @@
+# bar2/：Bar2Handler、访问设备内存的后端与 BAR2 的 BAR 对象
+Import('*')
+
+Source('bar2_handler.cc')
+Source('devmem_backend.cc')
+Source('prefetch_mem_bar.cc')
