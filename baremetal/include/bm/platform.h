@@ -15,7 +15,10 @@
 /* host DRAM：程序从这里加载运行，见 linker.ld */
 #define BM_DRAM_BASE            0x80000000UL
 
-/* PCIe 配置空间（ECAM）：bus/dev/fn 编码为 (bus << 20) | (dev << 15) | (fn << 12) */
+/*
+ * PCIe 配置空间（ECAM）：bus/dev/fn 编码为
+ * (bus << 20) | (dev << 15) | (fn << 12)
+ */
 #define BM_PCI_ECAM_BASE        0x40000000UL
 #define BM_PCI_ECAM_SIZE        0x10000000UL
 

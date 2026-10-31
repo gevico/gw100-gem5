@@ -11,8 +11,13 @@
 #include "bm/console.h"
 #include "bm/semihost.h"
 
+/** 输出一个字符的回调；ctx 是调用方的上下文 */
 typedef void (*putc_fn)(char c, void *ctx);
 
+/**
+ * 按宽度 width 输出长度为 len 的 s：left 为 1 时左对齐，否则用 pad 补在
+ * 左边；补零时负号放在零的前面。输出的字符数累加到 *count
+ */
 static void
 emit_padded(putc_fn put, void *ctx, const char *s, int len, int width,
             int left, char pad, int *count)
@@ -44,6 +49,7 @@ emit_padded(putc_fn put, void *ctx, const char *s, int len, int width,
     }
 }
 
+/** 把 v 按 base 进制写成数字串放进 buf（不补 0 结尾），返回位数 */
 static int
 format_uint(char *buf, unsigned long long v, unsigned base, int upper)
 {
@@ -60,6 +66,7 @@ format_uint(char *buf, unsigned long long v, unsigned base, int upper)
     return n;
 }
 
+/** 格式化核心：按 fmt 解析参数，经 put 逐个输出字符，返回输出的字符数 */
 static int
 vformat(putc_fn put, void *ctx, const char *fmt, va_list ap)
 {
@@ -142,7 +149,8 @@ vformat(putc_fn put, void *ctx, const char *fmt, va_list ap)
           case 'p':
             buf[0] = '0';
             buf[1] = 'x';
-            len = 2 + format_uint(buf + 2, (uintptr_t)va_arg(ap, void *), 16, 0);
+            u = (uintptr_t)va_arg(ap, void *);
+            len = 2 + format_uint(buf + 2, u, 16, 0);
             emit_padded(put, ctx, buf, len, width, left, ' ', &count);
             break;
           case '%':
@@ -162,12 +170,17 @@ vformat(putc_fn put, void *ctx, const char *fmt, va_list ap)
     return count;
 }
 
+/** bm_vsnprintf 的输出上下文 */
 struct buf_ctx {
+    /** 目标缓冲区 */
     char *buf;
+    /** 缓冲区大小 */
     size_t size;
+    /** 已产生的字符数，可能超过 size */
     size_t pos;
 };
 
+/** 把字符写进缓冲区；超出容量的部分只计数不写入 */
 static void
 buf_put(char c, void *p)
 {
@@ -177,6 +190,7 @@ buf_put(char c, void *p)
     b->pos++;
 }
 
+/** 同 bm_snprintf，参数以 va_list 传入 */
 int
 bm_vsnprintf(char *buf, size_t size, const char *fmt, va_list ap)
 {
@@ -187,6 +201,10 @@ bm_vsnprintf(char *buf, size_t size, const char *fmt, va_list ap)
     return n;
 }
 
+/**
+ * 按 fmt 格式化到 buf，最多写 size − 1 个字符并补 0；返回完整结果应有的
+ * 长度（不含结尾的 0），与 C 标准的 snprintf 一致
+ */
 int
 bm_snprintf(char *buf, size_t size, const char *fmt, ...)
 {
@@ -197,11 +215,15 @@ bm_snprintf(char *buf, size_t size, const char *fmt, ...)
     return n;
 }
 
+/** bm_vprintf 的输出上下文：攒满一段再经 semihosting 输出 */
 struct con_ctx {
+    /** 待输出的字符，末尾留一个位置给结尾的 0 */
     char buf[128];
+    /** buf 中已有的字符数 */
     size_t pos;
 };
 
+/** 把攒下的字符经 semihosting 输出并清空 */
 static void
 con_flush(struct con_ctx *c)
 {
@@ -210,6 +232,7 @@ con_flush(struct con_ctx *c)
     c->pos = 0;
 }
 
+/** 攒一个字符，攒满时输出 */
 static void
 con_put(char c, void *p)
 {
@@ -219,6 +242,7 @@ con_put(char c, void *p)
         con_flush(con);
 }
 
+/** 同 bm_printf，参数以 va_list 传入 */
 int
 bm_vprintf(const char *fmt, va_list ap)
 {
@@ -230,6 +254,7 @@ bm_vprintf(const char *fmt, va_list ap)
     return n;
 }
 
+/** 按 fmt 格式化后经 semihosting 输出到控制台，返回输出的字符数 */
 int
 bm_printf(const char *fmt, ...)
 {
