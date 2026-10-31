@@ -51,6 +51,8 @@ class ArmVExpressBoard(ArmBoard):
         self._extra_pci_devices = list(pci_devices)
         self._bare_metal = bare_metal
         self._kernel = None
+        self._wait_gdb = False
+        self._gdb_port = 7000
         self._devices_attached = False
         # 裸机先单核，避免多核同时从 reset 入口执行。
         num_cores = 1 if bare_metal else host.num_cores
@@ -71,19 +73,32 @@ class ArmVExpressBoard(ArmBoard):
             release=ArmDefaultRelease(),
         )
 
-    def set_baremetal_workload(self, kernel: str) -> None:
-        """加载裸机 ELF；调用后不能再设置 Linux workload。"""
+    def set_baremetal_workload(
+        self, kernel: str, wait_gdb: bool = False, gdb_port: int = 7000
+    ) -> None:
+        """加载裸机 ELF；调用后不能再设置 Linux workload。
+
+        远程 GDB 监听 127.0.0.1 的 gdb_port；wait_gdb 为真时，仿真开始前
+        等待 GDB 连接，用于从第一条指令起调试裸机程序。
+        """
         path = Path(kernel)
         if not path.is_file():
             raise FileNotFoundError(f"bare-metal ELF 不存在：{path}")
         self._bare_metal = True
         self._kernel = str(path)
+        self._wait_gdb = wait_gdb
+        self._gdb_port = gdb_port
         self._set_fullsystem(True)
 
     def _setup_board(self) -> None:
         super()._setup_board()
         if self._bare_metal:
-            self.workload = ArmBaremetal(self._kernel, self)
+            self.workload = ArmBaremetal(
+                self._kernel,
+                self,
+                wait_for_remote_gdb=self._wait_gdb,
+                remote_gdb_port=self._gdb_port,
+            )
             self.semihosting = ArmSemihosting()
             self.auto_reset_addr = True
 
