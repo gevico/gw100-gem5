@@ -12,9 +12,13 @@
 
 #include <stdint.h>
 
+/** 数据同步屏障：屏障之前的访存全部完成后才继续执行 */
 static inline void bm_dsb(void) { __asm__ volatile("dsb sy" ::: "memory"); }
+
+/** 数据内存屏障：保证屏障前后访存的先后顺序 */
 static inline void bm_dmb(void) { __asm__ volatile("dmb sy" ::: "memory"); }
 
+/** 读 addr 处的 8 位寄存器，读后加屏障 */
 static inline uint8_t
 bm_read8(uintptr_t addr)
 {
@@ -23,6 +27,7 @@ bm_read8(uintptr_t addr)
     return v;
 }
 
+/** 读 addr 处的 16 位寄存器，读后加屏障 */
 static inline uint16_t
 bm_read16(uintptr_t addr)
 {
@@ -31,6 +36,7 @@ bm_read16(uintptr_t addr)
     return v;
 }
 
+/** 读 addr 处的 32 位寄存器，读后加屏障 */
 static inline uint32_t
 bm_read32(uintptr_t addr)
 {
@@ -39,6 +45,7 @@ bm_read32(uintptr_t addr)
     return v;
 }
 
+/** 读 addr 处的 64 位寄存器，读后加屏障 */
 static inline uint64_t
 bm_read64(uintptr_t addr)
 {
@@ -47,6 +54,7 @@ bm_read64(uintptr_t addr)
     return v;
 }
 
+/** 写 addr 处的 8 位寄存器，写前加屏障 */
 static inline void
 bm_write8(uintptr_t addr, uint8_t v)
 {
@@ -54,6 +62,7 @@ bm_write8(uintptr_t addr, uint8_t v)
     *(volatile uint8_t *)addr = v;
 }
 
+/** 写 addr 处的 16 位寄存器，写前加屏障 */
 static inline void
 bm_write16(uintptr_t addr, uint16_t v)
 {
@@ -61,6 +70,7 @@ bm_write16(uintptr_t addr, uint16_t v)
     *(volatile uint16_t *)addr = v;
 }
 
+/** 写 addr 处的 32 位寄存器，写前加屏障 */
 static inline void
 bm_write32(uintptr_t addr, uint32_t v)
 {
@@ -68,6 +78,7 @@ bm_write32(uintptr_t addr, uint32_t v)
     *(volatile uint32_t *)addr = v;
 }
 
+/** 写 addr 处的 64 位寄存器，写前加屏障 */
 static inline void
 bm_write64(uintptr_t addr, uint64_t v)
 {

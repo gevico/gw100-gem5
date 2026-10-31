@@ -7,6 +7,7 @@
 
 #include "bm/test.h"
 
+/** 测试入口：每个 test 实现它，返回 0 表示通过，非 0 表示失败 */
 int
 test_main(void)
 {

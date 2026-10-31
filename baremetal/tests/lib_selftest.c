@@ -9,15 +9,10 @@
 #include <stdint.h>
 
 #include "bm/console.h"
+#include "bm/string.h"
 #include "bm/test.h"
 
-void *memcpy(void *dst, const void *src, size_t n);
-void *memmove(void *dst, const void *src, size_t n);
-void *memset(void *dst, int c, size_t n);
-int memcmp(const void *a, const void *b, size_t n);
-size_t strlen(const char *s);
-int strcmp(const char *a, const char *b);
-
+/** 格式化结果 got 必须等于 expect，返回值 ret 必须等于 expect 的长度 */
 static void
 check_fmt(const char *expect, const char *got, int ret)
 {
@@ -26,6 +21,7 @@ check_fmt(const char *expect, const char *got, int ret)
     TEST_EQ(ret, strlen(expect));
 }
 
+/** 用 bm_snprintf 按后面的参数格式化，结果必须等于 expect */
 #define FMT(expect, ...)                                                 \
     do {                                                                 \
         char _b[64];                                                     \
@@ -33,6 +29,7 @@ check_fmt(const char *expect, const char *got, int ret)
         check_fmt(expect, _b, _r);                                       \
     } while (0)
 
+/** 字符串与内存函数：memset、memcpy、memcmp、重叠的 memmove、strlen、strcmp */
 static void
 test_string(void)
 {
@@ -58,6 +55,7 @@ test_string(void)
     TEST_ASSERT(strcmp("abcd", "abc") > 0);
 }
 
+/** 格式化：各种转换、宽度、补零、左对齐、长度修饰、空指针和截断 */
 static void
 test_format(void)
 {
@@ -71,7 +69,8 @@ test_format(void)
     FMT("  7", "%3d", 7);
     FMT("ab  |", "%-4s|", "ab");
     FMT("ffffffffffffffff", "%llx", 0xFFFFFFFFFFFFFFFFull);
-    FMT("-9223372036854775808", "%lld", (long long)(-9223372036854775807LL - 1));
+    FMT("-9223372036854775808", "%lld",
+        (long long)(-9223372036854775807LL - 1));
     FMT("123456789abc", "%lx", 0x123456789abcUL);
     FMT("0x80000000", "%p", (void *)0x80000000UL);
     FMT("c%", "%c%%", 'c');
@@ -86,6 +85,7 @@ test_format(void)
     TEST_EQ(strcmp(small, "abc"), 0);
 }
 
+/** 测试入口：每个 test 实现它，返回 0 表示通过，非 0 表示失败 */
 int
 test_main(void)
 {
