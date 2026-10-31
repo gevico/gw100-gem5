@@ -43,7 +43,7 @@ class DevmemParams:
     """设备内存（LPDDR5X）的范围。"""
 
     base: int = 0x0
-    size: str = "8GiB"
+    size: str = "32GiB"
 
 
 @dataclass(frozen=True)
