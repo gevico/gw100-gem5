@@ -13,11 +13,11 @@
 
 ### 1.1 范围
 
-本文档定义 GW100 作为 PCIe 端点（Endpoint）对 host 呈现的全部行为：链路、配置空间、BAR 布局、BAR0 中由本文档定义的寄存器、中断、事务参数、顺序与一致性、复位与电源、错误处理和性能要求。
+本文档定义 GW100 作为 PCIe EP（Endpoint）对 host 呈现的全部行为：链路、配置空间、BAR 布局、BAR0 中由本文档定义的寄存器、中断、事务参数、顺序与一致性、复位与电源、错误处理和性能要求。
 
 下列内容**不在**本文档范围内。本文档只在需要时说明它们与 PCIe 的接口，不定义其内部：
 
-- Host DMA 引擎的通道、描述符和 scatter-gather 列表，见 `spec-host-dma`；
+- HDMA 的通道、描述符和 scatter-gather 列表，见 `spec-host-dma`；
 - 命令协议：命令队列、doorbell 的语义、命令与完成记录、上下文，见 `spec-hdi`；
 - 设备内部地址空间的划分（BAR2 调试窗口指向的地址），见 `spec-address-map`；
 - 启动过程中设备内部的步骤、固件格式和校验算法，见 `spec-mgmt-tile` §8；安全启动尚未定义；
@@ -28,15 +28,15 @@
 ```mermaid
 flowchart LR
   subgraph Host
-    CPU[CPU] --- RC[PCIe 根复合体]
+    CPU[CPU] --- RC[PCIe RC]
     RC --- MEM[(Host 内存)]
   end
   subgraph GW100
     EP[PCIe 控制器<br/>与 PHY] --- BAR[BAR0 / BAR2<br/>入站解码]
-    EP --- HDMA[Host DMA 引擎]
+    EP --- HDMA[HDMA]
     BAR --- REGS[寄存器块]
     BAR --- WIN[BAR2<br/>启动窗口 / 调试窗口]
-    HDMA --- NOC[片上网络]
+    HDMA --- NOC[NoC]
     WIN --- NOC
     WIN -.->|启动阶段| MGMT
     REGS --- MGMT[管理 Tile<br/>HDI 命令处理]
@@ -47,7 +47,7 @@ flowchart LR
 ```
 
 - **入站**（host → 设备）：host 的 MMIO 读写经 BAR0 访问寄存器；BAR2 只在启动阶段用于写入固件，或在固件开启调试窗口后访问设备内存。
-- **出站**（设备 → host）：Host DMA 引擎读写 host 内存，包括命令队列、数据缓冲和完成记录；MSI-X 消息也从这里发出。
+- **出站**（设备 → host）：HDMA 读写 host 内存，包括命令队列、数据缓冲和完成记录；MSI-X 消息也从这里发出。
 
 ### 1.3 约定
 
@@ -85,6 +85,37 @@ flowchart LR
 
 本文档中带点号的名字（如 `pcie.bar0_size`）是架构参数，最终以单一真源 `arch_params.yaml` 为准。单一真源重建之前，以本文档 §14 参数表中的当前值为准。
 
+### 1.4 术语
+
+| 术语 | 全称 | 含义 |
+|---|---|---|
+| RC | Root Complex | host 中连接 CPU、内存与 PCIe 链路的部件 |
+| EP | Endpoint | PCIe 链路末端的设备；GW100 是一个 EP |
+| PCIe 子系统 | — | 设备中实现本文档所定义行为的部分：PCIe 控制器与 PHY、入站译码、本文档定义的寄存器。它是 HIF 的一部分，HIF 的组成见 `spec-arch` §1.4 |
+| TLP | Transaction Layer Packet | 事务层包，PCIe 上读、写、完成和消息的基本单位 |
+| posted / non-posted | — | posted 事务（内存写、消息）没有完成；non-posted 事务（内存读、配置读写）必须由完成方返回完成 |
+| 完成 | Completion | 对 non-posted 请求的应答；读的完成携带数据（CplD） |
+| requester / completer | — | 发出请求的一方 / 接收请求、并对 non-posted 请求返回完成的一方 |
+| BAR | Base Address Register | 基址寄存器：配置空间中描述设备一段地址范围的寄存器，host 在枚举时为它分配地址（§5） |
+| 总线地址 | bus address | PCIe 上使用的地址。host 访问 BAR 使用总线地址；设备发起 DMA 时使用驱动交给它的 DMA 地址，它也是总线地址，可能经 host 的 IOMMU 转换后才对应到 host 物理内存。本设备支持 64 位总线地址 |
+| IOMMU | I/O Memory Management Unit | host 中把设备的 DMA 地址转换为 host 物理地址、并按设备隔离的部件，对设备透明（§10.2） |
+| MPS / MRRS | Max Payload Size / Max Read Request Size | 最大载荷长度 / 最大读请求长度，由 host 在设备的 Device Control 寄存器中设置（§10.3） |
+| RCB | Read Completion Boundary | 完成方把一个读请求拆成多个完成时，中间的拆分点必须落在 RCB（64 B 或 128 B）的整数倍地址上；第一个完成从请求的起始地址开始，最后一个完成在请求的结束地址结束。本条即定义；RCB 对 host → 设备带宽的影响见 §11.1 |
+| tag | — | requester 为每个未完成的 non-posted 请求分配的编号，完成按 tag 与请求对应。本设备只在自己发起的 non-posted 读请求中使用，包括 HDMA 的数据读和 SGL 读取（§10.3） |
+| 完成超时 | Completion Timeout | requester 在规定时间内没有收到完成，按错误处理（§10.3） |
+| credit | flow control credit | 接收方通告的接收缓冲额度，发送方只在持有 credit 时发送。PH、PD、NPH 分别是 posted 头、posted 数据、non-posted 头的 credit（§10.4） |
+| replay buffer | — | 发送方保存已发出、尚未被确认的 TLP，链路出错时据此重传（§10.4） |
+| FLR | Function Level Reset | 功能级复位：只复位一个 PCIe 功能的状态，不影响链路（§13.2） |
+| INTx | — | 以带内消息模拟传统中断线的中断方式（§8） |
+| MSI-X | — | 设备以内存写的形式向 host 发送中断，每个向量有独立的地址和数据（§8） |
+| AER | Advanced Error Reporting | PCIe 的高级错误报告机制（§12.3） |
+| ASPM | Active State Power Management | 链路空闲时自动进入低功耗状态 L0s、L1（§13.3） |
+| D0 / D3hot / D3cold | — | PCI 电源状态：正常工作 / 软件关断但保持供电 / 断电（§13.3） |
+| LTSSM | Link Training and Status State Machine | 链路训练与状态机 |
+| CRS | Configuration Request Retry Status | 设备尚未就绪时对配置请求的回复，要求 host 重试 |
+| 启动窗口 / 调试窗口 | boot window / debug window | BAR2 的两种用途（§7.2、§7.3） |
+| HIF、HDMA | — | 见 `spec-arch` §1.4 |
+
 ---
 
 ## 2. 设计决策
@@ -121,8 +152,8 @@ flowchart LR
 
 - **决定**：设备对 host 内存的访问不依赖硬件缓存一致性；驱动必须按"DMA 不一致"的系统编写。设备默认不设置 No Snoop；用于通知完成的写不使用 Relaxed Ordering。
 - **理由**：
-  - DMA 是否与 CPU cache 一致取决于 host 的根复合体：x86 默认一致，许多嵌入式 ARM SoC 不一致。按不一致的系统编写的驱动在两类主机上都正确，反过来不成立。
-  - PCIe 端点本身不参与 host 的缓存一致性；设备能决定的只是 No Snoop、Relaxed Ordering 这些事务属性怎么用，见 §9。
+  - DMA 是否与 CPU cache 一致取决于 host 的 RC：x86 默认一致，许多嵌入式 ARM SoC 不一致。按不一致的系统编写的驱动在两类主机上都正确，反过来不成立。
+  - PCIe EP 本身不参与 host 的缓存一致性；设备能决定的只是 No Snoop、Relaxed Ordering 这些事务属性怎么用，见 §9。
 
 ### 2.5 BAR 访问不依赖固件
 
@@ -282,7 +313,7 @@ MSI-X 表和 PBA 的访问规则以 PCIe 规范为准（DWORD 和 QWORD 访问�
 | 0x020 | `INT_STATUS` | RW1C | 0 | 中断源状态，见 §8.4 |
 | 0x024 | `INT_MASK` | RW | 0xFFFF_FFFF | INTx 模式下的中断屏蔽，1 为屏蔽 |
 | 0x028 | `INT_SET` | W1S | — | 置位 `INT_STATUS` 的对应位，用于驱动自测 |
-| 0x030 | `ERR_STATUS` | RW1C | 0 | 主机接口错误状态，见 §6.3 |
+| 0x030 | `ERR_STATUS` | RW1C | 0 | HIF 错误状态，见 §6.3 |
 | 0x034 | `ERR_ADDR` | RO | 0 | 第一次出错访问的 BAR 偏移 |
 | 0x038 | `ERR_INFO` | RO | 0 | 第一次出错访问的附加信息 |
 | 其余 | — | RsvdZ | 0 | |
@@ -305,7 +336,7 @@ MSI-X 表和 PBA 的访问规则以 PCIe 规范为准（DWORD 和 QWORD 访问�
 | [7:0] | BAR2_WIN_COUNT | BAR2 窗口个数，等于 `pcie.bar2_window_count` |
 | [15:8] | MSIX_VECTORS | MSI-X 表项个数，等于 `pcie.msix_table_size` |
 | [23:16] | HDI_MAX_CTX | 命令协议支持的上下文个数（当前为 16） |
-| [31:24] | HDMA_CHANNELS | Host DMA 引擎的通道个数（当前为 8） |
+| [31:24] | HDMA_CHANNELS | HDMA 的通道个数（当前为 8） |
 
 **DEV_STATUS**（0x008）
 
@@ -425,7 +456,7 @@ BAR2 不在设备的正常数据通路上。正常运行时，host 不能直接�
 | Relaxed Ordering | 忽略。启动窗口的写入一律按到达顺序生效 |
 | 设备接受 `FW_START` 之后的访问 | 窗口已关闭，按 §7.1 的"关闭"处理 |
 
-- 设备必须能以写合并产生的最大 TLP（不超过 MPS）接收启动窗口写入。持续写入的带宽受设备内部管理链路的限制（`spec-mgmt-tile` §10 P4），超过时 PCIe 入站方向被反压，写入只会延缓，不会丢失。
+- 设备必须能以写合并产生的最大 TLP（不超过 MPS）接收启动窗口写入。持续写入的带宽受设备内部 ML 的限制（`spec-mgmt-tile` §10 P4），超过时 PCIe 入站方向被反压，写入只会延缓，不会丢失。
 - 装载区内的数据在 ROM 校验之后不会再被 host 改写：设备接受 `FW_START` 时立即关闭窗口，ROM 在此之后才开始校验。
 
 ### 7.3 调试窗口
@@ -438,15 +469,15 @@ BAR2 不在设备的正常数据通路上。正常运行时，host 不能直接�
 
 ### 7.4 调试窗口的结构
 
-BAR2 等分为 `pcie.bar2_window_count` = 16 个窗口，每个窗口 `pcie.bar2_window_size` = 4 MiB。窗口 i 占据 BAR2 偏移 `i × 4 MiB` 到 `(i+1) × 4 MiB − 1`。BAR2 偏移 `o` 落在窗口 `i = o / 4 MiB` 内，访问的设备物理地址为：
+BAR2 等分为 `pcie.bar2_window_count` = 16 个窗口，每个窗口 `pcie.bar2_window_size` = 4 MiB。窗口 i 占据 BAR2 偏移 `i × 4 MiB` 到 `(i+1) × 4 MiB − 1`。BAR2 偏移 `o` 落在窗口 `i = o / 4 MiB` 内，访问的 DPA 为：
 
 ```
-设备物理地址 = WIN_BASE[i] + (o mod 4 MiB)
+DPA = WIN_BASE[i] + (o mod 4 MiB)
 ```
 
-设备物理地址的宽度为 `addr.device_pa_bits` = 40 位，地址空间的划分见 `spec-address-map` §3。
+DPA 的宽度为 `addr.device_pa_bits` = 40 位，地址空间的划分见 `spec-address-map` §3。
 
-**窗口只能指向设备内存**：目标范围必须完全落在设备内存（LPDDR5X）之内，指向设备内部的控制寄存器（例如 DMA 引擎、命令处理器）、片上 SRAM 或其他区域都按"目标地址无效"处理。这样即使调试窗口开启，host 也无法经 BAR2 改写固件和 DMA 描述符，或绕过固件直接操作设备内部的控制逻辑。
+**窗口只能指向设备内存**：目标范围必须完全落在设备内存（LPDDR5X）之内，指向设备内部的控制寄存器（例如 DMA 引擎、CP）、片上 SRAM 或其他区域都按"目标地址无效"处理。这样即使调试窗口开启，host 也无法经 BAR2 改写固件和 DMA 描述符，或绕过固件直接操作设备内部的控制逻辑。
 
 ### 7.5 窗口配置寄存器
 
@@ -456,8 +487,8 @@ BAR2 等分为 `pcie.bar2_window_count` = 16 个窗口，每个窗口 `pcie.bar2
 |---|---|---|---|---|
 | +0x0 | `WIN_CTRL` | RW | 0 | [0] EN：窗口使能。[1] RD_ONLY：1 表示写入被丢弃并置 `ERR_STATUS.WIN_TARGET`。其余 RsvdZ |
 | +0x4 | — | RsvdZ | 0 | |
-| +0x8 | `WIN_BASE_LO` | RW | 0 | 目标设备物理地址低 32 位；[21:0] RsvdZ（必须 4 MiB 对齐） |
-| +0xC | `WIN_BASE_HI` | RW | 0 | 目标设备物理地址高 32 位；超出 `addr.device_pa_bits` 的位 RsvdZ |
+| +0x8 | `WIN_BASE_LO` | RW | 0 | 目标 DPA 低 32 位；[21:0] RsvdZ（必须 4 MiB 对齐） |
+| +0xC | `WIN_BASE_HI` | RW | 0 | 目标 DPA 高 32 位；超出 `addr.device_pa_bits` 的位 RsvdZ |
 
 ### 7.6 调试窗口的行为
 
@@ -519,7 +550,7 @@ BAR2 等分为 `pcie.bar2_window_count` = 16 个窗口，每个窗口 `pcie.bar2
 
 ### 8.5 中断与数据的顺序
 
-MSI-X 消息是 posted 写，且设备发出时 Relaxed Ordering 位为 0。根据 PCIe 的顺序规则，它不会越过设备此前发出的任何 posted 写。因此软件收到中断时，此前写入 host 内存的数据和完成记录已经到达根复合体。在 DMA 不一致的 host 上，软件读取前仍必须按 DMA API 做 sync（§9.2）。
+MSI-X 消息是 posted 写，且设备发出时 Relaxed Ordering 位为 0。根据 PCIe 的顺序规则，它不会越过设备此前发出的任何 posted 写。因此软件收到中断时，此前写入 host 内存的数据和完成记录已经到达 RC。在 DMA 不一致的 host 上，软件读取前仍必须按 DMA API 做 sync（§9.2）。
 
 ---
 
@@ -532,9 +563,9 @@ MSI-X 消息是 posted 写，且设备发出时 Relaxed Ordering 位为 0。根�
 1. 设备发出的 Relaxed Ordering 位为 0 的 posted 写，不会越过设备此前发出的 posted 写。
 2. host 发往设备的 posted 写（MMIO 写）按到达顺序生效。
 3. host 对 BAR0 的读请求，不会越过 host 此前对 BAR0 的写入。也就是说，"写后读"可以用来确认写入已生效（§5.2）。
-4. 设备返回给 host 的、Relaxed Ordering 为 0 的读完成，不会越过设备此前发出的 posted 写。host CPU 发起的 MMIO 读和配置读，其完成都满足这一条件。因此 host 读到某个寄存器状态时，设备在此之前发出的写都已到达根复合体。设备内部必须保证：读完成进入发送通路的顺序，排在此前已发出的所有 posted 写之后。
+4. 设备返回给 host 的、Relaxed Ordering 为 0 的读完成，不会越过设备此前发出的 posted 写。host CPU 发起的 MMIO 读和配置读，其完成都满足这一条件。因此 host 读到某个寄存器状态时，设备在此之前发出的写都已到达 RC。设备内部必须保证：读完成进入发送通路的顺序，排在此前已发出的所有 posted 写之后。
 
-由此得出命令协议使用的关键保证：设备先写数据、再写完成记录、最后发 MSI-X 时，软件看到完成记录或中断，就意味着数据已经到达根复合体。
+由此得出命令协议使用的关键保证：设备先写数据、再写完成记录、最后发 MSI-X 时，软件看到完成记录或中断，就意味着数据已经到达 RC。
 
 ### 9.2 对 host 一致性的假设
 
@@ -562,7 +593,7 @@ MSI-X 消息是 posted 写，且设备发出时 Relaxed Ordering 位为 0。根�
 | BAR | 转换 |
 |---|---|
 | BAR0 | 偏移直接解码为寄存器块，见 §5.1 |
-| BAR2 | 启动阶段固定映射到固件装载区；调试窗口开启时按窗口转换为设备物理地址。见 §7 |
+| BAR2 | 启动阶段固定映射到固件装载区；调试窗口开启时按窗口转换为 DPA。见 §7 |
 
 ### 10.2 出站
 
@@ -583,7 +614,7 @@ MSI-X 消息是 posted 写，且设备发出时 Relaxed Ordering 位为 0。根�
 
 **未完成读请求数的依据**：满带宽下 host 内存读延迟可达 2.5 µs（Hailo-DS p.38）。Gen4 x4 下要覆盖这段延迟，在途数据需要 7.877 GB/s × 2.5 µs ≈ 19.7 KB，按每个读请求 512 B 计约 39 个（推算）。取 64 留出余量；Hailo-8 为 32（Hailo-DS p.38），但它是 Gen3。
 
-**完成缓冲**：PCIe 规范要求端点通告无限的完成信用（Completion Credits），即设备必须在发出读请求之前，就为它的全部完成数据预留好空间。因此完成缓冲必须能容纳所有未完成读请求的数据；缓冲不足时，设备必须减少在途读请求，而不是丢弃完成。
+**完成缓冲**：PCIe 规范要求 EP 通告无限的完成信用（Completion Credits），即设备必须在发出读请求之前，就为它的全部完成数据预留好空间。因此完成缓冲必须能容纳所有未完成读请求的数据；缓冲不足时，设备必须减少在途读请求，而不是丢弃完成。
 
 **可用的 tag 数**：Device Control 的 Extended Tag Field Enable 为 1 时，设备可以使用 256 个 8 位 tag；为 0 时只能使用 32 个。设备必须按当前设置动态限制在途读请求数：上限为 min(`pcie.max_outstanding_reads`, 可用 tag 数 − 隔离中的 tag 数)。
 
@@ -613,7 +644,7 @@ MSI-X 消息是 posted 写，且设备发出时 Relaxed Ordering 位为 0。根�
 | Posted 头信用 | 32 | host 的 MMIO 写和 BAR2 写（包括固件装载） |
 | Posted 数据信用 | 2 KiB | 覆盖约 250 ns 的信用返还延迟：7.877 GB/s × 250 ns ≈ 2 KB（推算）；Hailo-8 的接收缓冲也为 2 KB（Hailo-DS p.38） |
 | Non-posted 头信用 | 16 | host 的 MMIO 读 |
-| 重传缓冲 | 4 KiB（初始预算） | 必须容纳 ACK 往返期间发出的全部 TLP：Gen4 x4 下按约 500 ns 计为 7.877 GB/s × 500 ns ≈ 3.9 KB（推算）；Hailo-8 在 Gen3 下为 2 KB（Hailo-DS p.38）。所需容量取决于 IP 的 ACK 策略，以满足 §11.2 的吞吐为验收标准 |
+| replay buffer | 4 KiB（初始预算） | 必须容纳 ACK 往返期间发出的全部 TLP：Gen4 x4 下按约 500 ns 计为 7.877 GB/s × 500 ns ≈ 3.9 KB（推算）；Hailo-8 在 Gen3 下为 2 KB（Hailo-DS p.38）。所需容量取决于 IP 的 ACK 策略，以满足 §11.2 的吞吐为验收标准 |
 
 ---
 
@@ -631,7 +662,7 @@ MSI-X 消息是 posted 写，且设备发出时 Relaxed Ordering 位为 0。根�
 | host → 设备（DMA 读，完成按 128 B 返回） | MPS ≥ 128 B | 128 / 148 ≈ 86% | 约 6.5 – 6.7 GB/s |
 | host → 设备（DMA 读，完成按 256 B 返回） | MPS 256 B | 256 / 276 ≈ 93% | 约 7.0 – 7.2 GB/s |
 
-host → 设备方向的带宽取决于 host 根复合体把读完成拆成多大，这由 host 决定，设备无法控制。读完成的长度不超过 MPS，所以 MPS 为 128 B 时不会出现 256 B 的完成。
+host → 设备方向的带宽取决于 host RC 把读完成拆成多大，这由 host 决定，设备无法控制。读完成的长度不超过 MPS，所以 MPS 为 128 B 时不会出现 256 B 的完成。
 
 ### 11.2 设备侧的要求
 
@@ -783,7 +814,7 @@ host → 设备方向的带宽取决于 host 根复合体把读完成拆成多�
 | PCIe 规范中引用的数值（FLR 100 ms 等） | 按本文档执行 | 待回 PCIe Base Spec 原文核对 |
 | Subsystem Vendor ID、Subsystem ID 的取值 | 熔丝未烧写时等于 Vendor ID、Device ID | §4.1；由板卡厂商决定 |
 
-以下各项已按主流做法确定，选定 PCIe 控制器 IP 时作为验收项确认：入站 posted 写在控制器内部保持顺序（PCIe 顺序规则的要求，§6.4 对 `FW_START` 的保证依赖它）；控制器的核心时钟不依赖链路状态（`spec-clock-reset-power` §3.2）；§10.4 的接收信用与重传缓冲。
+以下各项已按主流做法确定，选定 PCIe 控制器 IP 时作为验收项确认：入站 posted 写在控制器内部保持顺序（PCIe 顺序规则的要求，§6.4 对 `FW_START` 的保证依赖它）；控制器的核心时钟不依赖链路状态（`spec-clock-reset-power` §3.2）；§10.4 的接收信用与 replay buffer。
 
 v0.1 不支持、留待后续版本：独立参考时钟（SRIS）、L1 PM Substates、从板载 SPI Flash 启动、签名验证与安全启动（镜像只做 SHA-256 校验，`spec-mgmt-tile` §8.2）。
 
