@@ -13,7 +13,7 @@
 
 ### 1.1 范围
 
-Host DMA 引擎（下称 HDMA）负责在 host 内存和设备内存之间搬运数据。它位于设备的 PCIe 控制器与片上网络之间，经 PCIe 读写 host 内存，经片上网络读写设备内存（LPDDR5X、各 Tile 的 SRAM）。
+Host DMA 引擎（HDMA）负责在 host 内存和设备侧存储之间搬运数据。设备侧存储指设备内存（LPDDR5X）和 Compute Tile 的 SRAM（`spec-address-map` §5.2）。HDMA 位于设备的 PCIe 控制器与 NoC 之间，经 PCIe 读写 host 内存，经 NoC 读写设备侧存储。
 
 本文档定义：
 
@@ -24,21 +24,21 @@ Host DMA 引擎（下称 HDMA）负责在 host 内存和设备内存之间搬运
 - 寄存器；
 - 错误处理、复位、性能要求和验收标准。
 
-下列内容不在本文档范围内：PCIe 链路和配置空间（`spec-pcie`）；命令协议（命令队列、命令格式、上下文，`spec-hdi`）；设备内部的同步机制和片上网络的协议（将由 `spec-tile-sync`（待写）、`spec-noc`（待写） 定义）。本文档只在需要时说明 HDMA 与它们的接口。
+下列内容不在本文档范围内：PCIe 链路和配置空间（`spec-pcie`）；命令协议（命令队列、命令格式、上下文，`spec-hdi`）；设备内部的同步机制和 NoC 的协议（将由 `spec-tile-sync`（待写）、`spec-noc`（待写） 定义）。本文档只在需要时说明 HDMA 与它们的接口。
 
 ### 1.2 使用模型
 
 ```mermaid
 flowchart LR
   DRV[Host 驱动] -->|构造 SGL| HMEM[(Host 内存)]
-  DRV -->|下发命令| CP[设备内部的<br/>命令处理器（固件）]
+  DRV -->|下发命令| CP[设备内部的<br/>CP（固件）]
   CP -->|写描述符、推进尾指针| HDMA[HDMA]
   HDMA <-->|PCIe 读写| HMEM
-  HDMA <-->|片上网络读写| DMEM[(设备内存)]
+  HDMA <-->|NoC 读写| DMEM[(设备内存)]
   HDMA -->|完成通知| CP
 ```
 
-- **只有设备内部的命令处理器（运行在管理 Tile 上的固件，见 `spec-mgmt-tile`）直接编程 HDMA**：写描述符、推进描述符环的尾指针、处理完成和错误。host 不直接写 HDMA 的寄存器和描述符。
+- **只有设备内部的 CP（运行在管理 Tile 上的固件，见 `spec-mgmt-tile`）直接编程 HDMA**：写描述符、推进描述符环的尾指针、处理完成和错误。host 不直接写 HDMA 的寄存器和描述符。
 - host 驱动通过命令协议提交传输请求，请求里携带 host 侧的地址（连续缓冲或 SGL）；固件把请求翻译成 HDMA 描述符。
 - host 可以经 BAR0 只读地访问 HDMA 寄存器的镜像，用于诊断（§7.4）。
 
@@ -76,13 +76,19 @@ flowchart LR
 
 **术语**
 
-| 术语 | 含义 |
-|---|---|
-| H2D | host 到设备：从 host 内存读，写入设备内存 |
-| D2H | 设备到 host：从设备内存读，写入 host 内存 |
-| 设备物理地址 | 设备内部地址空间中的地址，宽度 `addr.device_pa_bits` = 40 位；地址空间的划分见 `spec-address-map` |
-| 总线地址 | host 侧的 PCIe 地址，即驱动交给设备的 DMA 地址，64 位 |
-| MPS / MRRS | PCIe 的最大载荷 / 最大读请求长度，由 host 在设备的 Device Control 寄存器中设置 |
+| 术语 | 全称 | 含义 |
+|---|---|---|
+| HDMA | Host DMA | Host DMA 引擎：在 host 内存与设备侧存储（设备内存和 Compute Tile 的 SRAM）之间搬运数据的引擎（§1.1、§2）。与 Compute Tile 的 Data Mover 不同 |
+| 通道 | channel | HDMA 中各自排队、各自维护状态的传输队列，每个方向的各通道参与共享仲裁（§2.1、§2.3） |
+| 描述符 / 描述符环 | descriptor / descriptor ring | 一次传输的说明 / 每个通道一个的描述符环形缓冲，位于管理 Tile 的 SRAM，由固件写入、HDMA 读取（§3） |
+| HEAD / TAIL | — | 描述符环的头指针（HDMA 推进）/ 尾指针（固件推进）（§3.1） |
+| FENCE | — | 描述符的标志位：本描述符等本通道之前的描述符全部完成后才开始（§5.2）；与 `spec-address-map` 的 fence 不同 |
+| SGL | Scatter-Gather List | 驱动在 host 内存中构造、描述多段 host 缓冲的列表（§4） |
+| H2D / D2H | Host to Device / Device to Host | 传输方向：从 host 内存读、写入设备一侧 / 从设备一侧读、写入 host 内存 |
+| CP | — | 见 `spec-hdi` §1.3 |
+| ML、本地地址 | — | 见 `spec-mgmt-tile` §1.3 |
+| DPA | — | 见 `spec-address-map` §1.3 |
+| 总线地址、MPS / MRRS、tag、完成超时 | — | 见 `spec-pcie` §1.4 |
 
 **参数**
 
@@ -100,8 +106,8 @@ flowchart TB
     DF --> ARB_W[写方向仲裁<br/>D2H]
     ARB_R --> RQ[读请求生成<br/>按 MRRS 拆分]
     RQ --> TAG[Tag 与完成缓冲<br/>64 个 / 32 KiB]
-    TAG --> NW[片上网络写]
-    ARB_W --> NR[片上网络读]
+    TAG --> NW[NoC 写]
+    ARB_W --> NR[NoC 读]
     NR --> WB[D2H 暂存缓冲<br/>16 KiB]
     WB --> WQ[写请求生成<br/>按 MPS 拆分]
     ST[状态回写与完成通知]
@@ -146,12 +152,12 @@ SGL 段的读取与 H2D 数据读取同属读方向，算在所属通道的配�
 - 头指针（HEAD）由 HDMA 推进，指向下一个要处理的描述符；尾指针（TAIL）由固件推进，指向下一个空闲位置。
 - HEAD = TAIL 表示环空；(TAIL + 1) mod 条目数 = HEAD 表示环满，固件不得再写入。
 - 固件写好描述符后，必须保证描述符写入对 HDMA 可见，再写 `CH_TAIL`。
-- HDMA 经管理链路（`spec-mgmt-tile` §5）读取描述符、回写 DW7，不经过片上网络。HDMA 不检查环基地址是否位于管理 Tile 的 SRAM 中；读取或回写描述符时返回错误（地址越界、不可纠正的 ECC 错误或超时），通道进入错误停止，ERR_CODE = DEV_ADDR，`CH_ERR_ADDR` 记录出错的描述符地址，该描述符的 DW7 不回写。
+- HDMA 经 ML（`spec-mgmt-tile` §5）读取描述符、回写 DW7，不经过 NoC。HDMA 不检查环基地址是否位于管理 Tile 的 SRAM 中；读取或回写描述符时返回错误（地址越界、不可纠正的 ECC 错误或超时），通道进入错误停止，ERR_CODE = DEV_ADDR，`CH_ERR_ADDR` 记录出错的描述符地址，该描述符的 DW7 不回写。
 
 环放在管理 Tile 的 SRAM 中的理由：
 
 - host 经 BAR2 只能访问设备内存（`spec-pcie` §7），无法改写描述符，绕过固件对设备地址的校验；不需要在设备内存中另划受保护区域。
-- 固件写描述符、查询 DW7 都是本地访问，不经片上网络。
+- 固件写描述符、查询 DW7 都是本地访问，不经 NoC。
 - HDMA 每个通道预取 2 个描述符（§6），读取描述符的延迟被前一个描述符的数据传输掩盖。
 - 全部 8 个通道按上限配置时占 8 × 256 × 32 B = 64 KiB（推算）。
 
@@ -172,8 +178,8 @@ SGL 段的读取与 H2D 数据读取同属读方向，算在所属通道的配�
 | DW1 | [31:0] | LENGTH | 传输的字节数；1 – `hdma.max_desc_bytes`；必须是 4 的倍数 |
 | DW2 | [31:0] | HOST_ADDR_LO | host 总线地址低 32 位 |
 | DW3 | [31:0] | HOST_ADDR_HI | host 总线地址高 32 位 |
-| DW4 | [31:0] | DEV_ADDR_LO | 设备物理地址低 32 位 |
-| DW5 | [31:0] | DEV_ADDR_HI | 设备物理地址高 32 位；超出 `addr.device_pa_bits` 的位 RsvdZ |
+| DW4 | [31:0] | DEV_ADDR_LO | DPA 低 32 位 |
+| DW5 | [31:0] | DEV_ADDR_HI | DPA 高 32 位；超出 `addr.device_pa_bits` 的位 RsvdZ |
 | DW6 | [15:0] | SGL_SEG_BYTES | HOST_SGL = 1 时为第一个 SGL 段的字节数，16 的倍数，不超过 4096；HOST_SGL = 0 时 RsvdZ |
 | | [31:16] | NOTIFY_ID | NOTIFY = 1 时，完成通知的目标编号，含义由设备内部的同步机制定义 |
 | DW7 | [0] | DONE | 由 HDMA 回写：1 表示处理结束（成功或失败） |
@@ -219,7 +225,7 @@ SGL 由若干段（segment）组成，每段是连续存放的若干条目。每
 | S3 | DATA 条目的 ADDR 必须 4 B 对齐，LENGTH 必须是 4 的倍数且不为 0；应 64 B 对齐以达到满带宽 |
 | S4 | 一个 DATA 条目描述一段连续的总线地址；它可以跨越 4 KiB 边界，HDMA 会自行把请求拆开 |
 | S5 | 所有 DATA 条目的 LENGTH 之和必须等于描述符的 LENGTH |
-| S6 | 段内 DATA 条目按地址顺序依次对应设备侧从 DEV_ADDR 开始的连续区域 |
+| S6 | 按 SGL 的链接顺序遍历各段、按段内的存放顺序遍历条目，所有 DATA 条目依次对应设备侧从 DEV_ADDR 开始的连续区域：第一个 DATA 条目对应 [DEV_ADDR, DEV_ADDR + LENGTH₁)，第二个紧接其后，依此类推 |
 | S7 | HDMA 在用完全部数据之后不再读取后续段；SGL 末尾不需要终止标记 |
 | S8 | 每一段至少包含一个 DATA 条目 |
 | S9 | 一次传输遍历的段数不超过 `hdma.sgl_max_segments`（TBD，默认 512） |
@@ -256,8 +262,8 @@ S8、S9 保证 SGL 的遍历一定会结束：即使 SGL 被错误地连成环�
 
 1. 按 SGL 或连续缓冲生成 host 读请求，每个请求不超过 min(MRRS, `hdma.max_read_request`)，且不跨 4 KiB 边界。
 2. 在发出读请求之前，为其完成数据在完成缓冲中预留空间；预留不到时暂停发请求。
-3. 完成数据到达后，按设备物理地址写入设备内存。完成可能乱序到达，HDMA 必须按地址正确放置。
-4. 全部数据写入设备内存、并收到片上网络的写确认后，传输完成。
+3. 完成数据到达后，按 DPA 写入设备内存。完成可能乱序到达，HDMA 必须按地址正确放置。
+4. 全部数据写入设备内存、并收到 NoC 的写确认后，传输完成。
 
 **D2H**
 
@@ -316,18 +322,18 @@ HDMA 不假设 host 的 DMA 与 CPU cache 一致。驱动必须用操作系统�
 | 缓冲 | 大小 | 依据 |
 |---|---|---|
 | 未完成读请求 | `hdma.max_outstanding_reads` = 64 个，同时受 PCIe 可用 tag 数限制 | 满带宽下 host 读延迟可达 2.5 µs（Hailo-DS p.38）；Gen4 x4 下需在途约 19.7 KB，按每请求 512 B 约 39 个，取 64（推算） |
-| 完成缓冲 | 64 × 512 B = 32 KiB（推算） | PCIe 要求端点为全部未完成读请求预留完成空间 |
-| D2H 暂存缓冲 | `hdma.d2h_buffer` = 16 KiB | 覆盖设备内存读延迟并留余量；TBD，待片上网络和 DRAM 延迟确定后复核 |
+| 完成缓冲 | 64 × 512 B = 32 KiB（推算） | PCIe 要求 EP 为全部未完成读请求预留完成空间 |
+| D2H 暂存缓冲 | `hdma.d2h_buffer` = 16 KiB | 覆盖设备内存读延迟并留余量；TBD，待 NoC 和 DRAM 延迟确定后复核 |
 | SGL 预取缓冲 | 每通道一段，最多 4096 B | §4.4 |
 | 描述符预取 | 每通道最多 2 个描述符 | 支持 §5.2 的流水 |
 
-**tag 的隔离**：完成超时或因设备复位而作废的读请求，其 tag 由 PCIe 控制器隔离一段时间（当前 250 ms，不小于最长完成超时）后才能复用；一个读请求拆成多条完成时，最后一条到达后才释放 tag。HDMA 可用的 tag 数因此会暂时减少，此时按"tag 用尽"停顿。隔离只能降低迟到完成被误收的风险，不能完全排除，因此完成超时（HOST_TIMEOUT）应被当作需要复位设备的故障。PCIe 的 Extended Tag Field Enable 为 0 时，可用 tag 只有 32 个。
+**tag 的隔离**：tag 的生命周期、隔离和可用数量由 `spec-pcie` §10.3 定义。隔离中的 tag 会暂时减少 HDMA 可用的 tag 数，此时按"tag 用尽"停顿。完成超时（HOST_TIMEOUT）应被当作需要复位设备的故障（`spec-pcie` §12.2）。
 
 停顿条件：
 
 - 完成缓冲预留不到空间，或 tag 用尽：读方向停顿。
 - D2H 暂存缓冲满：停止读取设备内存。
-- 片上网络反压：停止写入或读取设备内存，进而反压上述缓冲。
+- NoC 反压：停止写入或读取设备内存，进而反压上述缓冲。
 - PCIe 发送信用不足：写方向停顿。
 
 ---
@@ -336,7 +342,7 @@ HDMA 不假设 host 的 DMA 与 CPU cache 一致。驱动必须用操作系统�
 
 ### 7.1 位置
 
-HDMA 寄存器文件位于 `HDMA_BASE`，由固件经管理链路读写。`HDMA_BASE` 是管理 CPU 本地地址空间中主机接口寄存器区的起始（`spec-mgmt-tile` §3.3），HDMA 寄存器不在设备物理地址空间中（`spec-address-map` §4.4）。下表偏移都相对于 `HDMA_BASE`。
+HDMA 寄存器文件位于 `HDMA_BASE`，由固件经 ML 读写。`HDMA_BASE` 是管理 CPU 本地地址空间中 HIF 寄存器区的起始（`spec-mgmt-tile` §3.3），HDMA 寄存器不在 DPA 空间中（`spec-address-map` §4.4）。下表偏移都相对于 `HDMA_BASE`。
 
 ### 7.2 全局寄存器
 
@@ -352,7 +358,7 @@ HDMA 寄存器文件位于 `HDMA_BASE`，由固件经管理链路读写。`HDMA_
 | 0x01C | `HDMA_BYTES_D2H_HI` | RO | 0 | |
 | 0x020 | `HDMA_STALL_TAG` | RO | 0 | 因 tag 或完成缓冲不足而停顿的周期数 |
 | 0x024 | `HDMA_STALL_D2H` | RO | 0 | 因 D2H 暂存缓冲满而停顿的周期数 |
-| 0x028 | `HDMA_STALL_NOC` | RO | 0 | 因片上网络反压而停顿的周期数 |
+| 0x028 | `HDMA_STALL_NOC` | RO | 0 | 因 NoC 反压而停顿的周期数 |
 | 0x02C | `HDMA_STALL_TX` | RO | 0 | 因 PCIe 发送信用不足而停顿的周期数 |
 
 停顿计数以 HDMA 时钟周期计，饱和不回绕，写 `HDMA_CTRL` 不清零；只在复位时清零。
@@ -371,7 +377,7 @@ HDMA 寄存器文件位于 `HDMA_BASE`，由固件经管理链路读写。`HDMA_
 | +0x14 | `CH_TAIL` | RW | 0 | 尾指针；固件写入新值即提交描述符 |
 | +0x18 | `CH_HEAD` | RO | 0 | 头指针 |
 | +0x1C | `CH_ERR` | RO | 0 | [7:0] ERR_CODE；[31:16] 出错描述符在环中的下标 |
-| +0x20 | `CH_ERR_ADDR_LO` | RO | 0 | 出错的地址（host 总线地址或设备物理地址）低 32 位 |
+| +0x20 | `CH_ERR_ADDR_LO` | RO | 0 | 出错的地址（host 总线地址或 DPA）低 32 位 |
 | +0x24 | `CH_ERR_ADDR_HI` | RO | 0 | 高 32 位 |
 | +0x28 | `CH_DESC_DONE` | RO | 0 | 累计完成的描述符数（含失败），回绕 |
 | +0x30 | `CH_BYTES_LO` | RO | 0 | 本通道累计字节数，读低位时锁存高位 |
@@ -402,7 +408,7 @@ HDMA 寄存器文件的前 4 KiB（覆盖全局寄存器和全部通道寄存器
 | 2 | HOST_CA | host 读请求收到 Completer Abort 完成 |
 | 3 | HOST_TIMEOUT | host 读请求完成超时 |
 | 4 | HOST_POISONED | 收到 poisoned 完成 |
-| 5 | DEV_ADDR | 设备物理地址无效（越界或未映射） |
+| 5 | DEV_ADDR | DPA 无效（越界或未映射） |
 | 6 | DEV_ECC | 读设备内存时发生不可纠正的 ECC 错误 |
 | 7 | DESC_INVALID | 描述符字段非法：TYPE、LENGTH、对齐、保留位，或通道 0 的属性位 |
 | 8 | SGL_INVALID | SGL 违反 §4.2 的规则 |
@@ -462,7 +468,7 @@ D2H 方向的写请求是 posted 事务，host 侧的错误不会返回给 HDMA�
 | H2D | host 按 128 B 返回读完成（MPS ≥ 128 B） | 约 6.5 – 6.7 GB/s |
 | H2D | host 按 256 B 返回读完成（MPS 256 B） | 约 7.0 – 7.2 GB/s |
 
-H2D 带宽取决于 host 根复合体把读完成拆成多大，设备无法控制；读完成的长度不超过 MPS。链路降级时按比例缩小。
+H2D 带宽取决于 host RC 把读完成拆成多大，设备无法控制；读完成的长度不超过 MPS。链路降级时按比例缩小。
 
 ### 9.2 要求
 

@@ -36,7 +36,7 @@ flowchart LR
     BUF[(数据缓冲、SGL)]
   end
   subgraph GW100
-    DB[doorbell 页] --> CP[命令处理器<br/>（管理 Tile 固件）]
+    DB[doorbell 页] --> CP[CP<br/>（管理 Tile 固件）]
     CP --> DMA[DMA 引擎]
     CP --> TILES[Compute Tile 阵列]
     CP --> EV[事件计数器]
@@ -50,20 +50,27 @@ flowchart LR
 
 - 命令队列和完成队列都在 **host 内存**中，由驱动分配。
 - 驱动把命令写入提交队列（SQ），再写 doorbell 通知设备；设备用 DMA 读取命令、执行，然后把完成记录写入完成队列（CQ），按需发中断。
-- 设备内部由命令处理器（运行在管理 Tile 上的固件，见 `spec-mgmt-tile`）实现 HDI。
+- 设备内部由 CP（运行在管理 Tile 上的固件，见 `spec-mgmt-tile`）实现 HDI。
 
 ### 1.3 术语
 
-| 术语 | 含义 |
-|---|---|
-| 上下文 | 隔离与调度的单位，通常对应一个使用设备的进程。每个上下文有一对 SQ/CQ、一个 doorbell 页、一张设备内存区间表和一组事件权限 |
-| 管理队列 | 一对专用的 SQ/CQ，只供内核驱动使用，用于创建上下文、配置等特权操作 |
-| SQ / CQ | 提交队列 / 完成队列，host 内存中的环形缓冲 |
-| SQE / CQE | 提交队列条目（64 B）/ 完成队列条目（16 B） |
-| CID | 命令标识，由驱动分配，在完成记录中返回 |
-| 相位位 | CQE 中的一位，每绕环一圈翻转一次，驱动据此判断条目是否是新的 |
-| 设备物理地址 | 设备内部地址空间中的地址，宽度 `addr.device_pa_bits` = 40 位；地址空间的划分见 `spec-address-map` |
-| 总线地址 | host 侧的 PCIe 地址，即驱动交给设备的 DMA 地址，64 位 |
+| 术语 | 全称 | 含义 |
+|---|---|---|
+| HDI | Host-Device Interface | host 与设备之间的命令协议，即本文档 |
+| HDI 控制器 | HDI controller | HDI 在设备一侧的实现，分两部分：BAR0 0x5000 起的控制器寄存器和 doorbell 页由 HIF 的硬件在本地响应 host（§4，`spec-pcie` §5.3）；命令的处理由 CP 完成，CP 经影子寄存器更新寄存器的只读字段（`spec-mgmt-tile` §6.1） |
+| CP | Command Processor | 运行在管理 Tile 上、实现 HDI 的固件（`spec-mgmt-tile`） |
+| 上下文 | context | 隔离与调度的单位，通常对应一个使用设备的进程，绑定关系由驱动管理。每个上下文有一对 SQ/CQ、一个 doorbell 页、一张设备内存区间表和一组事件权限 |
+| 管理队列 | admin queue | 一对专用的 SQ/CQ，只供内核驱动使用，用于创建上下文、配置等特权操作 |
+| SQ / CQ | Submission Queue / Completion Queue | 提交队列 / 完成队列，host 内存中的环形缓冲。正文中的"命令队列"即 SQ |
+| SQE / CQE | SQ Entry / CQ Entry | 提交队列条目（64 B）/ 完成队列条目（16 B）。正文中的"命令记录"即 SQE，"完成记录"即 CQE |
+| CID | Command Identifier | 命令标识，由驱动分配，在完成记录中返回；同一队列中尚未完成的命令之间必须互不相同（§7.1） |
+| 相位位 | phase tag | CQE 中的一位，每绕环一圈翻转一次，驱动据此判断条目是否是新的 |
+| doorbell | — | host 写入后通知设备队列指针发生变化的寄存器（§4.2） |
+| doorbell 页 | doorbell page | 每个队列对各一个的 4 KiB 地址页，包含其 doorbell（§4.2）；与设备内部的 doorbell 信箱（`spec-mgmt-tile` §1.3）不同 |
+| 事件计数器 / 事件权限 | — | 上下文之间同步用的计数器（§10.8、§10.9）/ 上下文可以使用的事件编号（§9.6）；与 Compute Tile 内部的同步计数器不同 |
+| SGL、H2D / D2H | — | 见 `spec-host-dma` §1.3 |
+| DPA | — | 见 `spec-address-map` §1.3 |
+| 总线地址 | — | 见 `spec-pcie` §1.4 |
 
 ### 1.4 约定
 
@@ -137,7 +144,7 @@ MSI-X 向量的分配、共用和退回 INTx 的规则见 `spec-pcie` §8.3。�
 
 ## 4. HDI 控制器寄存器
 
-偏移相对于 BAR0 的 0x5000。这些寄存器由主机接口在本地响应 host 的访问，固件经影子寄存器更新只读字段（`spec-mgmt-tile` §6.1）。
+偏移相对于 BAR0 的 0x5000。这些寄存器由 HIF 在本地响应 host 的访问，固件经影子寄存器更新只读字段（`spec-mgmt-tile` §6.1）。
 
 | 偏移 | 名称 | 类型 | 复位值 | 说明 |
 |---|---|---|---|---|
@@ -419,35 +426,16 @@ SCT = 0 且 SC = 0 表示成功。
 
 ### 8.1 SGL 条目格式
 
-SQE 的 DPTR 是一个 SGL 条目，host 内存中的 SGL 段也由同样的条目组成。每个条目 16 B：
-
-| 字节 | 位 | 名称 | 说明 |
-|---|---|---|---|
-| 0 – 7 | [63:0] | ADDR | DATA 条目：数据块的总线地址；SEGMENT 条目：下一段的地址 |
-| 8 – 11 | [31:0] | LENGTH | DATA 条目：数据块字节数；SEGMENT 条目：下一段的字节数 |
-| 12 | [7:0] | TYPE | 0 = DATA，1 = SEGMENT；其他值非法 |
-| 13 – 15 | — | — | RsvdZ |
+SGL 的条目格式（16 B 的 DATA 条目与 SEGMENT 条目）见 `spec-host-dma` §4.1。SQE 的 DPTR 是一个 SGL 条目，host 内存中的 SGL 段也由同样的条目组成：
 
 - DPTR 为 DATA 条目时，host 数据是一段连续的缓冲。
 - DPTR 为 SEGMENT 条目时，它指向 SGL 的第一段。
 
 ### 8.2 规则
 
-| 编号 | 规则 |
-|---|---|
-| S1 | 段的地址必须 16 B 对齐，段的字节数必须是 16 的倍数，且不超过 `hdi.sgl_segment_max_bytes`（4096 B，即 256 个条目） |
-| S2 | SEGMENT 条目只能是所在段的最后一个条目，指向下一段，形成链表 |
-| S3 | DATA 条目的 ADDR 必须 4 B 对齐，LENGTH 必须是 4 的倍数且不为 0；应 64 B 对齐以达到满带宽 |
-| S4 | 一个 DATA 条目描述一段连续的总线地址，可以跨越 4 KiB 边界 |
-| S5 | 所有 DATA 条目的 LENGTH 之和必须等于命令给出的传输长度 |
-| S6 | DATA 条目按顺序依次对应设备侧从起始地址开始的连续区域 |
-| S7 | 设备用完全部数据后不再读取后续段；SGL 末尾不需要终止标记 |
-| S8 | 每一段至少包含一个 DATA 条目 |
-| S9 | 一条命令遍历的段数不超过 `hdi.sgl_max_segments`（TBD，默认 512） |
+SGL 必须满足 `spec-host-dma` §4.2 的规则 S1 – S9，其中"描述符的 LENGTH"对应命令给出的传输长度，"DEV_ADDR"对应命令给出的设备地址。
 
-违反任一规则时，命令以 SGL_INVALID 失败，不传输或只传输了部分数据（目标区域内容不确定）。某个 DATA 条目的 LENGTH 超出剩余的传输长度，也按违反 S5 处理。
-
-S8、S9 保证 SGL 的遍历一定会结束：即使 SGL 被错误地连成环，每段至少消耗 4 B 数据，遍历在数据总量达到传输长度或段数达到上限时停止。
+违反任一规则时，命令以 SGL_INVALID 失败，不传输或只传输了部分数据（目标区域内容不确定）。
 
 ---
 
@@ -492,7 +480,7 @@ S8、S9 保证 SGL 的遍历一定会结束：即使 SGL 被错误地连成环�
 | 8 | 32 | FW_VERSION | 固件版本，ASCII，以 0 补足 |
 | 40 | 4 | HW_VERSION | 硬件版本 |
 | 44 | 4 | TIMESTAMP_HZ | 设备时间戳的频率，Hz |
-| 48 | 8 | DEVMEM_BASE | 可分配给上下文的设备内存起始地址（设备物理地址） |
+| 48 | 8 | DEVMEM_BASE | 可分配给上下文的设备内存起始地址（DPA） |
 | 56 | 8 | DEVMEM_SIZE | 可分配的设备内存字节数 |
 | 64 | 2 | MAX_CTX | 上下文个数 |
 | 66 | 2 | MQES | 最大队列条目数减 1 |
@@ -563,7 +551,7 @@ S8、S9 保证 SGL 的遍历一定会结束：即使 SGL 被错误地连成环�
 | CDW10 [16] | R：允许读（COPY_D2H 的源、LOAD_PROGRAM 的镜像、LAUNCH 的参数） |
 | CDW10 [17] | W：允许写（COPY_H2D、FILL 的目标） |
 | CDW10 [18] | X：允许作为程序执行期间可访问的内存（§11.3） |
-| CDW12 – CDW13 | BASE：设备物理地址，4 KiB 对齐，必须落在 DEVMEM 范围内 |
+| CDW12 – CDW13 | BASE：DPA，4 KiB 对齐，必须落在 DEVMEM 范围内 |
 | CDW14 – CDW15 | SIZE：字节数，4 KiB 的倍数；0 表示删除该区间 |
 
 - 驱动负责分配设备内存。不同上下文的区间可以重叠，用于共享缓冲；是否共享由驱动决定，设备不阻止。
@@ -673,7 +661,7 @@ RESULT_LO 的 [0] 为 1 表示目标命令确实被中止。
 | 字段 | 说明 |
 |---|---|
 | DPTR | host 侧数据：DATA 条目（连续缓冲）或 SEGMENT 条目（SGL） |
-| CDW12 – CDW13 | DEV_ADDR：设备物理地址，4 B 对齐 |
+| CDW12 – CDW13 | DEV_ADDR：DPA，4 B 对齐 |
 | CDW14 | LENGTH：字节数，4 的倍数，1 – `hdi.max_transfer`（256 MiB） |
 
 - COPY_H2D 要求 [DEV_ADDR, DEV_ADDR + LENGTH) 完全落在本上下文一个带 W 权限的区间内；COPY_D2H 要求落在一个带 R 权限的区间内。否则以 ACCESS_VIOLATION 失败，且不传输任何数据。
@@ -715,7 +703,7 @@ RESULT_LO 的 [0] 为 1 表示目标命令确实被中止。
 |---|---|
 | CDW10 | 程序句柄 |
 | CDW11 | ENTRY：入口编号（一个镜像可以有多个入口），含义由镜像格式定义 |
-| CDW12 – CDW13 | ARG_ADDR：参数缓冲的设备物理地址；ARG_SIZE 为 0 时 RsvdZ |
+| CDW12 – CDW13 | ARG_ADDR：参数缓冲的 DPA；ARG_SIZE 为 0 时 RsvdZ |
 | CDW14 | ARG_SIZE：参数字节数，0 – `hdi.max_arg_bytes`（4096） |
 
 - 参数缓冲必须落在一个带 R 权限的区间内。
@@ -792,7 +780,7 @@ stateDiagram-v2
 | COPY、FILL、LOAD_PROGRAM、LAUNCH 中的设备地址 | 整个范围落在本上下文一个区间内，且权限满足要求 | ACCESS_VIOLATION，不执行 |
 | SIGNAL_EVENT、WAIT_EVENT 的事件编号 | 在本上下文的事件权限内 | ACCESS_VIOLATION |
 | 程序句柄 | 属于本上下文 | PROGRAM_NOT_FOUND |
-| 程序执行期间的设备内存访问 | 限制在本上下文带 X 权限的区间内，越界时 LAUNCH 以 PROGRAM_FAULT 结束。由 Compute Tile 网络接口的执行期区间检查实现（`spec-address-map` §5.2），IDENTIFY 的 FEATURES[1] 为 1。v0.1 中不同上下文的 LAUNCH 按顺序执行，信任边界见 `spec-address-map` §5.1 | PROGRAM_FAULT |
+| 程序执行期间的设备内存访问 | 限制在本上下文带 X 权限的区间内，越界时 LAUNCH 以 PROGRAM_FAULT 结束。由 Compute Tile NI 的执行期区间检查实现（`spec-address-map` §5.2），IDENTIFY 的 FEATURES[1] 为 1。v0.1 中不同上下文的 LAUNCH 按顺序执行，信任边界见 `spec-address-map` §5.1 | PROGRAM_FAULT |
 | SQE 的保留字段 | 必须为 0 | INVALID_FIELD |
 
 设备**不检查** host 侧的地址：DPTR、SGL、队列地址都由驱动负责。host 内存的隔离依赖 host 的 IOMMU。
@@ -912,13 +900,13 @@ A 的 SIGNAL_EVENT 在 LAUNCH 之后，且 CONCURRENT = 0，因此计数器增�
 | `hdi.max_transfer` | 256 MiB | 一条传输命令的最大字节数 |
 | `hdi.max_programs` | 16 | 每个上下文同时装载的程序数 |
 | `hdi.max_arg_bytes` | 4096 B | LAUNCH 参数的最大字节数 |
-| `hdi.sgl_segment_max_bytes` | 4096 B | SGL 段的最大字节数 |
-| `hdi.sgl_max_segments` | 512（TBD） | 一条命令遍历的 SGL 段数上限；256 MiB 按 4 KiB 页拆分约需 258 段（推算） |
+| `hdma.sgl_segment_max_bytes` | 见 `spec-host-dma` §12 | SGL 段的最大字节数 |
+| `hdma.sgl_max_segments` | 见 `spec-host-dma` §12 | 一条命令遍历的 SGL 段数上限 |
 | `hdi.shutdown_timeout` | 5 s（TBD） | 正常关闭的最长等待时间 |
 | `hdi.sq_prefetch` | 8（TBD） | 每个上下文预取的 SQE 上限 |
 | `hdi.error_log_entries` | 64 | 错误日志条目数 |
 | `hdi.ready_timeout` | 2 s（`HDI_CAP_LO.TO` = 4） | 控制器使能、复位的最长时间 |
-| `addr.device_pa_bits` | 见 `spec-address-map` §10 | 设备物理地址宽度 |
+| `addr.device_pa_bits` | 见 `spec-address-map` §10 | DPA 宽度 |
 
 ---
 
@@ -964,7 +952,6 @@ A 的 SIGNAL_EVENT 在 LAUNCH 之后，且 CONCURRENT = 0，因此计数器增�
 | 统计日志（LID 0x02）的格式 | v0.1 不支持 | §9.8 |
 | 正常关闭的超时时间 | 5 s | §5.3 |
 | host 对 4 B 对齐 DW 写入的原子可见性 | 假设满足 | §6.5，需要在目标平台上确认 |
-| SGL 段数上限 | 512 | §8.2 |
 | 用户态直接提交 | 不支持 | §11.4，需要 PASID 等硬件机制 |
 | LAUNCH 是否可被抢占 | 不可抢占 | §10.2，影响多上下文的响应时间 |
 | 一个上下文是否支持多个队列 | 只支持一对 SQ/CQ | 需要更多并行时再扩展 |
