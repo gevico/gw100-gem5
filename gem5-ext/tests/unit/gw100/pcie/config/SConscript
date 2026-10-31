@@ -1,0 +1,6 @@
+# ConfigSpace 与各 capability（src/gw100/pcie/config/）的单元测试
+Import('*')
+
+GTest('config_space.test', 'config_space.test.cc',
+      with_tag('gw100 pcie config'), with_tag('gw100 pcie capability'),
+      with_tag('gem5 serialize'))

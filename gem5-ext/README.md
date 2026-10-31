@@ -27,7 +27,7 @@ Linux（以 Ubuntu 24.04 为例）：先装好 `build-essential m4 scons python3
 建模的最高原则见 [CONTRIBUTING.md](../CONTRIBUTING.md) §5：模型是在模拟硬件，不能为了软件或测试的方便脱离实际。在此之下：
 
 - 代码全部放在 `gem5-ext/`，通过 `EXTRAS` 编进 gem5，不改 gem5 本体。确实绕不开的本体改动，做成补丁放进 `gem5-ext/patches/`，并注明原因。
-- **目录树即组件树**：一个目录是组件树上的一个节点，放这个节点自己的类；只有一个类的叶子组件作为文件放在父目录中，自身还有子组件的建子目录；被多个子树共用的组件放在它们的最近公共祖先下。组件之间的接口放在共同父节点的 `*_types.hh` 中。每个目录一个 `SConscript`，只声明本目录的源文件和单元测试。目录关系因此就是组成关系；跨子树的引用（例如 `bar0/window_regs` 使用 `window/window_table`）只经头文件，并在类注释中写明。
+- **目录树即组件树**：一个目录是组件树上的一个节点，放这个节点自己的类；只有一个类的叶子组件作为文件放在父目录中，自身还有子组件的建子目录；被多个子树共用的组件放在它们的最近公共祖先下。组件之间的接口放在共同父节点的 `*_types.hh` 中。每个目录一个 `SConscript`，只声明本目录的源文件；单元测试不放在 `src/` 中（见"测试"）。目录关系因此就是组成关系；跨子树的引用（例如 `bar0/window_regs` 使用 `window/window_table`）只经头文件，并在类注释中写明。
 - 按张量指令粒度建模，不逐个 MAC 仿真。
 - ISA 不放进 `gem5/src/arch`：张量指令由 Tile 的 SimObject 自己译码；编码将由重建后的单一真源生成（旧的 `isa_defs.hh` 已随 func-core 删除）。
 - 片上网络计划用自研的轻量 2D Mesh，粒度是 DMA 传输，支持多播；Garnet 只用来交叉验证。Compute Tile 重建之前还没有片上互连。
@@ -46,12 +46,16 @@ Linux（以 Ubuntu 24.04 为例）：先装好 `build-essential m4 scons python3
 
 设备级测试是在 host 上运行的裸机程序，放在 `baremetal/tests/`，每个 test 独立运行，共用 `baremetal/lib/` 的公共库。在仓库根目录执行 `make test`，默认在 `timing` 和 `atomic` 两个 host 预设下各跑一遍；架构、约定和用法见 `baremetal/README.md`。
 
-组件的单元测试用 gem5 自带的 GTest，测试文件与被测组件放在一起（`*.test.cc`），在组件目录的 `SConscript` 中用 `GTest(...)` 声明。只为不依赖 gem5 `Packet` 的纯逻辑组件写单元测试，例如 `src/gw100/pcie/` 的 `ConfigSpace`、`WindowTable`、`StatusUnit`。构建并运行一个测试（在 `gem5/` 目录，`PYTHON_CONFIG` 与 `make gem-build` 相同）：
+组件的单元测试用 gem5 自带的 GTest，放在 `tests/unit/` 下，目录结构与 `src/` 一一对应，例如 `src/gw100/pcie/config/config_space.cc` 的测试是 `tests/unit/gw100/pcie/config/config_space.test.cc`。只为不依赖 gem5 `Packet` 的纯逻辑组件写单元测试，例如 `ConfigSpace`、`WindowTable`、`StatusUnit`。
+
+测试按标签引用被测的源文件，不写相对路径：组件的 `SConscript` 用 `Source(..., add_tags='gw100 pcie config')` 给源文件打标签，测试目录的 `SConscript` 用 `GTest(..., with_tag('gw100 pcie config'), with_tag('gem5 serialize'))` 取用。组件移动位置时测试不受影响。
+
+构建并运行一个测试（在 `gem5/` 目录，`PYTHON_CONFIG` 与 `make gem-build` 相同）：
 
 ```sh
 scons --ignore-style EXTRAS=<仓库根目录>/gem5-ext \
-    build/ARM/gem5-ext/src/gw100/pcie/config/config_space.test.opt
-./build/ARM/gem5-ext/src/gw100/pcie/config/config_space.test.opt
+    build/ARM/gem5-ext/tests/unit/gw100/pcie/config/config_space.test.opt
+./build/ARM/gem5-ext/tests/unit/gw100/pcie/config/config_space.test.opt
 ```
 
 全栈 E2E 测试（应用 → runtime → 驱动 → Linux → PCIe → 设备）的方案尚未落地。原有的 `tests/l1_inst/`、L0 单元测试、TestHost 和 testkit 已于 2026-10-24 删除，不要恢复。

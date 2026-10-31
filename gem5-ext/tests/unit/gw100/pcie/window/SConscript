@@ -1,0 +1,5 @@
+# WindowTable（src/gw100/pcie/window/）的单元测试
+Import('*')
+
+GTest('window_table.test', 'window_table.test.cc',
+      with_tag('gw100 pcie window'), with_tag('gem5 serialize'))
