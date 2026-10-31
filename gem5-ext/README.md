@@ -36,7 +36,7 @@ Linux（以 Ubuntu 24.04 为例）：先装好 `build-essential m4 scons python3
 
 | 目录 | SimObject / 模块 | 对应规格 | 状态 |
 |---|---|---|---|
-| `src/gw100/pcie/` | `Gw100PciDevice`：PciEndpoint、BAR0、VERSION/STATUS/CMD_ADDR/DOORBELL | `spec-pcie`、`spec-hdi` | 已挂到 PCIe 总线（输出目录的 `config.ini` 可见）；还没有软件枚举或访问它，没有自动化测试 |
+| `src/gw100/pcie/` | `Gw100PciDevice`：配置空间与 capability（PM、PCI Express）、BAR0 全局寄存器与访问规则、BAR2 窗口、启动寄存器（桩）、FLR 与 D3hot→D0 复位；`Gw100PrefetchMemBar` | `spec-pcie` | 寄存器层完成，裸机测试 `pcie_config`、`pcie_regs`、`pcie_bar2`、`pcie_flr` 覆盖 F1–F7、F11/F12 的寄存器部分。中断投递、MSI-X、DMA、HDI 未实现 |
 | （待建）`src/noc/` | 轻量 2D Mesh，支持多播 | `spec-noc` | 未开始 |
 
 当前只恢复了 PCIe endpoint 骨架；原来的 func-core、Compute Tile、管理 Tile 和 common 已删除，后续按新的 PCIe 模型逐步重建。
@@ -62,6 +62,11 @@ Linux（以 Ubuntu 24.04 为例）：先装好 `build-essential m4 scons python3
 | # | 位置 | 现状 | 方向 | 优先级 | 计划 |
 |---|---|---|---|---|---|
 | 2 | PCIe 通路 | VExpress 的 PCIe 是功能模型，没有 Gen4 x4 的链路时序和带宽；BAR 访问固定花 `pioDelay` | 未知 | 中 | 加 PCIe 链路 shim |
+| 9 | BAR2 窗口 | 经 `mem_port` 以功能访问读写设备内存，固定花 `bar2_latency`（200 ns），不与设备内部的其他访问竞争 | 乐观 | 中 | 性能建模阶段改为 timing 访问 |
+| 10 | 设备内存 | 用 `SimpleMemory` 代替 LPDDR5X（8 GiB），没有 DRAM 的时序、带宽和通道 | 乐观 | 高（DMA 接入后） | 接入 LPDDR5X 控制器模型 |
+| 11 | 启动寄存器 | 上电即处于 STAGE 4 且 `FW_READY`，相当于固件已在运行并开启了 BAR2 调试窗口（`DEV_STATUS.DEBUG_WIN` = 1）；启动窗口、固件加载与校验不建模，`FW_SIZE` 的写入被忽略 | 乐观 | 低 | 管理 Tile 与固件建模后 |
+| 12 | FLR、D3hot→D0 | 复位立即完成，不占时间 | 乐观 | 低 | 加复位时间参数 |
+| 13 | PCIe capability | 只实现 PM 和 PCI Express；AER、DSN、LTR、MSI-X 未实现，Device Status 的错误位和 Transactions Pending 从不置位；中断只更新 `INT_STATUS`，不投递 | 功能缺失 | 中 | MSI-X 与 INTx 在中断阶段实现，AER 随错误处理实现 |
 
 随旧模型删除而失效（2026-10-24），重建对应组件时不得重犯：
 
