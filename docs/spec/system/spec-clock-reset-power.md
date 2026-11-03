@@ -123,7 +123,7 @@
 
 - `clk_pcie` 只依赖 `REFCLK_PCIE` 和 PCIe PHY 内部的 PLL，**不得依赖链路训练的状态**：REFCLK 存在且 PHY 的 PLL 锁定后即运行，在链路训练失败、Link Down 和热复位期间都保持运行。主流 PCIe 控制器的核心时钟由 PHY 的 PLL 从 REFCLK 产生，满足这一要求；选型时作为验收项确认。
 - 板卡在设备处于 D0、D3hot 期间必须持续提供 REFCLK。设备不支持 L1 PM Substates，也不支持 Clock Power Management（CLKREQ#），Link Capabilities 中的对应位为 0（`spec-pcie` §3、§4.2），host 因此不会在链路低功耗状态下关闭 REFCLK。D3cold 或 host 不提供 REFCLK 时，设备内部不承诺继续运行。
-- ML 在 `clk_pcie` 运行之后才建立。在此之前，启动 ROM 读管理 Tile 本地的链路状态位等待建立，不发出经 ML 的访问（`spec-mgmt-tile` §5.6）。host 不提供 REFCLK 时设备无法被 host 使用，ROM 一直等待是可以接受的。
+- ML 在 `clk_pcie` 运行之后才建立。在此之前，启动 ROM 读管理 Tile 本地的链路状态位等待建立，不发出经 ML 的访问（`spec-mgmt-link` §7.2）。host 不提供 REFCLK 时设备无法被 host 使用，ROM 一直等待是可以接受的。
 
 `clk_core` 和 `clk_mgmt` 的切换必须无毛刺（§3.4）。
 
@@ -134,13 +134,14 @@
 | 边界 | 信号 | 同步方式 | 定义 |
 |---|---|---|---|
 | `clk_pcie` ↔ `clk_core` | PCIe Tile 的 NI | 异步 FIFO | `spec-noc`（待写） |
-| `clk_pcie` ↔ `clk_mgmt` | ML | 每个通道一个异步 FIFO；两端复位经同步器，按链路的复位与排空协议重新建立 | `spec-mgmt-tile` §5.1、§5.6 |
+| `clk_pcie` ↔ `clk_mgmt` | ML | 每个通道一个异步 FIFO；两端的就绪和故障状态经同步器，按链路的建立握手重新建立 | `spec-mgmt-link` §3.3、§7.2 |
 | `clk_mgmt` ↔ `clk_core` | 管理 Tile 的 NI、指令通道的发送端 | 异步 FIFO | `spec-noc`（待写） |
 | `clk_core` ↔ `clk_ddr` | Memory Tile 内部 | 异步 FIFO | `spec-dram`（待写） |
 | `clk_mgmt` ↔ `clk_ao` | 管理 CPU 读写 CRC 的寄存器 | 请求/应答握手：数据在请求期间保持稳定，应答经同步器返回 | 本文档 §6 |
 | `clk_ao` → `clk_core`、`clk_mgmt` | 时钟选择、PLL 使能 | 由无毛刺时钟选择器内部的握手完成；PLL 锁定状态经两级同步器送回 `clk_mgmt` | 本文档 §3.4 |
 | `clk_ao` → `clk_core` | Compute Tile 的时钟使能、NI 隔离请求 | 单比特，经两级同步器；NI 完成隔离后以单比特应答经同步器送回 | 本文档 §4.5 |
 | `clk_ao` → 各域 | 复位 | 异步置位、同步撤销（每个域各有复位同步器） | 本文档 §4.3 |
+| `clk_ao` → `clk_mgmt` | ML 的超时计时：`XTAL` 周期计数器 | 计数器以格雷码计数，整体经同步器送到 `clk_mgmt` 域 | `spec-mgmt-link` §7.5 |
 | `clk_ts` → `clk_pcie`、`clk_mgmt` | 时间戳 | 计数器以格雷码计数，整体经同步器送到读取域；读取域得到的值是一致的（可能滞后几个周期） | `spec-pcie` §6.2、`spec-mgmt-tile` §7.3 |
 | `clk_mgmt` → `clk_pcie` | 看门狗第二级超时（`spec-mgmt-tile` §7.4） | 电平信号经两级同步器，置位后保持到复位 | `spec-mgmt-tile` §7.4 |
 
@@ -155,9 +156,10 @@
 - 固件配置 PLL 的步骤：
   1. 写 `CRC_PLL_CORE_CFG`，使能 PLL；
   2. 轮询 `CRC_PLL_STATUS.CORE_LOCK`，超时 `clock.pll_lock_timeout` = 1 ms；超时则写启动错误码（固件初始化失败）并停止；
-  3. 写 `CRC_CLK_SEL`，把 `clk_mgmt`、`clk_core` 切换到 PLL，再读 `CRC_CLK_SEL` 确认切换完成。切换由无毛刺的时钟选择器完成，期间时钟可以暂停若干周期，但不得产生短脉冲；
+  3. 写 `CRC_CLK_SEL`，把 `clk_mgmt`、`clk_core` 切换到 PLL，再读 `CRC_CLK_SEL` 确认切换完成。切换由无毛刺的时钟选择器完成，期间时钟可以暂停，但不得产生短脉冲；暂停不超过 `clock.clk_switch_pause` = 1 µs（ML 的超时依赖这一上限，`spec-mgmt-link` §7.5）；
   4. `PLL_DDR` 同理，在释放 Memory Tile 之前完成。
 - 必须在 Mesh 保持复位期间切换 `clk_core`。Mesh 释放复位之后，v0.1 不允许再改变 `clk_core`。
+- `clk_mgmt` 切换到 PLL 之后，v0.1 不允许再切回 `XTAL` 或改变频率，直到下一次复位。ML 的超时推算依赖这一点（`spec-mgmt-link` §7.5）。
 
 ### 3.5 时钟门控
 
@@ -204,7 +206,7 @@
 | `CRC_RESET_CAUSE` | 清零后置位 POR 或 PERST | 置位对应的位 | 置位对应的位 | — | — |
 | 熔丝 | 重新读取 | 保留 | 保留 | 保留 | — |
 
-- host 可见的复位范围以 `spec-pcie` §13.1 为准，管理 Tile 一侧的行为以 `spec-mgmt-tile` §5.6、§9 为准；本表汇总全部部件，其中其余各行由本文档定义。
+- host 可见的复位范围以 `spec-pcie` §13.1 为准，ML 的行为以 `spec-mgmt-link` §7.6 为准，管理 Tile 一侧的行为以 `spec-mgmt-tile` §9 为准；本表汇总全部部件，其中其余各行由本文档定义。
 - 热复位和 Link Down 期间链路不可用，host 无法访问 BAR；链路恢复后，设备从 STAGE 1 重新开始。
 - 设备完全复位和热复位都会复位 DRAM 控制器并重新训练，设备内存的内容不保证保留。需要保留的数据，由 host 在复位前用 DMA 取回。
 
@@ -235,7 +237,7 @@ PCIe 控制器检测到 Hot Reset 或 Link Down 后，通知 CRC。CRC 复位矩
 
 1. 入站完成器接受 host 对 `BOOT_CTRL.DEV_RESET` 的写入时，立即进入**reset shim**状态（第 4 步），并对此前已经交给功能逻辑的请求做**复位排空**（§4.3 末尾）。此前已经交给功能逻辑的 host 写可能生效也可能不生效，其效果随后被复位清除（写入设备内存的数据按 §4.2"不保证"处理）。
 2. PCIe Tile 按 FLR 的规则停止出站请求：尚未进入数据链路层的请求丢弃，在途读请求的 tag 进入隔离（`spec-pcie` §13.2）。
-3. CRC 复位矩阵中"设备完全复位"一列的部件，然后从冷复位的第 2.2 步继续（入站完成器和 PCIe 控制器不复位）。Mesh 的全部端点（各 Tile 的 NI、路由器、PCIe Tile 与管理 Tile 的 NI）同时复位，NoC 中的在途请求和响应随之全部作废，不存在未复位的一端等待它们。ML 按 `spec-mgmt-tile` §5.6 重新建立。
+3. CRC 复位矩阵中"设备完全复位"一列的部件，然后从冷复位的第 2.2 步继续（入站完成器和 PCIe 控制器不复位）。Mesh 的全部端点（各 Tile 的 NI、路由器、PCIe Tile 与管理 Tile 的 NI）同时复位，NoC 中的在途请求和响应随之全部作废，不存在未复位的一端等待它们。ML 按 `spec-mgmt-link` §7.2 重新建立。
 4. reset shim 期间，入站完成器按以下规则响应 host：
    - 读 `DEV_VERSION`、`DEV_CAPS`，以及 `DEV_STATUS` 的链路速率和宽度字段：返回真实值（由入站完成器所在的复位域提供）；`DEV_STATUS` 的其他位为 0；
    - 读 `BOOT_STATUS`：返回 STAGE = 0、ERROR = 0、`FW_READY` = 0；
@@ -298,7 +300,7 @@ Compute Tile 的 NI 有隔离状态，由 `CRC_CT_ISO` 的对应位控制。NI �
 | 复位域 | 被复位时，与之相连的部件 | 隔离方式 |
 |---|---|---|
 | 入站完成器之外的 PCIe Tile 功能逻辑 | 入站完成器 | 入站完成器在复位期间按 §4.3 自行响应，不把请求送入被复位的逻辑 |
-| 管理 Tile | PCIe Tile | ML 的复位与排空协议（`spec-mgmt-tile` §5.6） |
+| 管理 Tile | PCIe Tile | ML 两端适配器的复位来自 CRC 的同一个源，同时异步置位；每端的复位至少保持 16 个 `XTAL` 周期才开始撤销，远大于复位分发的偏斜和两端同步器的建立时间，因此两端的复位区间必然重叠，且一端撤销复位时，对端复位造成的就绪信号为 0 已到达本端同步器的输入。异步置位和撤销前的保持不依赖时钟运行。ML 据此建立链路并检测对端复位（`spec-mgmt-link` §7.2、§7.3） |
 | Compute Tile 的功能部件 | NI | §4.5 的 NI 隔离 |
 | NoC、Memory Tile | 其他部件 | v0.1 只在设备完全复位、热复位、冷复位时随整个 Mesh 一起复位（§4.3 冷复位第 5 步）。此时 Mesh 的全部端点同时复位，在途事务一并作废（§4.3 设备完全复位第 3 步）；Mesh 之外未复位的部件只有 PCIe 控制器，它的出站读按 tag 隔离处理（§4.3 设备完全复位第 2 步） |
 
@@ -407,6 +409,7 @@ CRC 的寄存器位于管理 CPU 本地地址 0x2002_0000 起，共 4 KiB（`spe
 | `clock.xtal_freq` | 25 MHz | §3.1 |
 | `clock.xtal_settle` | 5 ms | §4.3 |
 | `clock.pll_lock_timeout` | 1 ms | §3.4、§7 |
+| `clock.clk_switch_pause` | 1 µs | §3.4，`clk_core`、`clk_mgmt` 切换时时钟暂停的上限 |
 | `clock.dev_reset_time` | 100 ms | §4.3 |
 | `clock.reset_drain` | 10 µs | §4.3 复位排空 |
 | `clock.tile_txn_timeout` | 5 µs | §4.5 |

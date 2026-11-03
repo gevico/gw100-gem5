@@ -45,7 +45,7 @@
 | NoC | Network on Chip | 连接所有路由器的数据网络，正文中的"数据 NoC"指同一网络（§4、`spec-noc`（待写）） |
 | XY 路由 | XY routing | 先沿 x 方向、再沿 y 方向转发的维序路由（`spec-noc`（待写）） |
 | 指令通道 | instruction channel | 管理 Tile 向 FU 派发张量级指令的逻辑通道，复用 NoC 的物理链路（§4） |
-| ML | Management Link | 见 `spec-mgmt-tile` §1.3 |
+| ML | Management Link | 见 `spec-mgmt-link` §1.3 |
 | 张量级指令 | tensor instruction | 一条指令完成一个张量运算或一次数据搬运；格式将由 `spec-isa`（待写）定义 |
 | FU | Functional Unit | Compute Tile 中执行张量级指令的部件：矩阵引擎、向量引擎、Data Mover、同步单元 |
 | Data Mover | — | Compute Tile 中的 DMA 部件，在设备内存与 Tile SRAM 之间、Tile 与 Tile 之间搬运数据；细节将由 `spec-compute-tile`（待写）定义 |
@@ -122,7 +122,7 @@ flowchart LR
 
 - 上图是逻辑示意：实际上每个 Tile 只与上下左右相邻的路由器相连，数据逐跳经过 Mesh。
 - "预留"位置只有路由器，没有功能部件，保证 Mesh 完整，以后可以放置其他 Tile。
-- 管理 Tile 与 PCIe Tile 相邻，使两者之间的 ML 最短（`spec-mgmt-tile` §5.1）。
+- 管理 Tile 与 PCIe Tile 相邻，使两者之间的 ML 最短（`spec-mgmt-link` §3.1）。
 - Memory Tile 位于芯片一侧，便于连接 LPDDR5X 的 PHY 和焊盘。
 
 ### 3.2 部件与职责
@@ -151,7 +151,7 @@ flowchart LR
 |---|---|---|---|
 | 数据 NoC | 所有 Tile 的路由器，2D Mesh，XY 路由 | 设备内存与 Tile SRAM 之间的数据、Tile 之间的数据、寄存器访问、同步消息、事件 | `spec-noc`（待写） |
 | 指令通道 | 管理 Tile → 各 Compute Tile 的 FU | 张量级指令，可多播。复用数据 NoC 的物理链路，使用独立的报文类别和逻辑队列；与数据请求共享链路带宽、允许暂时的竞争和反压，但不会因数据拥塞而死锁或无限期等待 | `spec-noc`（待写）、`spec-isa`（待写） |
-| ML | PCIe Tile ↔ 管理 Tile，点对点 | 启动写入、doorbell、事件、寄存器访问、描述符读取 | `spec-mgmt-tile` §5 |
+| ML | PCIe Tile ↔ 管理 Tile，点对点 | 启动写入、doorbell、事件、寄存器访问、描述符读取 | `spec-mgmt-link` |
 | PCIe 链路 | PCIe Tile ↔ host | Gen4 x4 | `spec-pcie` |
 
 NoC 的链路宽度 `noc.link_bytes_per_cycle` = 64 B/周期。依据：Memory Tile 出口的一跳平均要承载约 34 GB/s（136.5 GB/s ÷ 4，推算），64 B × 1 GHz = 64 GB/s（推算）。这只是按平均带宽的估算；各段链路在实际路由和多种流量叠加下的最坏负载，将由 `spec-noc`（待写） 评估。
