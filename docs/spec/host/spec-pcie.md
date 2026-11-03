@@ -77,7 +77,7 @@ flowchart LR
 |---|---|
 | RO | 只读，写入被忽略 |
 | RW | 可读写 |
-| RW1C | 读出状态；写 1 清零对应位，写 0 无效 |
+| RW1C | 读出状态；写 1 清零对应位，写 0 无效。同一周期内硬件置位与软件清零冲突时，置位优先 |
 | W1S | 写 1 触发动作或置位，写 0 无效；读回 0 |
 | WO | 只写；读回 0 |
 | RsvdZ | 保留；读回 0，软件必须写 0 |
@@ -438,6 +438,53 @@ v0.1 只支持由 host 加载固件（PCIe 启动）。本节定义 host 能观�
 
 设备一侧的启动步骤、镜像格式和校验见 `spec-mgmt-tile` §8。
 
+### 6.5 固件可见的 HIF 寄存器
+
+管理 CPU 经 ML 访问 HIF 寄存器区（本地地址 0x3000_0000 起，`spec-mgmt-tile` §3.3、§5.2）。这些寄存器 host 看不到；它们是 host 可见状态的写入端（影子寄存器）和固件需要的控制入口。下表偏移相对于 0x3000_0000。
+
+访问规则：
+
+- 只支持自然对齐的 32 位访问；HDMA 的 `_LO`、`_HI` 寄存器是两个独立的 32 位寄存器。
+- 表中未分配的偏移、以及各块内未实现的寄存器：读以 REJECT 结束，写被拒绝并由 ML 记录 `WR_REJECT`（`spec-mgmt-link` §4.4）。例外：HDI 视角的 0x000 – 0x0FF 按 `spec-hdi` §4 的定义，其中的保留偏移读回 0、写入被忽略。
+- 已实现寄存器中的保留位为 RsvdZ；写只读寄存器被忽略，读 W1S 寄存器返回 0。
+- 复位：本节的寄存器随 HIF 的复位（冷复位、热复位、设备完全复位）恢复复位值；FLR 清零 `HDI_WR_MAP`、`INT_LEVEL` 和 `BOOT_LOAD_STATUS`，`CTX_VECTOR` 恢复复位值，其余按各自说明。
+
+| 偏移 | 大小 | 内容 | 定义 |
+|---|---|---|---|
+| 0x0_0000 | 4 KiB | HDMA 寄存器，`HDMA_BASE` 即此处 | `spec-host-dma` §7 |
+| 0x1_0000 | 4 KiB | 启动与设备状态 | 本节 |
+| 0x1_1000 | 4 KiB | HDI 控制器寄存器的固件视角 | 本节 |
+| 0x1_2000 | 4 KiB | 中断请求与 FLR | 本节、§13.2 |
+| 0x1_3000 | 4 KiB | ML 的 HIF 侧错误寄存器：`ML_HIF_ERR` 在 0x00，`ML_HIF_ERR_INFO` 在 0x04，`ML_HIF_ERR_ADDR` 在 0x08 | `spec-mgmt-link` §8.2 |
+| 其余 | | 保留 | |
+
+**启动与设备状态（0x1_0000 起）**
+
+| 偏移 | 名称 | 类型 | 复位值 | 说明 |
+|---|---|---|---|---|
+| 0x00 | `FW_BOOT_STATUS` | RW | 0 | 写入 host 可见的 `BOOT_STATUS`（§6.4）：[3:0] STAGE，[8] FW_READY，[23:16] ERROR，位置相同。一次写入同时设置三个字段，固件应写入完整的目标值。HIF 不检查 STAGE 的转换是否合法（由启动 ROM 和固件保证，`spec-mgmt-tile` §6.1）。硬件的更新与固件的写入在同一周期时硬件优先：接受 `FW_START` 时置 STAGE = 3、ERROR = 0；启动通路故障锁存（§7.2）；FLR 清零 FW_READY 及门控（§13.2）。读回 HIF 中的实际值 |
+| 0x04 | `FW_SIZE_FW` | RW | 0 | 读：host 写入的 `FW_SIZE`。写：只能写 0，用于加载失败时清零（`spec-mgmt-tile` §8.1） |
+| 0x08 | `FW_VERSION_FW` | RW | 0 | 写入 host 可见的 `FW_VERSION` |
+| 0x0C | `DEV_CTRL_FW` | RW | 0 | [0] DEBUG_WIN：写入 host 可见的 `DEV_STATUS.DEBUG_WIN`，熔丝禁止时写入无效。[1] DEV_FATAL：写 1 置位 `DEV_STATUS.DEV_FATAL`，写 0 无效（清除规则见 §6.2）。其余 RsvdZ |
+| 0x10 | `PCI_STATE` | RO | 0 | 配置空间中固件需要的状态：[0] MSE（Memory Space Enable），[1] BME（Bus Master Enable），[3:2] 电源状态（0 = D0，3 = D3hot），[4] MSI-X Enable，[5] INTx Disable。其余 RsvdZ |
+| 0x14 | `BOOT_LOAD_STATUS` | RO | 0 | [0] WIN_WRITE：本次加载期间启动窗口收到过非法写入（§7.2）。新的一轮加载从启动窗口**实际由关闭变为打开**的那个周期开始（STAGE = 2、不在 FLR 进行中、未锁存启动通路故障，三者同时成立的第一个周期），HIF 在这个周期清零 WIN_WRITE；窗口已经打开时再写 STAGE = 2 不清零。窗口收到非法写入时置位，与清零在同一周期时置位优先。启动 ROM 在第 6 步读取它，置位时以 ERROR = WIN_WRITE 判定加载失败（`spec-mgmt-tile` §8.1）。它是每次加载的状态，与 host 可见的粘滞位 `ERR_STATUS.BOOT_WIN` 不同 |
+
+**HDI 控制器寄存器的固件视角（0x1_1000 起）**
+
+- 偏移 0x000 – 0x0FF 与 BAR0 0x5000 起的 HDI 控制器寄存器一一对应（`spec-hdi` §4）。固件可以读写全部字段，包括 host 只读的字段（例如 `HDI_CAP_LO`、`HDI_CSTS`、`HDI_FATAL`、`HDI_CTX_ERR`）；固件的写入就是更新影子寄存器。
+- 0x100 `HDI_WR_MAP`（RW1C）：第 k 位为 1 表示 host 写过偏移为 4k 的 HDI 寄存器（k = 0 … 31）。host 可写的 HDI 寄存器必须位于 0x000 – 0x07C，以便都能被记录。host 写入可写字段时，HIF 置位对应位并发出 `HDI_WR` 事件（`spec-mgmt-tile` §6.3）。
+- 固件的处理顺序：先清零 `EVT_PENDING.HDI_WR`，再读 `HDI_WR_MAP`，对读到的位写 1 清零，再读对应的寄存器。清零之后 host 的新写入会重新置位 map 和事件，不会丢失通知。
+
+**中断请求与 FLR（0x1_2000 起）**
+
+| 偏移 | 名称 | 类型 | 说明 |
+|---|---|---|---|
+| 0x00 | `INT_REQ` | W1S | 每次写入是一次中断请求：置位 host 可见的 `INT_STATUS` 中写 1 的位（§8.4）；MSI-X 模式下，每个写 1 的位向其向量发送一次消息（屏蔽时置 Pending 位）。[1] ERROR 也可由固件请求（例如 HDI 控制器的致命错误）。HIF 保证这次中断不越过此前已进入发送通路的 DMA 写（§8.5）。FLR 进行中被忽略（§13.2） |
+| 0x04 | `INT_LEVEL` | RW | 固件对中断源条件的贡献，位置与 `INT_STATUS` 相同（例如某个完成队列中还有 host 未消费的记录）；各位的有效源条件见 §8.4。写入本身不置位 `INT_STATUS`。固件发布一个中断时，先置位 `INT_LEVEL` 的对应位，再写 `INT_REQ`；两次都是同方向的 posted 写，按顺序生效（`spec-mgmt-link` §5 规则 1）。源条件消失（例如 host 消费完记录）时，固件清零对应位。FLR 进行中写入被忽略。复位值 0 |
+| 0x10 | `FLR_CTRL` | W1S | [0] TAKE，[1] DONE，语义见 §13.2。其余 RsvdZ |
+| 0x14 | `FLR_STATUS` | RO | [0] IN_PROGRESS：FLR 进行中。[1] DELIVERED。[2] FAIL。语义见 §13.2。复位值 0，FLR 不清零（由 §13.2 的规则更新）。其余 RsvdZ |
+| 0x100 + 4 × n | `CTX_VECTOR[n]` | RW | 上下文 n 的 MSI-X 向量（n = 0 … `hdi.max_contexts` − 1）：[4:0] 向量号。复位值 2 + n（§8.3 的默认分配）。固件在 CREATE_CONTEXT 成功之前写入驱动指定的向量（`spec-hdi` §9.3），DESTROY_CONTEXT 后可不修改；FLR 时恢复复位值，FLR 进行中写入被忽略。固件必须先写映射，再为该上下文写 `INT_REQ`，两次同方向 posted 写按顺序生效。`INT_REQ.CTX[n]` 的消息发往 `CTX_VECTOR[n]` 指定的向量；多个上下文映射到同一向量时，各自的请求各发一次消息，屏蔽与 Pending 按向量计 |
+
 ---
 
 ## 7. BAR2
@@ -562,7 +609,7 @@ DPA 的宽度为 `addr.device_pa_bits` = 40 位，地址空间的划分见 `spec
 |---|---|
 | 0 | 管理队列完成、固件事件 |
 | 1 | 错误（`INT_STATUS.ERROR`） |
-| 2 – 31 | 默认分配给上下文完成队列：上下文 n 使用向量 2 + n。创建上下文时可以改为 0 – 31 中的任一向量 |
+| 2 – 31 | 默认分配给上下文完成队列：上下文 n 使用向量 2 + n。创建上下文时可以改为 0 – 31 中的任一向量，由固件写入 `CTX_VECTOR[n]`（§6.5） |
 
 多个上下文可以共用一个向量，也可以与向量 0、1 共用；驱动在中断处理中检查各完成队列。MSI-X 模式至少需要 host 分配向量 0 和 1，分配不到时使用 INTx。
 
@@ -581,6 +628,15 @@ DPA 的宽度为 `addr.device_pa_bits` = 40 位，地址空间的划分见 `spec
 **MSI-X 模式**：中断源置位时，设备向其对应向量发送一次消息；向量被屏蔽时置对应的 Pending 位，解除屏蔽后发送。消息发送后，`INT_STATUS` 的对应位保持置位，直到软件写 1 清零；软件可以不清零，设备不依赖它决定下一次是否发送。
 
 **INTx 模式**：当 `INT_STATUS & ~INT_MASK` 非零时，设备置位 INTA（发 Assert_INTA 消息）；变为零时撤销（发 Deassert_INTA）。软件必须先处理中断源（例如消费完成队列），再写 1 清零 `INT_STATUS` 的对应位。如果清零时中断源条件仍然成立，设备必须立即重新置位该位。
+
+**各位的源条件**（INTx 模式下决定清零后是否立即重新置位）：
+
+| 位 | 源条件 |
+|---|---|
+| ADMIN、CTX[n]、FW_EVENT | `INT_LEVEL` 的对应位（§6.5），由固件维护 |
+| ERROR | 由硬件判定：`ERR_STATUS` ≠ 0，`DEV_STATUS.DEV_FATAL` = 1（例如看门狗第二级超时，`spec-mgmt-tile` §7.4），或 HDI 影子寄存器中 `HDI_FATAL` ≠ 0、`HDI_CTX_ERR` ≠ 0；再或上 `INT_LEVEL.ERROR`。管理 CPU 或 ML 故障时，硬件部分仍然有效 |
+
+源条件为 1 时，host 写 1 清零的那一位在同一周期重新置位。
 
 ### 8.5 中断与数据的顺序
 
@@ -773,7 +829,7 @@ host → 设备方向的带宽取决于 host RC 把读完成拆成多大，这�
      - 多个 FLR 合并为一个事件时，计时从最近一次 FLR 重新开始。host 持续发起 FLR 时设备可以一直不完成，这由 host 自己造成，不视为故障。
      - 依据：排空和屏障中的每个 ML 请求都在 `ml.timeout` 内结束或使链路进入故障态；正常情况下"处理中"远短于 1 ms（推算）。按入站缓冲深度推导的最坏值列为待决。
 
-  `FLR_CTRL`（[0] TAKE，[1] DONE，均为 W1S）和 `FLR_STATUS`（[0] IN_PROGRESS："FLR 进行中"；[1] DELIVERED；[2] FAIL；其余 RsvdZ）位于 HIF 寄存器区，只对固件可见，偏移随 HIF 寄存器区的布局确定（`spec-mgmt-tile` §12）。
+  `FLR_CTRL` 和 `FLR_STATUS` 的位置与字段见 §6.5。
 
 - **为什么不需要序号**：
   - 每次 FLR 最多发出一个事件。DONE 被接受时，没有 FLR 处于"处理中"，所以链路上没有尚未送达的 FLR 事件；又因为 DELIVERED = 0，所有已经送达的事件都在固件最近一次 TAKE 之前送达，固件的清理在 TAKE 之后，因此晚于这些 FLR 的屏障排空。事件寄存器中残留的 FLR 位不会导致清理早于排空：若它对应的 FLR 尚未送达屏障，DELIVERED 之后会被置位，DONE 被拒绝，固件重做。
