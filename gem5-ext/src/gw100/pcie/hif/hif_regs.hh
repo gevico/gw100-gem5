@@ -17,6 +17,7 @@
 
 #include "src/gw100/ml/ml_endpoint.hh"
 #include "src/gw100/pcie/bar0/boot_regs.hh"
+#include "src/gw100/pcie/boot/boot_ctrl.hh"
 
 namespace gem5
 {
@@ -27,8 +28,8 @@ namespace gw100
 class HifRegs : public MlTargetIf
 {
   public:
-    /** 构造：boot 为 BAR0 的启动寄存器块 */
-    explicit HifRegs(BootRegs &boot);
+    /** 构造：boot 为 BAR0 的启动寄存器块，ctrl 为启动与 FLR 控制 */
+    HifRegs(BootRegs &boot, BootCtrl &ctrl);
 
     /** 接入 ML 的 HIF 侧适配器，ML 错误寄存器经它读写 */
     void bindMl(MlEndpoint *ep) { ml = ep; }
@@ -48,6 +49,8 @@ class HifRegs : public MlTargetIf
 
     /** BAR0 的启动寄存器块 */
     BootRegs &boot;
+    /** 启动与 FLR 控制 */
+    BootCtrl &ctrl;
     /** ML 的 HIF 侧适配器 */
     MlEndpoint *ml = nullptr;
 };

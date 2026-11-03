@@ -41,20 +41,24 @@ devCaps(const Gw100PciDeviceParams &p)
 
 /**
  * 按参数构造各组件；name 是所属设备的名字，devmem_id 是访问设备
- * 内存的请求者 ID。组件之间的登记与连接由 Gw100PcieFactory 完成
+ * 内存的请求者 ID，em 用于调度定时事件。组件之间的登记与连接由
+ * Gw100PcieFactory 完成
  */
 PcieParts::PcieParts(const Gw100PciDeviceParams &p, const std::string &name,
-                     RequestorID devmem_id)
+                     RequestorID devmem_id, EventManager &em)
     : status(name),
+      bootCtrl(name + ".boot", status, p.fw_load_max, p.flr_proc_timeout,
+               em),
       windows(p.bar2_window_count, p.bar2_window_size, p.devmem_base,
               p.devmem_size, p.device_pa_bits),
       devmem(name + ".mem_port", devmem_id),
-      global(status, p.version, devCaps(p), p.link_speed, p.link_width,
-             p.timestamp_hz),
+      global(status, bootCtrl, p.version, devCaps(p), p.link_speed,
+             p.link_width, p.timestamp_hz),
       windowRegs(windows),
-      hif(boot),
+      boot(bootCtrl, p.fw_load_max),
+      hif(boot, bootCtrl),
       bar0(status, p.pio_latency),
-      bar2(windows, status, devmem, p.bar2_latency)
+      bar2(bootCtrl, windows, status, devmem, p.bar2_latency)
 {}
 
 /**
@@ -110,7 +114,7 @@ Gw100PcieFactory::build(const Gw100PciDeviceParams &p, SimObject &owner)
              "%s: 设备物理地址宽度越界", name);
 
     auto parts = std::make_unique<PcieParts>(
-        p, name, p.system->getRequestorId(&owner, "devmem"));
+        p, name, p.system->getRequestorId(&owner, "devmem"), owner);
 
     // 配置空间：capability 链表 PM → PCI Express（spec-pcie §4.2）
     parts->config.addCapability(PmCapBase, std::make_unique<PmCapability>());

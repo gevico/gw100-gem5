@@ -68,6 +68,13 @@ class Gw100PciDevice(PciEndpoint):
 
     mem_port = RequestPort("接设备内存，BAR2 窗口经它访问")
 
+    fw_load_max = Param.MemorySize(
+        "1MiB", "启动窗口与装载区的大小（mgmt.fw_load_max）"
+    )
+    flr_proc_timeout = Param.Latency(
+        "10ms", "一个 FLR 处于处理中的上限（pcie.flr_proc_timeout）"
+    )
+
     mgmt_link = Param.Gw100MgmtLink(
         NULL, "管理链路 ML；为空时设备不接管理 Tile（只用于寄存器层的测试）"
     )
