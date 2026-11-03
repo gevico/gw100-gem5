@@ -67,3 +67,7 @@ class Gw100PciDevice(PciEndpoint):
     link_width = Param.UInt8(4, "当前链路宽度")
 
     mem_port = RequestPort("接设备内存，BAR2 窗口经它访问")
+
+    mgmt_link = Param.Gw100MgmtLink(
+        NULL, "管理链路 ML；为空时设备不接管理 Tile（只用于寄存器层的测试）"
+    )

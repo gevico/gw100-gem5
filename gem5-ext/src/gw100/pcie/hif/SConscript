@@ -1,0 +1,4 @@
+# hif/：固件可见的 HIF 寄存器区，ML 的 HIF 侧目标（spec-pcie §6.5）
+Import('*')
+
+Source('hif_regs.cc', add_tags='gw100 pcie hif')
