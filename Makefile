@@ -30,8 +30,12 @@ PYTHON_VERSION := $(shell $(PYTHON) -c 'import sys; print("%d.%d" % sys.version_
 PYTHON_CONFIG ?= $(if $(PYTHON_VERSION),$(shell command -v python$(PYTHON_VERSION)-config 2>/dev/null))
 
 JOBS ?= $(shell sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)
-GEM5_TARGET := build/ARM/gem5.opt
-GEM5_CDB := build/ARM/compile_commands.json
+# 同时编译 ARM（host）和 RISC-V（管理核、Tile 控制核）两个 ISA。构建目录
+# build/GW100 由 build_opts/ARM 加 USE_RISCV_ISA=y 生成（见 $(GEM5_KCONFIG) 规则）。
+GEM5_BUILD := build/GW100
+GEM5_TARGET := $(GEM5_BUILD)/gem5.opt
+GEM5_CDB := $(GEM5_BUILD)/compile_commands.json
+GEM5_KCONFIG := gem5/$(GEM5_BUILD)/gem5.build/config
 GEM5_EXTRAS := $(abspath gem5-ext)
 GEM5_BIN := gem5/$(GEM5_TARGET)
 
@@ -41,7 +45,7 @@ GEM5_BIN := gem5/$(GEM5_TARGET)
 GEM5_INPUTS := $(shell find gem5-ext/SConscript gem5-ext/src -type f \
 	\( -name '*.cc' -o -name '*.hh' -o -name '*.py' -o -name SConscript \) 2>/dev/null)
 GEM5_HEAD := $(shell git -C gem5 rev-parse HEAD 2>/dev/null)
-GEM5_HEAD_STAMP := gem5/build/ARM/.gw100-gem5-head
+GEM5_HEAD_STAMP := gem5/$(GEM5_BUILD)/.gw100-gem5-head
 GEM5_SCONS = cd gem5 && $(if $(PYTHON_CONFIG),PYTHON_CONFIG=$(PYTHON_CONFIG) )$(SCONS) \
 	--ignore-style $(GEM5_TARGET) $(GEM5_CDB) \
 	EXTRAS="$(GEM5_EXTRAS)" \
@@ -99,9 +103,16 @@ test: gem-build baremetal-build
 gem-build: $(GEM5_BIN)
 
 # 改了 PYTHON_CONFIG 等构建选项、或怀疑构建状态不一致时，用 make -B gem-build 强制构建
-$(GEM5_BIN): $(GEM5_INPUTS) $(GEM5_HEAD_STAMP)
+$(GEM5_BIN): $(GEM5_INPUTS) $(GEM5_HEAD_STAMP) $(GEM5_KCONFIG)
 	$(GEM5_SCONS)
 	@touch $@
+
+# 第一次构建时生成构建配置：以 build_opts/ARM 为基础，再打开 RISC-V
+$(GEM5_KCONFIG):
+	cd gem5 && $(if $(PYTHON_CONFIG),PYTHON_CONFIG=$(PYTHON_CONFIG) )$(SCONS) \
+		defconfig $(GEM5_BUILD) build_opts/ARM EXTRAS="$(GEM5_EXTRAS)"
+	cd gem5 && $(if $(PYTHON_CONFIG),PYTHON_CONFIG=$(PYTHON_CONFIG) )$(SCONS) \
+		setconfig $(GEM5_BUILD) USE_RISCV_ISA=y
 
 # 记录 gem5 子模块的提交号；内容不变时不改写，文件时间也就不变
 $(GEM5_HEAD_STAMP): FORCE
