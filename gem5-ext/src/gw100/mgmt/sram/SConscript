@@ -1,0 +1,4 @@
+# sram/：管理 Tile 的启动 ROM 与 SRAM
+Import('*')
+
+Source('mgmt_sram.cc', add_tags='gw100 mgmt sram')
