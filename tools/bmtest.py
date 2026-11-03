@@ -96,7 +96,7 @@ def main() -> int:
     args = p.parse_args()
 
     args.gem5 = args.gem5.resolve()
-    args.gem5_root = args.gem5.parents[2]       # <gem5>/build/ARM/gem5.opt
+    args.gem5_root = args.gem5.parents[2]       # <gem5>/build/GW100/gem5.opt
     args.config = args.config.resolve()
     args.build_dir = args.build_dir.resolve()
     args.outdir = args.outdir.resolve()

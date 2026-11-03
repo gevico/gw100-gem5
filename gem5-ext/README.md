@@ -9,15 +9,19 @@
 ```sh
 uv pip install --python .venv/bin/python -r requirements-dev.txt   # 含 scons
 make check        # 检查工具链、Python，以及 gem5.opt 链接的 Python 版本
-make gem-build    # 构建 gem5/build/ARM/gem5.opt 和 compile_commands.json
+make gem-build    # 构建 gem5/build/GW100/gem5.opt 和 compile_commands.json
 ```
+
+`build/GW100` 同时编译 ARM 和 RISC-V 两个 ISA：ARM 用于 host，RISC-V 用于管理 Tile 和 Compute Tile 的控制核，两者运行在同一个仿真进程中。第一次构建时，`make gem-build` 以 `build_opts/ARM` 为基础生成构建配置，再打开 `USE_RISCV_ISA`。
 
 gem5 嵌入的 Python 要与 `.venv` 同一版本（3.12），`make gem-build` 会自动找对应的 `python3.12-config`。手工构建时注意：gem5 只从**环境变量**读 `PYTHON_CONFIG`，写成 scons 参数不生效，会退回系统默认的 `python3-config`（macOS 上是 Homebrew 的 3.14）：
 
 ```sh
 cd gem5
+../.venv/bin/scons defconfig build/GW100 build_opts/ARM EXTRAS="$PWD/../gem5-ext"
+../.venv/bin/scons setconfig build/GW100 USE_RISCV_ISA=y
 PYTHON_CONFIG=/opt/homebrew/bin/python3.12-config ../.venv/bin/scons \
-    --ignore-style build/ARM/gem5.opt EXTRAS="$PWD/../gem5-ext" -j8
+    --ignore-style build/GW100/gem5.opt EXTRAS="$PWD/../gem5-ext" -j8
 ```
 
 Linux（以 Ubuntu 24.04 为例）：先装好 `build-essential m4 scons python3-dev`，这是 gem5 上游列出的最小依赖（`gem5/util/dockerfiles/ubuntu-24.04_min-dependencies/Dockerfile`），裸机程序另需 `gcc-aarch64-linux-gnu`，然后同样执行 `make gem-build`。
@@ -54,8 +58,8 @@ Linux（以 Ubuntu 24.04 为例）：先装好 `build-essential m4 scons python3
 
 ```sh
 scons --ignore-style EXTRAS=<仓库根目录>/gem5-ext \
-    build/ARM/gem5-ext/tests/unit/gw100/pcie/config/config_space.test.opt
-./build/ARM/gem5-ext/tests/unit/gw100/pcie/config/config_space.test.opt
+    build/GW100/gem5-ext/tests/unit/gw100/pcie/config/config_space.test.opt
+./build/GW100/gem5-ext/tests/unit/gw100/pcie/config/config_space.test.opt
 ```
 
 全栈 E2E 测试（应用 → runtime → 驱动 → Linux → PCIe → 设备）的方案尚未落地。原有的 `tests/l1_inst/`、L0 单元测试、TestHost 和 testkit 已于 2026-10-24 删除，不要恢复。
