@@ -19,8 +19,48 @@ namespace gw100
 
 /** 按参数构造；全部组件由 Gw100PcieFactory 组装 */
 Gw100PciDevice::Gw100PciDevice(const Params &p)
-    : PciEndpoint(p), parts(Gw100PcieFactory::build(p, *this))
-{}
+    : PciEndpoint(p), parts(Gw100PcieFactory::build(p, *this)),
+      link(p.mgmt_link)
+{
+    parts->hif.pciState = [this] { return pciState(); };
+}
+
+/** 接入 ML 的 HIF 侧（接了管理链路时） */
+void
+Gw100PciDevice::init()
+{
+    PciEndpoint::init();
+    if (!link)
+        return;
+    ml = &link->attach(Gw100MgmtLink::Side::Hif, *this, parts->hif);
+    parts->hif.bindMl(ml);
+    // ML_HIF_ERR 非零经电平信号送到管理 Tile 侧（spec-mgmt-link §8.2）
+    ml->onChange = [this] { ml->setHifErrLevel(ml->errReg() != 0); };
+}
+
+/** 撤销 ML HIF 侧的复位（接了管理链路时） */
+void
+Gw100PciDevice::startup()
+{
+    PciEndpoint::startup();
+    if (link)
+        link->release(Gw100MgmtLink::Side::Hif);
+}
+
+/** PCI_STATE（spec-pcie §6.5）：配置空间中固件需要的状态 */
+uint32_t
+Gw100PciDevice::pciState()
+{
+    uint16_t cmd = letoh(config().command);
+    uint32_t v = 0;
+    if (cmd & PCI_CMD_MSE)
+        v |= 1u << 0;
+    if (cmd & PCI_CMD_BME)
+        v |= 1u << 1;
+    if (cmd & 0x0400)  // Interrupt Disable
+        v |= 1u << 5;
+    return v;
+}
 
 /**
  * 返回名为 if_name 的端口：mem_port 是设备内存端口，其余交给
