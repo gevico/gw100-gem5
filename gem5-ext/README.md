@@ -43,7 +43,7 @@ Linux（以 Ubuntu 24.04 为例）：先装好 `build-essential m4 scons python3
 |---|---|---|---|
 | `src/gw100/pcie/` | `Gw100PciDevice`：外壳，只负责 PciEndpoint 的入口、`mem_port`、ML 的 HIF 侧接入、功能级复位的编排和 checkpoint；`Gw100PcieFactory` 组装下列组件，接口见 `pcie_types.hh`。`status/`：`StatusUnit`（ERR/INT）；`boot/`：`BootCtrl`（STAGE、启动窗口、提交计数、FW_START 门控、启动通路故障、FLR 门控与确认）；`hif/`：`HifRegs`（固件可见的 HIF 寄存器区，ML 的 HIF 侧目标）；`window/`：`WindowTable`（BAR2 调试窗口）；`config/`：`ConfigSpace`，其下 `capability/`：`Capability` 基类、`PmCapability`、`PcieCapability`；`bar0/`：`Bar0Handler` 与 `GlobalRegs`、`WindowRegs`、`BootRegs`；`bar2/`：`Bar2Handler`（启动窗口、调试窗口、关闭）、`DevmemBackend`、`Gw100PrefetchMemBar` | `spec-pcie` | 寄存器层与启动流程完成：裸机测试 `boot_ok`、`boot_errors`、`boot_flr` 覆盖 F10、F11 的启动部分，`pcie_*` 覆盖 F1–F7、F11/F12 的寄存器部分；`ConfigSpace`、`WindowTable`、`StatusUnit` 有单元测试。中断投递、MSI-X、DMA、HDI 未实现 |
 | `src/gw100/ml/` | `Gw100MgmtLink`：ML 的两端适配器 `MlEndpoint` 与四个 `AsyncFifo`，两端分别由 PCIe 设备（`clk_pcie`）和管理 Tile（`clk_mgmt`）驱动 | `spec-mgmt-link` | 完成；`MlEndpoint` 有单元测试（建立、顺序、tag、屏障、撤销、超时与故障、延迟与吞吐） |
-| `src/gw100/mgmt/` | `Gw100MgmtTile`：外壳，本地总线端口、ML 管理侧目标、PLIC 中断源。`sram/`：`MgmtSram`（ROM、按 bank 排队的 SRAM、复位后的硬件清零）；`mailbox/`：`MgmtMailbox`（doorbell 信箱、事件寄存器）；`regs/`：`MgmtLocalRegs`（看门狗、ML、SRAM 控制、访问控制）。管理 CPU（`RiscvTimingSimpleCPU`，RV64，M/U）、CLINT、PLIC 用 gem5 的设备，在 `configs/gw100/devices/mgmt.py` 中组成独立的 RiscvSystem | `spec-mgmt-tile` | 启动相关部分完成，运行真实的 RISC-V 启动 ROM 与固件（`firmware/`）；看门狗计时、CRC 的时钟切换、NoC 端口未实现 |
+| `src/gw100/mgmt/` | `Gw100MgmtTile`：外壳，本地总线端口、ML 管理侧目标、PLIC 中断源。`sram/`：`MgmtSram`（ROM、按 bank 排队的 SRAM、复位后的硬件清零）；`mailbox/`：`MgmtMailbox`（doorbell 信箱、事件寄存器）；`regs/`：`MgmtLocalRegs`（看门狗、ML、SRAM 控制、访问控制）；`crc/`：`MgmtCrc`（复位原因、PLL 锁定、无毛刺时钟切换；切换 `clk_mgmt` 时改变管理系统时钟域的频率档）。管理 CPU（`RiscvTimingSimpleCPU`，RV64，M/U）、CLINT、PLIC 用 gem5 的设备，在 `configs/gw100/devices/mgmt.py` 中组成独立的 RiscvSystem | `spec-mgmt-tile` | 启动相关部分完成，运行真实的 RISC-V 启动 ROM 与固件（`firmware/`）；时钟切换完成；看门狗计时、NoC 端口未实现 |
 | （待建）`src/noc/` | 轻量 2D Mesh，支持多播 | `spec-noc` | 未开始 |
 
 原来的 func-core、Compute Tile 和 common 已删除，按新的规格逐步重建。
@@ -85,12 +85,12 @@ scons --ignore-style EXTRAS=<仓库根目录>/gem5-ext \
 | 10 | 设备内存 | 用 `SimpleMemory` 代替 LPDDR5X（32 GiB），没有 DRAM 的时序、带宽和通道 | 乐观 | 高（DMA 接入后） | 接入 LPDDR5X 控制器模型 |
 | 12 | FLR、D3hot→D0 | 复位立即完成，不占时间 | 乐观 | 低 | 加复位时间参数 |
 | 13 | PCIe capability | 只实现 PM 和 PCI Express；AER、DSN、LTR、MSI-X 未实现，Device Status 的错误位和 Transactions Pending 从不置位；中断只更新 `INT_STATUS`，不投递；固件可见的 `INT_REQ`、`INT_LEVEL`、`CTX_VECTOR` 未实现 | 功能缺失 | 中 | MSI-X 与 INTx 在中断阶段实现，AER 随错误处理实现 |
-| 14 | 管理 Tile 的时钟 | `clk_mgmt` 固定为 `XTAL` 25 MHz；CRC 只实现 `CRC_RESET_CAUSE`，固件不能配置 `PLL_CORE` 和切换时钟（spec-clock-reset-power §3.4、§6） | 悲观 | 高 | 实现 CRC 与无毛刺的时钟切换 |
 | 15 | CLINT | 用 gem5 的 Clint：`mtime` 可被写入（规格要求只读）；`PLL_TS` 的锁定延迟不建模，时间戳从仿真开始即计数 | 乐观 | 低 | 换成自己的 CLINT，按规格只读 |
 | 16 | 启动窗口的入站写入 | 合法写入拆成 `BOOT_WR` 后进入 ML 客户端队列，队列不设上限，不反压 host；当前 host 一次只有一个未完成的 MMIO 写，不会积压 | 乐观 | 中 | 待批准；或建模有限的入站缓冲和对 host 的反压 |
 | 17 | 看门狗 | 只实现寄存器，不计时，不产生第一级中断和第二级的停机与致命错误 | 功能缺失 | 中 | 随固件框架实现 |
 | 18 | 设备完全复位 | `BOOT_CTRL.DEV_RESET` 的写入被忽略 | 功能缺失 | 中 | 实现设备完全复位，复位管理系统与 ML |
 | 19 | SRAM ECC | 校验位不建模，没有故障注入，不会产生可纠正或不可纠正错误；相关寄存器存在 | — | 低 | 需要时加故障注入 |
+| 20 | CRC 的 Mesh 与 Compute Tile 控制 | `CRC_MESH_RST`、`CRC_CT_RST`、`CRC_CT_CLK_EN`、`CRC_CT_ISO` 按规格读写，但还没有 NoC、Memory Tile 和 Compute Tile 的模型可以作用；`CRC_ISO_ACK`、`CRC_ISO_FAIL` 读 0；`clk_core` 的切换只改寄存器，`PLL_DDR` 锁定后不驱动任何时钟 | 功能缺失 | 中 | 随 NoC、Memory Tile、Compute Tile 的模型接入 |
 
 随旧模型删除而失效（2026-10-24），重建对应组件时不得重犯：
 

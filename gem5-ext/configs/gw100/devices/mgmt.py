@@ -32,6 +32,8 @@ from m5.objects import (
 
 # 复位后 clk_mgmt 选择 XTAL（spec-clock-reset-power §3.4）
 XTAL_FREQ = "25MHz"
+# 固件切换到 PLL_CORE 后的频率 mgmt.cpu_freq（spec-mgmt-tile §3.2）
+MGMT_PLL_FREQ = "500MHz"
 # mtime 与设备时间戳是同一个计数器（spec-mgmt-tile §7.3）
 TIMESTAMP_FREQ = "100MHz"
 
@@ -40,8 +42,12 @@ def make_mgmt_system(link, rom_elf: str) -> RiscvSystem:
     """创建管理系统；link 为管理链路，rom_elf 为启动 ROM 的镜像。"""
     s = RiscvSystem()
     s.voltage_domain = VoltageDomain()
+    # 频率档 0 为 PLL_CORE 分频后的工作频率，1 为 XTAL；复位后在档 1，
+    # 由固件写 CRC_CLK_SEL 切换到档 0（spec-clock-reset-power §3.4）
     s.clk_domain = SrcClockDomain(
-        clock=XTAL_FREQ, voltage_domain=s.voltage_domain
+        clock=[MGMT_PLL_FREQ, XTAL_FREQ],
+        init_perf_level=1,
+        voltage_domain=s.voltage_domain,
     )
     s.mem_mode = "timing"
     s.mem_ranges = [
@@ -72,7 +78,7 @@ def make_mgmt_system(link, rom_elf: str) -> RiscvSystem:
     s.clint.int_pin = s.rtc.int_pin
     s.clint.pio = s.membus.mem_side_ports
 
-    s.tile = Gw100MgmtTile(mgmt_link=link, plic=s.plic)
+    s.tile = Gw100MgmtTile(mgmt_link=link, plic=s.plic, pll_perf_level=0)
     s.tile.pio = s.membus.mem_side_ports
 
     s.workload = RiscvBareMetal(

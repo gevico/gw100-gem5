@@ -5,7 +5,7 @@
 | 目录 | 内容 | 规格 |
 |---|---|---|
 | `rom/` | 启动 ROM：等 SRAM 清零和 ML 建立，写 STAGE = 1、2，等待 `FW_START` 或 FLR，校验镜像头和 SHA-256，设置 PMP、清零运行区、写启动信息后跳转 | `spec-mgmt-tile` §8、§9 |
-| `fw/` | 固件。本阶段只写入固件版本、置 STAGE = 4 与 `FW_READY`，并处理 FLR | `spec-mgmt-tile` §8.5、§9 |
+| `fw/` | 固件。本阶段把 `clk_mgmt`、`clk_core` 切换到 `PLL_CORE`（等锁定超时 1 ms）并检查 `PLL_TS`，写入固件版本、置 STAGE = 4 与 `FW_READY`，并处理 FLR；初始化失败时写 ERROR = 4、STAGE = 0xF 后停住 | `spec-mgmt-tile` §8.5、§9 |
 | `common/` | 寄存器地址（`gw100_mgmt.h`）、镜像头与启动信息（`gw100_image.h`）、FLR 的取走与确认、SHA-256 | |
 
 ## 构建

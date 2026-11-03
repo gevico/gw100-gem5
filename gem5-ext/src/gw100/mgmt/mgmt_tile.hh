@@ -7,6 +7,7 @@
  * - ROM 与 SRAM：MgmtSram；
  * - 看门狗、ML、SRAM 控制、访问控制寄存器：MgmtLocalRegs；
  * - doorbell 信箱与事件寄存器：MgmtMailbox；
+ * - 时钟复位控制器的寄存器：MgmtCrc；
  * - 管理 CPU 对 HIF 寄存器区的访问：经 ML 的 REG_RD、REG_WR。
  *
  * @see spec-mgmt-tile, spec-mgmt-link
@@ -20,7 +21,9 @@
 #include "dev/riscv/plic.hh"
 #include "mem/qport.hh"
 #include "params/Gw100MgmtTile.hh"
+#include "sim/clock_domain.hh"
 #include "sim/clocked_object.hh"
+#include "src/gw100/mgmt/crc/mgmt_crc.hh"
 #include "src/gw100/mgmt/mailbox/mgmt_mailbox.hh"
 #include "src/gw100/mgmt/regs/mgmt_local_regs.hh"
 #include "src/gw100/mgmt/sram/mgmt_sram.hh"
@@ -140,11 +143,17 @@ class Gw100MgmtTile : public ClockedObject, public MlTargetIf
     unsigned cpuClient = 0;
     /** 接收中断的 PLIC */
     PlicBase *plic;
+    /** 时钟复位控制器的寄存器 */
+    MgmtCrc crc;
+    /** clk_mgmt 切换到 PLL_CORE 后所用的频率档（时钟域的 perfLevel） */
+    const unsigned pllPerfLevel;
+    /** 管理系统的时钟域：clk_mgmt */
+    SrcClockDomain *const mgmtClk;
     /**
-     * CRC_RESET_CAUSE（spec-clock-reset-power §6）：冷复位后为 POR。
-     * CRC 的其余寄存器在时钟切换建模时实现
+     * 在切换完成的时刻改变管理系统时钟域频率档的事件；优先于同一时刻的
+     * 应答，使 CPU 收到 CLK_SEL 的写应答时已按新频率计时
      */
-    uint32_t crcResetCause = 1;
+    EventFunctionWrapper clkSwitchEvent;
     /** 各中断源当前已送给 PLIC 的电平 */
     std::array<bool, IrqCount> irqLevel{};
     /** 本地总线端口 */
