@@ -21,6 +21,7 @@ mem-tile      Memory Tile：DRAM 控制器与 DRAM 时序
 noc           片上网络
 pcie          PCIe Tile 与 Host 通路
 ml            管理链路 ML（gem5-ext/src/gw100/ml）
+firmware      firmware/：管理 Tile 的启动 ROM 与固件（RISC-V）
 common        gem5-ext/src/common 下的公共件
 configs       gem5-ext/configs：芯片搭建与运行脚本
 baremetal     baremetal/：裸机测试与公共库
