@@ -29,17 +29,21 @@ constexpr Addr Offsets[] = {
 
 /** DEV_STATUS 的 DEBUG_WIN 位：固件已开启 BAR2 调试窗口 */
 constexpr uint32_t DevStatusDebugWin = 1u << 17;
+/** DEV_STATUS 的 DEV_FATAL 位：设备发生致命错误 */
+constexpr uint32_t DevStatusFatal = 1u << 16;
 
 } // anonymous namespace
 
 /**
- * 构造；version、dev_caps 是 DEV_VERSION、DEV_CAPS 的值，
- * link_speed、link_width 写入 DEV_STATUS，timestamp_hz 是时间戳频率
+ * 构造；boot 提供 DEV_STATUS 的 DEBUG_WIN 与 DEV_FATAL，version、
+ * dev_caps 是 DEV_VERSION、DEV_CAPS 的值，link_speed、link_width 写入
+ * DEV_STATUS，timestamp_hz 是时间戳频率
  */
-GlobalRegs::GlobalRegs(StatusUnit &status, uint32_t version,
-                       uint32_t dev_caps, uint8_t link_speed,
-                       uint8_t link_width, uint32_t timestamp_hz)
-    : status(status), version(version), devCaps(dev_caps),
+GlobalRegs::GlobalRegs(StatusUnit &status, const BootCtrl &boot,
+                       uint32_t version, uint32_t dev_caps,
+                       uint8_t link_speed, uint8_t link_width,
+                       uint32_t timestamp_hz)
+    : status(status), boot(boot), version(version), devCaps(dev_caps),
       linkSpeed(link_speed), linkWidth(link_width),
       timestampHz(timestamp_hz)
 {
@@ -47,9 +51,9 @@ GlobalRegs::GlobalRegs(StatusUnit &status, uint32_t version,
         .readonly();
     regDevCaps.reader([this](Reg &) { return devCaps; }).readonly();
     regDevStatus.reader([this](Reg &) -> uint32_t {
-        // 桩模型相当于固件已在运行并开启了调试窗口，BAR2 窗口始终有效
         return (linkSpeed & 0xF) | (uint32_t(linkWidth & 0x1F) << 4) |
-               DevStatusDebugWin;
+               (this->boot.devFatal ? DevStatusFatal : 0) |
+               (this->boot.debugWin ? DevStatusDebugWin : 0);
     }).readonly();
     regScratch.reader([this](Reg &) { return scratch; })
         .writer([this](Reg &, const uint32_t &v) { scratch = v; });

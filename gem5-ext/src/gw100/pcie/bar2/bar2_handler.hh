@@ -14,6 +14,7 @@
 
 #include "base/types.hh"
 #include "src/gw100/pcie/bar2/devmem_backend.hh"
+#include "src/gw100/pcie/boot/boot_ctrl.hh"
 #include "src/gw100/pcie/pcie_types.hh"
 #include "src/gw100/pcie/status/status_unit.hh"
 #include "src/gw100/pcie/window/window_table.hh"
@@ -28,21 +29,25 @@ class Bar2Handler : public BarHandler
 {
   public:
     /**
-     * 构造；窗口来自 table，设备内存经 devmem 访问，错误记录到 status，
-     * 每次访问的延迟为 latency
+     * 构造；启动窗口与调试窗口的开关来自 boot，调试窗口来自 table，
+     * 设备内存经 devmem 访问，错误记录到 status，每次访问的延迟为
+     * latency
      */
-    Bar2Handler(WindowTable &table, StatusUnit &status,
+    Bar2Handler(BootCtrl &boot, WindowTable &table, StatusUnit &status,
                 DevmemBackend &devmem, Tick latency)
-        : table(table), status(status), devmem(devmem), latency(latency)
+        : boot(boot), table(table), status(status), devmem(devmem),
+          latency(latency)
     {}
 
     /**
-     * 处理一次访问：按窗口换算成 DPA，检查使能、目标范围和只读后经
-     * DevmemBackend 访问设备内存
+     * 处理一次访问（spec-pcie §7.1）：启动窗口打开时交给 BootCtrl；
+     * 调试窗口开启时按窗口换算成 DPA 访问设备内存；否则按关闭处理
      */
     Tick access(BarAccess &a) override;
 
   private:
+    /** 启动窗口与调试窗口的开关 */
+    BootCtrl &boot;
     /** 保存窗口配置的表 */
     WindowTable &table;
     /** 记录错误的状态单元 */

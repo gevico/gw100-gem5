@@ -44,3 +44,74 @@ gw100_win_set(const gw100_t *g, unsigned i, uint64_t base, uint32_t flags)
     /* 读回一次，确认配置已生效后再访问窗口（spec-pcie §7.3） */
     (void)bm_read32(w + GW100_WIN_CTRL);
 }
+
+/** 时间戳频率：100 MHz（spec-clock-reset-power §3.2） */
+#define GW100_TS_HZ 100000000ull
+
+/** 读设备时间戳（100 MHz） */
+uint64_t
+gw100_timestamp(const gw100_t *g)
+{
+    uint32_t lo = bm_read32(g->bar0 + GW100_TIMESTAMP_LO);
+    uint32_t hi = bm_read32(g->bar0 + GW100_TIMESTAMP_HI);
+    return ((uint64_t)hi << 32) | lo;
+}
+
+/**
+ * 按 spec-pcie §6.4 的驱动流程加载 size 字节的固件镜像 img。成功返回
+ * 0；加载失败（STAGE 回到 2）返回 ERROR 编码；启动失败（STAGE = 0xF）
+ * 返回 -1；等待超时返回 -2
+ */
+int
+gw100_load_firmware(const gw100_t *g, const uint8_t *img, uint32_t size)
+{
+    /* 第 1 步：等待 STAGE = 2，超时 1 s；固件已在运行时跳过加载 */
+    uint64_t t0 = gw100_timestamp(g);
+    for (;;) {
+        uint32_t st = bm_read32(g->bar0 + GW100_BOOT_STATUS);
+        if (GW100_BOOT_STAGE(st) == 4 && (st & GW100_BOOT_FW_READY))
+            return 0;
+        if (GW100_BOOT_STAGE(st) == 2)
+            break;
+        if (gw100_timestamp(g) - t0 > GW100_TS_HZ)
+            return -2;
+    }
+    /* 第 2、3 步：镜像长度已是 8 的倍数（tools/fwpack.py），64 位写入 */
+    if (size > bm_read32(g->bar0 + GW100_FW_LOAD_MAX) || size % 8)
+        return -2;
+    for (uint32_t off = 0; off < size; off += 8) {
+        uint64_t v = 0;
+        for (unsigned i = 0; i < 8; i++)
+            v |= (uint64_t)img[off + i] << (8 * i);
+        bm_write64(g->bar2 + off, v);
+    }
+    /* 第 4 步：写屏障，再写 FW_SIZE、FW_START */
+    bm_dsb();
+    bm_write32(g->bar0 + GW100_FW_SIZE, size);
+    bm_write32(g->bar0 + GW100_BOOT_CTRL, GW100_BOOT_FW_START);
+    /* 第 5 步：轮询 BOOT_STATUS，超时 5 s */
+    t0 = gw100_timestamp(g);
+    for (;;) {
+        uint32_t st = bm_read32(g->bar0 + GW100_BOOT_STATUS);
+        if (st & GW100_BOOT_FW_READY)
+            return 0;
+        if (GW100_BOOT_STAGE(st) == 2 && GW100_BOOT_ERROR(st))
+            return (int)GW100_BOOT_ERROR(st);
+        if (GW100_BOOT_STAGE(st) == 0xF)
+            return -1;
+        if (gw100_timestamp(g) - t0 > 5 * GW100_TS_HZ)
+            return -2;
+    }
+}
+
+/** 加载嵌入的固件镜像，失败时测试失败 */
+void
+gw100_boot(const gw100_t *g)
+{
+    uint32_t size = (uint32_t)(gw100_fw_image_end - gw100_fw_image);
+    int r = gw100_load_firmware(g, gw100_fw_image, size);
+    if (r != 0)
+        TEST_FAIL("固件加载失败：%d", r);
+    TEST_INFO("固件已就绪，FW_VERSION = 0x%08x\n",
+              bm_read32(g->bar0 + GW100_FW_VERSION));
+}

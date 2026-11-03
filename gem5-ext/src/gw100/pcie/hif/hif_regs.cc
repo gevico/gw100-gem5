@@ -19,13 +19,15 @@ namespace
 
 /** 启动与设备状态块的起始（spec-pcie §6.5） */
 constexpr Addr BootBlk = 0x1'0000;
+/** 中断请求与 FLR 块的起始 */
+constexpr Addr IntBlk = 0x1'2000;
 /** ML 的 HIF 侧错误寄存器块的起始 */
 constexpr Addr MlBlk = 0x1'3000;
 
 } // anonymous namespace
 
-/** 构造：boot 为 BAR0 的启动寄存器块 */
-HifRegs::HifRegs(BootRegs &boot) : boot(boot)
+/** 构造：boot 为 BAR0 的启动寄存器块，ctrl 为启动与 FLR 控制 */
+HifRegs::HifRegs(BootRegs &boot, BootCtrl &ctrl) : boot(boot), ctrl(ctrl)
 {
 }
 
@@ -34,8 +36,16 @@ bool
 HifRegs::read(Addr off, uint32_t &v) const
 {
     switch (off) {
+      case BootBlk + 0x00: v = ctrl.fwBootStatus(); return true;
+      case BootBlk + 0x04: v = ctrl.fwSize(); return true;
       case BootBlk + 0x08: v = boot.fwVersion(); return true;
+      case BootBlk + 0x0C:
+        v = (ctrl.debugWin ? 1u : 0) | (ctrl.devFatal ? 2u : 0);
+        return true;
       case BootBlk + 0x10: v = pciState ? pciState() : 0; return true;
+      case BootBlk + 0x14: v = ctrl.bootLoadStatus(); return true;
+      case IntBlk + 0x10: v = 0; return true;  // FLR_CTRL 是 W1S
+      case IntBlk + 0x14: v = ctrl.flrStatus(); return true;
       case MlBlk + 0x00: v = ml ? ml->errReg() : 0; return true;
       case MlBlk + 0x04: v = ml ? ml->errInfoReg() : 0; return true;
       case MlBlk + 0x08: v = ml ? ml->errAddrReg() : 0; return true;
@@ -48,8 +58,21 @@ bool
 HifRegs::write(Addr off, uint32_t v)
 {
     switch (off) {
+      case BootBlk + 0x00: ctrl.fwWriteBootStatus(v); return true;
+      case BootBlk + 0x04: ctrl.fwWriteFwSize(v); return true;
       case BootBlk + 0x08: boot.setFwVersion(v); return true;
-      case BootBlk + 0x10: return true;  // PCI_STATE 只读
+      case BootBlk + 0x0C:
+        // DEBUG_WIN 由固件写入（熔丝禁止开启不建模，视为允许）；
+        // DEV_FATAL 只能置位
+        ctrl.debugWin = v & 1;
+        if (v & 2)
+            ctrl.devFatal = true;
+        return true;
+      case BootBlk + 0x10:
+      case BootBlk + 0x14:
+        return true;  // 只读
+      case IntBlk + 0x10: ctrl.flrCtrl(v); return true;
+      case IntBlk + 0x14: return true;  // 只读
       case MlBlk + 0x00:
         if (ml)
             ml->clearErr(v);

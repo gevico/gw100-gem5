@@ -142,6 +142,8 @@ test_main(void)
 {
     g = gw100_open();
     TEST_INFO("BAR0 位于 %p，BAR2 位于 %p\n", (void *)g.bar0, (void *)g.bar2);
+    /* 调试窗口由测试用固件在初始化时开启 */
+    gw100_boot(&g);
 
     check_registers();
     check_data();

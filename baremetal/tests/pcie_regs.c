@@ -37,7 +37,7 @@ check_identity(void)
     uint32_t st = bm_read32(r + GW100_DEV_STATUS);
     TEST_EQ(st & 0xF, 4);               /* Gen4 */
     TEST_EQ((st >> 4) & 0x1F, 4);       /* x4 */
-    /* 桩模型相当于固件已开启调试窗口 */
+    /* 测试用固件在初始化时开启了调试窗口（firmware/fw/fw.c） */
     TEST_ASSERT(st & GW100_DEV_STATUS_DEBUG_WIN);
 
     /* 只读寄存器的写入被忽略，且不算错误 */
@@ -150,8 +150,8 @@ check_interrupt_regs(void)
 }
 
 /**
- * 启动寄存器的桩值：固件已就绪、装载区上限；STAGE 不是 2 时 FW_SIZE
- * 的写入被忽略；0x4008、0x400C 是保留偏移
+ * 加载固件之后的启动寄存器：固件已就绪、装载区上限、固件版本；启动窗口
+ * 关闭时 FW_SIZE 的写入被忽略；0x4008、0x400C 是保留偏移
  */
 static void
 check_boot(void)
@@ -161,9 +161,11 @@ check_boot(void)
     TEST_ASSERT(st & GW100_BOOT_FW_READY);
     TEST_EQ(bm_read32(r + GW100_FW_LOAD_MAX), 1024u * 1024);
     TEST_EQ(bm_read32(r + GW100_BOOT_CTRL), 0);
+    uint32_t size = (uint32_t)(gw100_fw_image_end - gw100_fw_image);
+    TEST_EQ(bm_read32(r + GW100_FW_SIZE), size);
     bm_write32(r + GW100_FW_SIZE, 0x1000);
-    TEST_EQ(bm_read32(r + GW100_FW_SIZE), 0);
-    TEST_EQ(bm_read32(r + GW100_FW_VERSION), 0);
+    TEST_EQ(bm_read32(r + GW100_FW_SIZE), size);
+    TEST_EQ(bm_read32(r + GW100_FW_VERSION), 0x00010000);
 
     clear_errors();
     TEST_EQ(bm_read32(r + 0x4008), 0);
@@ -179,6 +181,7 @@ test_main(void)
     gw100_t g = gw100_open();
     r = g.bar0;
     TEST_INFO("BAR0 位于 %p\n", (void *)r);
+    gw100_boot(&g);
 
     check_identity();
     check_scratch();

@@ -49,6 +49,9 @@ check_after_reset(bm_pci_bdf_t d)
     TEST_EQ(bm_pci_cfg_read16(d, PM_CAP + 4) & 0x3, 0);
 
     gw100_t g = gw100_open();
+    /* 固件清理并确认 FLR 后重新置位 FW_READY，测试用固件随之重新开启
+     * 调试窗口（spec-pcie §13.2） */
+    gw100_boot(&g);
     TEST_EQ(bm_read32(g.bar0 + GW100_SCRATCH), 0);
     TEST_EQ(bm_read32(g.bar0 + GW100_INT_MASK), 0xFFFFFFFFu);
     TEST_EQ(bm_read32(g.bar0 + GW100_ERR_STATUS), 0);
@@ -64,6 +67,7 @@ int
 test_main(void)
 {
     gw100_t g = gw100_open();
+    gw100_boot(&g);
 
     TEST_INFO("FLR\n");
     dirty(&g);

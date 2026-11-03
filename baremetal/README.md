@@ -29,6 +29,7 @@ baremetal/
 
 - 程序在 EL3 启动，单核运行，**MMU 和 cache 都关闭**。内存按 Device 类型访问，所有访问必须自然对齐，因此编译时加了 `-mstrict-align`，也不使用浮点和 SIMD（`-mgeneral-regs-only`）。
 - 控制台输出走 semihosting，进入 gem5 进程的 stdout，测试运行器把它存进日志。不使用 UART。
+- 设备上电后由管理 Tile 的启动 ROM 推进 STAGE，固件要由 host 加载（`spec-pcie` §6.4）。需要固件在运行的 test（例如访问 BAR2 调试窗口）先调用 `gw100_boot()`：它把嵌入的固件镜像（`firmware/` 生成的 `fw.img`，见 `lib/fw_image.S`）经启动窗口写入设备并等待 `FW_READY`。一次加载约需 60 ms 仿真时间，主要花在 25 MHz 下的 SRAM 清零和运行区清零上；`make test` 的 tick 上限为 500 ms。
 
 ## test 的约定
 
@@ -55,9 +56,12 @@ baremetal/
 | `hello` | 冒烟：启动、控制台输出、退出码 |
 | `lib_selftest` | 公共库本身：字符串函数、格式化输出、断言宏 |
 | `pcie_config` | 配置空间：ID、Class、BAR 类型与大小、PM 和 PCI Express capability 的字段（spec-pcie F1–F3） |
-| `pcie_regs` | BAR0 全局寄存器、访问规则（保留偏移、非法宽度）、错误记录、中断状态寄存器、启动寄存器（F4–F6） |
-| `pcie_bar2` | BAR2 窗口：配置、经窗口读写设备内存、未使能、越界、只读窗口（F7） |
-| `pcie_flr` | FLR 与 D3hot→D0：配置空间、BAR、寄存器复位，设备内存保留（F11、F12 的寄存器部分） |
+| `pcie_regs` | BAR0 全局寄存器、访问规则（保留偏移、非法宽度）、错误记录、中断状态寄存器、加载固件后的启动寄存器（F4–F6） |
+| `pcie_bar2` | BAR2 调试窗口：配置、经窗口读写设备内存、未使能、越界、只读窗口（F7） |
+| `pcie_flr` | FLR 与 D3hot→D0：配置空间、BAR、寄存器复位，设备内存保留，固件确认 FLR 后重新就绪（F11、F12） |
+| `boot_ok` | 上电初始化：经启动窗口加载固件，ROM 校验并跳转，固件置位 `FW_READY`（F10） |
+| `boot_errors` | 启动失败：镜像校验失败、`FW_SIZE` 非法、启动窗口的非法写入，各自回到 STAGE 2 后可重新加载（F10） |
+| `boot_flr` | 启动期间和固件运行期间的 FLR：门控、回到 STAGE 2 或重新就绪（F11） |
 
 **已知限制**：gem5 的 Simple CPU（timing、atomic）在访存收到错误响应时直接 panic，不会产生 data abort。因此测试无法验证"访问未解码地址会出错"这类行为，例如关闭 Memory Space 后再访问 BAR；这类检查只能验证配置寄存器本身。
 

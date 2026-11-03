@@ -16,6 +16,7 @@
 #include "base/types.hh"
 #include "dev/reg_bank.hh"
 #include "src/gw100/pcie/pcie_types.hh"
+#include "src/gw100/pcie/boot/boot_ctrl.hh"
 #include "src/gw100/pcie/status/status_unit.hh"
 
 namespace gem5
@@ -31,11 +32,12 @@ class GlobalRegs : public RegBlock
     static constexpr Addr Base = 0x0000;
 
     /**
-     * 构造；version、dev_caps 是 DEV_VERSION、DEV_CAPS 的值，
-     * link_speed、link_width 写入 DEV_STATUS，timestamp_hz 是时间戳频率
+     * 构造；boot 提供 DEV_STATUS 的 DEBUG_WIN 与 DEV_FATAL，version、
+     * dev_caps 是 DEV_VERSION、DEV_CAPS 的值，link_speed、link_width 写入
+     * DEV_STATUS，timestamp_hz 是时间戳频率
      */
-    GlobalRegs(StatusUnit &status, uint32_t version, uint32_t dev_caps,
-               uint8_t link_speed, uint8_t link_width,
+    GlobalRegs(StatusUnit &status, const BootCtrl &boot, uint32_t version,
+               uint32_t dev_caps, uint8_t link_speed, uint8_t link_width,
                uint32_t timestamp_hz);
 
     /** 本块在 BAR0 中的起始偏移 */
@@ -67,6 +69,8 @@ class GlobalRegs : public RegBlock
 
     /** INT_* 与 ERR_* 寄存器背后的状态 */
     StatusUnit &status;
+    /** DEBUG_WIN、DEV_FATAL 的来源 */
+    const BootCtrl &boot;
     /** DEV_VERSION 的值 */
     const uint32_t version;
     /** DEV_CAPS 的值：窗口数、MSI-X 表项数、上下文数、DMA 通道数 */

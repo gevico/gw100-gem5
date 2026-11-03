@@ -15,6 +15,7 @@
 
 #include "base/types.hh"
 #include "dev/reg_bank.hh"
+#include "src/gw100/pcie/boot/boot_ctrl.hh"
 #include "src/gw100/pcie/pcie_types.hh"
 
 namespace gem5
@@ -29,8 +30,8 @@ class BootRegs : public RegBlock
     /** 本块在 BAR0 中的起始偏移 */
     static constexpr Addr Base = 0x4000;
 
-    /** 构造并登记各寄存器 */
-    BootRegs();
+    /** 构造并登记各寄存器；ctrl 提供启动状态，fw_load_max 为装载区大小 */
+    BootRegs(BootCtrl &ctrl, uint32_t fw_load_max);
 
     /** 本块在 BAR0 中的起始偏移 */
     Addr base() const override { return Base; }
@@ -46,8 +47,11 @@ class BootRegs : public RegBlock
     void write(Addr off, const uint8_t *data, unsigned size) override
     { bank.write(off, data, size); }
 
-    /** 把 FW_SIZE 恢复为复位值；FW_VERSION 由固件维护，FLR 不清零 */
-    void reset() override { fwSize = 0; }
+    /**
+     * FLR 时由 BootCtrl::flr() 处理 FW_SIZE、FW_READY 等；FW_VERSION 由
+     * 固件维护，FLR 不清零。这里没有需要复位的状态
+     */
+    void reset() override {}
 
     /** FW_VERSION 的当前值 */
     uint32_t fwVersion() const { return fwVer; }
@@ -55,15 +59,17 @@ class BootRegs : public RegBlock
     /** 固件经 FW_VERSION_FW 写入 FW_VERSION（spec-pcie §6.5） */
     void setFwVersion(uint32_t v) { fwVer = v; }
 
-    /** 保存 FW_SIZE 与 FW_VERSION */
+    /** 保存 FW_VERSION */
     void serialize(CheckpointOut &cp) const override;
 
     /** 恢复 serialize() 保存的状态 */
     void unserialize(CheckpointIn &cp) override;
 
   private:
-    /** FW_SIZE */
-    uint32_t fwSize = 0;
+    /** 启动状态 */
+    BootCtrl &ctrl;
+    /** 装载区大小（FW_LOAD_MAX） */
+    const uint32_t fwLoadMax;
     /** FW_VERSION */
     uint32_t fwVer = 0;
 
@@ -71,11 +77,11 @@ class BootRegs : public RegBlock
     RegisterBankLE bank{"boot", Base};
     /** BOOT_STATUS（0x4000，RO） */
     RegisterBankLE::Register32 regBootStatus{"BOOT_STATUS"};
-    /** BOOT_CTRL（0x4004，W1S，本阶段写入无效果） */
+    /** BOOT_CTRL（0x4004，W1S）：[0] FW_START，[1] DEV_RESET */
     RegisterBankLE::Register32 regBootCtrl{"BOOT_CTRL"};
     /** FW_LOAD_MAX（0x4010，RO） */
     RegisterBankLE::Register32 regFwLoadMax{"FW_LOAD_MAX"};
-    /** FW_SIZE（0x4014，RW；只在 STAGE 2 可写，桩中写入被忽略） */
+    /** FW_SIZE（0x4014，RW；只在启动窗口打开时可写） */
     RegisterBankLE::Register32 regFwSize{"FW_SIZE"};
     /** FW_VERSION（0x4018，RO） */
     RegisterBankLE::Register32 regFwVersion{"FW_VERSION"};

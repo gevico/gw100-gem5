@@ -25,6 +25,7 @@
 #include "src/gw100/pcie/bar0/window_regs.hh"
 #include "src/gw100/pcie/bar2/bar2_handler.hh"
 #include "src/gw100/pcie/bar2/devmem_backend.hh"
+#include "src/gw100/pcie/boot/boot_ctrl.hh"
 #include "src/gw100/pcie/config/config_space.hh"
 #include "src/gw100/pcie/hif/hif_regs.hh"
 #include "src/gw100/pcie/status/status_unit.hh"
@@ -40,10 +41,11 @@ struct PcieParts
 {
     /**
      * 按参数构造各组件；name 是所属设备的名字，devmem_id 是访问设备
-     * 内存的请求者 ID。组件之间的登记与连接由 Gw100PcieFactory 完成
+     * 内存的请求者 ID，em 用于调度定时事件。组件之间的登记与连接由
+     * Gw100PcieFactory 完成
      */
     PcieParts(const Gw100PciDeviceParams &p, const std::string &name,
-              RequestorID devmem_id);
+              RequestorID devmem_id, EventManager &em);
 
     /**
      * 功能级复位：把寄存器和窗口恢复为复位值；配置空间由外壳另行复位
@@ -58,6 +60,8 @@ struct PcieParts
 
     /** ERR_* 与 INT_* 的状态 */
     StatusUnit status;
+    /** 启动与 FLR 控制（BOOT_STATUS、启动窗口、FLR 门控） */
+    BootCtrl bootCtrl;
     /** 配置空间 0x40 起的部分 */
     ConfigSpace config;
     /** BAR2 窗口的配置与地址转换 */

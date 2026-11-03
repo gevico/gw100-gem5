@@ -77,6 +77,17 @@
 #define GW100_FW_SIZE           0x4014
 #define GW100_FW_VERSION        0x4018
 #define GW100_BOOT_FW_READY     (1u << 8)
+#define GW100_BOOT_STAGE(v)     ((v) & 0xF)
+#define GW100_BOOT_ERROR(v)     (((v) >> 16) & 0xFF)
+#define GW100_BOOT_FW_START     (1u << 0)
+
+/* DEV_STATUS 的位：致命错误 */
+#define GW100_DEV_STATUS_FATAL  (1u << 16)
+
+/** 嵌入的固件镜像的起始（lib/fw_image.S） */
+extern const uint8_t gw100_fw_image[];
+/** 嵌入的固件镜像的结束 */
+extern const uint8_t gw100_fw_image_end[];
 
 /* 保留的块：本阶段尚未实现（MSI-X、HDI、DMA 镜像） */
 #define GW100_RSVD_BLOCK_HDI    0x5000
@@ -103,5 +114,18 @@ gw100_t gw100_open(void);
  */
 void gw100_win_set(const gw100_t *g, unsigned i, uint64_t base,
                    uint32_t flags);
+
+/** 读设备时间戳（100 MHz） */
+uint64_t gw100_timestamp(const gw100_t *g);
+
+/**
+ * 按 spec-pcie §6.4 的驱动流程加载 size 字节的固件镜像 img。成功返回
+ * 0；加载失败（STAGE 回到 2）返回 ERROR 编码；启动失败（STAGE = 0xF）
+ * 返回 -1；等待超时返回 -2
+ */
+int gw100_load_firmware(const gw100_t *g, const uint8_t *img, uint32_t size);
+
+/** 加载嵌入的固件镜像，失败时测试失败 */
+void gw100_boot(const gw100_t *g);
 
 #endif /* BM_GW100_H */

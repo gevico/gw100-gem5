@@ -1,0 +1,6 @@
+# boot/：HIF 的启动与 FLR 控制（spec-pcie §6.4、§7.2、§13.2）
+Import('*')
+
+Source('boot_ctrl.cc', add_tags='gw100 pcie boot')
+
+DebugFlag('Gw100Boot', 'GW100 HIF 的启动窗口、FW_START 与 FLR 处理')
