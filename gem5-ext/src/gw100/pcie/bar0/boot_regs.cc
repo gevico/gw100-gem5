@@ -23,24 +23,23 @@ constexpr Addr Offsets[] = {
     0x4000, 0x4004, 0x4010, 0x4014, 0x4018,
 };
 
-/** 启动阶段：固件运行；FW_READY 位于 bit 8 */
-constexpr uint32_t BootStatusReady = 4u | (1u << 8);
-
-/** 启动窗口与镜像大小的上限 mgmt.fw_load_max（spec-mgmt-tile §4.1） */
-constexpr uint32_t FwLoadMax = 1024 * 1024;
-
 } // anonymous namespace
 
-/** 构造并登记各寄存器 */
-BootRegs::BootRegs()
+/** 构造并登记各寄存器；ctrl 提供启动状态，fw_load_max 为装载区大小 */
+BootRegs::BootRegs(BootCtrl &ctrl, uint32_t fw_load_max)
+    : ctrl(ctrl), fwLoadMax(fw_load_max)
 {
-    regBootStatus.reader([](Reg &) { return BootStatusReady; }).readonly();
+    regBootStatus.reader([this](Reg &) { return this->ctrl.hostBootStatus(); })
+        .readonly();
     regBootCtrl.reader([](Reg &) -> uint32_t { return 0; })
-        .writer([](Reg &, const uint32_t &) {});
-    regFwLoadMax.reader([](Reg &) { return FwLoadMax; }).readonly();
-    regFwSize.reader([this](Reg &) { return fwSize; })
-        // FW_SIZE 只在 STAGE 2 可写；桩始终处于 STAGE 4，写入被忽略
-        .writer([](Reg &, const uint32_t &) {});
+        .writer([this](Reg &, const uint32_t &v) {
+            this->ctrl.hostBootCtrl(v);
+        });
+    regFwLoadMax.reader([this](Reg &) { return fwLoadMax; }).readonly();
+    regFwSize.reader([this](Reg &) { return this->ctrl.fwSize(); })
+        .writer([this](Reg &, const uint32_t &v) {
+            this->ctrl.hostWriteFwSize(v);
+        });
     regFwVersion.reader([this](Reg &) { return fwVer; }).readonly();
 
     bank.addRegistersAt<RegisterBankLE::RegisterRaz>({
@@ -60,11 +59,10 @@ BootRegs::implemented(Addr off) const
     return false;
 }
 
-/** 保存 FW_SIZE 与 FW_VERSION */
+/** 保存 FW_VERSION */
 void
 BootRegs::serialize(CheckpointOut &cp) const
 {
-    SERIALIZE_SCALAR(fwSize);
     SERIALIZE_SCALAR(fwVer);
 }
 
@@ -72,7 +70,6 @@ BootRegs::serialize(CheckpointOut &cp) const
 void
 BootRegs::unserialize(CheckpointIn &cp)
 {
-    UNSERIALIZE_SCALAR(fwSize);
     UNSERIALIZE_SCALAR(fwVer);
 }
 

@@ -34,8 +34,13 @@ Gw100PciDevice::init()
         return;
     ml = &link->attach(Gw100MgmtLink::Side::Hif, *this, parts->hif);
     parts->hif.bindMl(ml);
-    // ML_HIF_ERR 非零经电平信号送到管理 Tile 侧（spec-mgmt-link §8.2）
-    ml->onChange = [this] { ml->setHifErrLevel(ml->errReg() != 0); };
+    parts->bootCtrl.bindMl(ml);
+    ml->onChange = [this] {
+        // ML_HIF_ERR 非零经电平信号送到管理 Tile 侧（spec-mgmt-link
+        // §8.2）；链路状态的变化交给启动与 FLR 控制
+        ml->setHifErrLevel(ml->errReg() != 0);
+        parts->bootCtrl.mlChanged();
+    };
 }
 
 /** 撤销 ML HIF 侧的复位（接了管理链路时） */
@@ -189,6 +194,8 @@ Gw100PciDevice::functionReset(const char *why)
     cfgWriteCommon(PCI_COMMAND, 2, 0);
     for (int i = 0; i < 6; i++)
         cfgWriteCommon(PCI0_BASE_ADDR0 + 4 * i, 4, 0);
+    // FLR 的门控、排空与通知固件（spec-pcie §13.2）
+    parts->bootCtrl.flr();
 }
 
 /** 保存配置空间头部（基类）和各组件的状态 */
