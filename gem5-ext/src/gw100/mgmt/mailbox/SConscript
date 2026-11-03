@@ -1,0 +1,4 @@
+# mailbox/：doorbell 信箱与事件寄存器
+Import('*')
+
+Source('mgmt_mailbox.cc', add_tags='gw100 mgmt mailbox')

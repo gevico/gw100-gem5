@@ -1,0 +1,4 @@
+# regs/：看门狗、ML、SRAM 控制、访问控制寄存器
+Import('*')
+
+Source('mgmt_local_regs.cc', add_tags='gw100 mgmt regs')

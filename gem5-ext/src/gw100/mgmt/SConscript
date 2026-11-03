@@ -1,0 +1,7 @@
+# mgmt/：管理 Tile 的外壳 Gw100MgmtTile（spec-mgmt-tile）。
+# 子目录是它的组件：sram/、mailbox/、regs/。
+Import('*')
+
+SimObject('Gw100MgmtTile.py', sim_objects=['Gw100MgmtTile'])
+
+Source('mgmt_tile.cc')
