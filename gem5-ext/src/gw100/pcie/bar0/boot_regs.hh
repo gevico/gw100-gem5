@@ -46,10 +46,16 @@ class BootRegs : public RegBlock
     void write(Addr off, const uint8_t *data, unsigned size) override
     { bank.write(off, data, size); }
 
-    /** 把 FW_SIZE 恢复为复位值 */
+    /** 把 FW_SIZE 恢复为复位值；FW_VERSION 由固件维护，FLR 不清零 */
     void reset() override { fwSize = 0; }
 
-    /** 保存 FW_SIZE */
+    /** FW_VERSION 的当前值 */
+    uint32_t fwVersion() const { return fwVer; }
+
+    /** 固件经 FW_VERSION_FW 写入 FW_VERSION（spec-pcie §6.5） */
+    void setFwVersion(uint32_t v) { fwVer = v; }
+
+    /** 保存 FW_SIZE 与 FW_VERSION */
     void serialize(CheckpointOut &cp) const override;
 
     /** 恢复 serialize() 保存的状态 */
@@ -58,6 +64,8 @@ class BootRegs : public RegBlock
   private:
     /** FW_SIZE */
     uint32_t fwSize = 0;
+    /** FW_VERSION */
+    uint32_t fwVer = 0;
 
     /** 本块的寄存器组 */
     RegisterBankLE bank{"boot", Base};

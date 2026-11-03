@@ -52,6 +52,7 @@ PcieParts::PcieParts(const Gw100PciDeviceParams &p, const std::string &name,
       global(status, p.version, devCaps(p), p.link_speed, p.link_width,
              p.timestamp_hz),
       windowRegs(windows),
+      hif(boot),
       bar0(status, p.pio_latency),
       bar2(windows, status, devmem, p.bar2_latency)
 {}

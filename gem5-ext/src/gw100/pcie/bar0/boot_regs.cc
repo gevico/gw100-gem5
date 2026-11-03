@@ -41,7 +41,7 @@ BootRegs::BootRegs()
     regFwSize.reader([this](Reg &) { return fwSize; })
         // FW_SIZE 只在 STAGE 2 可写；桩始终处于 STAGE 4，写入被忽略
         .writer([](Reg &, const uint32_t &) {});
-    regFwVersion.reader([](Reg &) -> uint32_t { return 0; }).readonly();
+    regFwVersion.reader([this](Reg &) { return fwVer; }).readonly();
 
     bank.addRegistersAt<RegisterBankLE::RegisterRaz>({
         {0x4000, regBootStatus}, {0x4004, regBootCtrl},
@@ -60,11 +60,12 @@ BootRegs::implemented(Addr off) const
     return false;
 }
 
-/** 保存 FW_SIZE */
+/** 保存 FW_SIZE 与 FW_VERSION */
 void
 BootRegs::serialize(CheckpointOut &cp) const
 {
     SERIALIZE_SCALAR(fwSize);
+    SERIALIZE_SCALAR(fwVer);
 }
 
 /** 恢复 serialize() 保存的状态 */
@@ -72,6 +73,7 @@ void
 BootRegs::unserialize(CheckpointIn &cp)
 {
     UNSERIALIZE_SCALAR(fwSize);
+    UNSERIALIZE_SCALAR(fwVer);
 }
 
 } // namespace gw100

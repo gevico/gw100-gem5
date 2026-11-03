@@ -16,12 +16,21 @@ from dataclasses import dataclass, field
 
 from m5.objects import (
     AddrRange,
+    Gw100MgmtLink,
     Gw100PciDevice,
     Gw100PrefetchMemBar,
     SimpleMemory,
+    SrcClockDomain,
+    VoltageDomain,
 )
 from m5.objects.PciDevice import PciMemBar, PciMemUpperBar
 from m5.util.convert import toMemorySize
+
+from .mgmt import make_mgmt_system
+
+# clk_pcie：PCIe 控制器、入站完成器、BAR0 寄存器、HDMA
+# （spec-clock-reset-power §3.2）
+PCIE_FREQ = "250MHz"
 
 
 @dataclass(frozen=True)
@@ -93,7 +102,15 @@ class Gw100Config:
             conf_table_reported=False,
         )
         dev.mem_port = dev.devmem.port
+        dev.clk_domain = SrcClockDomain(
+            clock=PCIE_FREQ, voltage_domain=VoltageDomain()
+        )
+        dev.mgmt_link = Gw100MgmtLink()
         return dev
+
+    def make_mgmt(self, dev: Gw100PciDevice, rom_elf: str):
+        """创建与 dev 相连的管理系统（RiscvSystem），挂到 Root 下。"""
+        return make_mgmt_system(dev.mgmt_link, rom_elf)
 
 
 GW100 = Gw100Config()

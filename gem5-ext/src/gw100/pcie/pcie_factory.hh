@@ -26,6 +26,7 @@
 #include "src/gw100/pcie/bar2/bar2_handler.hh"
 #include "src/gw100/pcie/bar2/devmem_backend.hh"
 #include "src/gw100/pcie/config/config_space.hh"
+#include "src/gw100/pcie/hif/hif_regs.hh"
 #include "src/gw100/pcie/status/status_unit.hh"
 #include "src/gw100/pcie/window/window_table.hh"
 
@@ -69,6 +70,8 @@ struct PcieParts
     WindowRegs windowRegs;
     /** BAR0 的启动寄存器块 */
     BootRegs boot;
+    /** 固件可见的 HIF 寄存器区（ML 的 HIF 侧目标） */
+    HifRegs hif;
     /** BAR0 的处理者 */
     Bar0Handler bar0;
     /** BAR2 的处理者 */

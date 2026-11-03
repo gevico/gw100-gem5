@@ -26,15 +26,23 @@ gem5 会在仿真开始前等待 GDB 连接 127.0.0.1:7100（--gdb-port 可改�
 """
 
 import argparse
+import os
 import sys
 
 import m5
+from m5.objects import Root
+
 from gem5.simulate.simulator import Simulator
 
 from gw100.boards import BOARDS, DEFAULT_BOARD
 from gw100.devices import DEFAULT_DEVICE, DEVICES
 from gw100.hosts import DEFAULT_HOST, HOSTS
 from gw100.workload import set_linux_workload
+
+# 启动 ROM 的默认镜像：make firmware-build 的输出
+DEFAULT_ROM = os.path.normpath(os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "..", "build",
+    "gw100-firmware", "rom.elf"))
 
 APP_EXIT = "semi:ADP_Stopped_ApplicationExit"
 EXIT_TICK_LIMIT = 124
@@ -52,6 +60,7 @@ class Args(argparse.Namespace):
     max_ticks: int
     wait_gdb: bool
     gdb_port: int
+    rom: str
 
 
 def main() -> None:
@@ -102,6 +111,11 @@ def main() -> None:
         default=7100,
         help="远程 GDB 端口（默认 7100；macOS 的隔空播放占用了 7000）",
     )
+    _ = parser.add_argument(
+        "--rom",
+        default=DEFAULT_ROM,
+        help=f"管理 Tile 启动 ROM 的 RISC-V 镜像（默认 {DEFAULT_ROM}）",
+    )
     args = parser.parse_args(namespace=Args())
 
     if args.workload == "baremetal" and not args.kernel:
@@ -118,9 +132,10 @@ def main() -> None:
             f"板卡 {args.board} 不提供"
         )
 
+    dev = device.make()
     board = board_cls(
         HOSTS[args.host],
-        [device.make()],
+        [dev],
         bare_metal=(args.workload == "baremetal"),
     )
     if args.workload == "baremetal":
@@ -132,6 +147,12 @@ def main() -> None:
         # 认识的退出事件，裸机模式直接用底层
         # m5.instantiate()/m5.simulate()。
         board._pre_instantiate()
+        if not os.path.isfile(args.rom):
+            parser.error(
+                f"启动 ROM 镜像不存在：{args.rom}（先 make firmware-build）"
+            )
+        # 管理 Tile 所在的 RISC-V 系统，与 host 系统在同一个 Root 下
+        Root.getInstance().gw100_mgmt = device.make_mgmt(dev, args.rom)
         m5.instantiate()
         board._post_instantiate()
         event = m5.simulate(args.max_ticks or m5.MaxTick)

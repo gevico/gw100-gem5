@@ -21,6 +21,7 @@
 
 #include "dev/pci/device.hh"
 #include "params/Gw100PciDevice.hh"
+#include "src/gw100/ml/mgmt_link.hh"
 #include "src/gw100/pcie/pcie_factory.hh"
 
 namespace gem5
@@ -43,6 +44,12 @@ class Gw100PciDevice : public PciEndpoint
      */
     Port &getPort(const std::string &if_name,
                   PortID idx = InvalidPortID) override;
+
+    /** 接入 ML 的 HIF 侧（接了管理链路时） */
+    void init() override;
+
+    /** 撤销 ML HIF 侧的复位（接了管理链路时） */
+    void startup() override;
 
     /** 保存配置空间头部（基类）和各组件的状态 */
     void serialize(CheckpointOut &cp) const override;
@@ -82,8 +89,15 @@ class Gw100PciDevice : public PciEndpoint
      */
     void cfgWriteCommon(Addr off, unsigned size, uint32_t val);
 
+    /** PCI_STATE（spec-pcie §6.5）：配置空间中固件需要的状态 */
+    uint32_t pciState();
+
     /** 全部组件 */
     std::unique_ptr<PcieParts> parts;
+    /** 管理链路；为空时不接管理 Tile */
+    Gw100MgmtLink *link;
+    /** ML 的 HIF 侧适配器 */
+    MlEndpoint *ml = nullptr;
 };
 
 } // namespace gw100
