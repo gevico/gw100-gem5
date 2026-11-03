@@ -3,7 +3,7 @@
 @brief GW100 仿真的入口脚本：组合板卡、host 和设备
 
 用法（在 gem5 目录执行）：
-    ./build/ARM/gem5.opt ../gem5-ext/configs/run_gw100.py \
+    ./build/GW100/gem5.opt ../gem5-ext/configs/run_gw100.py \
         --board arm_vexpress --host timing --device gw100 \
         --workload baremetal \
         --kernel /path/to/hello.elf
