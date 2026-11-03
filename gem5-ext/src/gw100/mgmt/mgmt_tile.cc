@@ -24,10 +24,6 @@ namespace
 constexpr Addr HifBase = 0x3000'0000;
 /** HIF 寄存器区的大小 */
 constexpr Addr HifSize = 0x1000'0000;
-/** 本地地址：CRC 寄存器的起始 */
-constexpr Addr CrcBase = 0x2002'0000;
-/** CRC 寄存器区的大小 */
-constexpr Addr CrcSize = 0x1000;
 
 /** 按小端序读取 data 起的 4 字节 */
 uint32_t
@@ -96,7 +92,7 @@ Gw100MgmtTile::PioPort::getAddrRanges() const
     r.push_back(RangeSize(MgmtSram::SramBase, tile.sram.sramSize));
     r.push_back(RangeSize(MgmtLocalRegs::Base, MgmtLocalRegs::Size));
     r.push_back(RangeSize(MgmtMailbox::Base, MgmtMailbox::Size));
-    r.push_back(RangeSize(CrcBase, CrcSize));
+    r.push_back(RangeSize(MgmtCrc::Base, MgmtCrc::Size));
     r.push_back(RangeSize(HifBase, HifSize));
     return r;
 }
@@ -110,9 +106,20 @@ Gw100MgmtTile::Gw100MgmtTile(const Params &p)
       fwLoadMax(p.fw_load_max),
       link(p.mgmt_link),
       plic(p.plic),
+      crc(MgmtCrc::Config{p.pll_lock, p.crc_access, p.clk_switch_pause},
+          curTick()),
+      pllPerfLevel(p.pll_perf_level),
+      mgmtClk(dynamic_cast<SrcClockDomain *>(p.clk_domain)),
+      clkSwitchEvent([this] { mgmtClk->perfLevel(pllPerfLevel); }, name() + ".clkSwitch", false, Event::CPU_Switch_Pri),
       pio(name() + ".pio", *this),
       mlEvent([this] { mlFinish(); }, name() + ".mlFinish")
 {
+    fatal_if(!mgmtClk || !mgmtClk->validPerfLevel(pllPerfLevel),
+             "%s: 管理系统的时钟域没有频率档 %u", name(), pllPerfLevel);
+    crc.onMgmtSwitch = [this](Tick when) {
+        if (!clkSwitchEvent.scheduled())
+            schedule(clkSwitchEvent, when);
+    };
     fatal_if(!link, "%s: 没有接管理链路", name());
     fatal_if(!plic, "%s: 没有接 PLIC", name());
     mailbox.onChange = [this] { updateIrqs(); };
@@ -223,13 +230,19 @@ Gw100MgmtTile::accessLocal(PacketPtr pkt, Tick now)
         }
         return one;
     }
-    if (a == CrcBase && sz == 4) {
-        // CRC_RESET_CAUSE（RW1C）
+    if (a >= MgmtCrc::Base && a < MgmtCrc::Base + MgmtCrc::Size) {
+        // CRC 在 clk_ao 域，经请求/应答握手访问（spec-clock-reset-power
+        // §6）；只支持 32 位访问
+        if (sz != 4)
+            return MaxTick;
+        Addr off = a - MgmtCrc::Base;
         if (wr)
-            crcResetCause &= ~uint32_t(pkt->getUintX(ByteOrder::little));
-        else
-            pkt->setUintX(crcResetCause, ByteOrder::little);
-        return one;
+            return crc.write(off, pkt->getUintX(ByteOrder::little), now);
+        uint32_t v = 0;
+        if (!crc.read(off, v, now + crc.accessLatency()))
+            return MaxTick;
+        pkt->setUintX(v, ByteOrder::little);
+        return now + crc.accessLatency();
     }
     return MaxTick;
 }

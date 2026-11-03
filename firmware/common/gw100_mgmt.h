@@ -56,6 +56,18 @@
  * [4] DEV_RESET
  */
 #define GW_CRC_RESET_CAUSE  (GW_CRC_BASE + 0x000)
+/** CRC_PLL_CORE_CFG：[0] EN */
+#define GW_CRC_PLL_CORE_CFG (GW_CRC_BASE + 0x030)
+/** CRC_PLL_STATUS：[0] CORE_LOCK，[1] DDR_LOCK，[2] TS_LOCK */
+#define GW_CRC_PLL_STATUS   (GW_CRC_BASE + 0x038)
+/** CRC_CLK_SEL：[0] CORE，[1] MGMT；1 为 PLL_CORE */
+#define GW_CRC_CLK_SEL      (GW_CRC_BASE + 0x03C)
+/** CRC_PLL_STATUS.CORE_LOCK */
+#define GW_PLL_CORE_LOCK    (1u << 0)
+/** CRC_PLL_STATUS.TS_LOCK */
+#define GW_PLL_TS_LOCK      (1u << 2)
+/** clock.pll_lock_timeout = 1 ms，以 mtime（100 MHz）计 */
+#define GW_PLL_LOCK_TIMEOUT 100000UL
 
 /** HIF 寄存器区的起始（经 ML 访问，只支持 32 位） */
 #define GW_HIF_BASE         0x30000000UL

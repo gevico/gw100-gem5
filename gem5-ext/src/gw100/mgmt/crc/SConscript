@@ -1,0 +1,4 @@
+# crc/：时钟复位控制器的寄存器（spec-clock-reset-power §6）
+Import('*')
+
+Source('mgmt_crc.cc', add_tags='gw100 mgmt crc')
