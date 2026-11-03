@@ -3,3 +3,6 @@ Import('*')
 
 # 标签供 gem5-ext/tests/unit/ 下的单元测试按组件引用源文件
 Source('ml_endpoint.cc', add_tags='gw100 ml')
+
+SimObject('Gw100MgmtLink.py', sim_objects=['Gw100MgmtLink'])
+Source('mgmt_link.cc')
