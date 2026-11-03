@@ -45,6 +45,7 @@ spec-dram               Memory Tile（DRAM 子系统）
 spec-pcie               PCIe 子系统
 spec-host-dma           Host DMA 引擎
 spec-mgmt-tile          管理 Tile 与固件接口
+spec-mgmt-link          管理链路（ML）
 spec-hdi                Host-Device 接口
 spec-exe-format         可执行文件格式
 man-registers           寄存器参考手册
