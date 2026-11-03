@@ -41,7 +41,7 @@ make test                             # 批量运行全部裸机测试并汇总
 
 `GEM5_OPTS` 写在配置脚本之前，交给 gem5；`CONFIG_ARGS` 写在之后，交给配置脚本。
 
-默认使用 `gem5/build/ARM/gem5.opt` 和 `gem5-ext/configs/run_gw100.py`。
+默认使用 `gem5/build/GW100/gem5.opt` 和 `gem5-ext/configs/run_gw100.py`。
 每种组合有自己的输出目录 `gem5/m5out/<板卡>-<host>-<设备>`，例如
 `gem5/m5out/arm_vexpress-timing-gw100`，扫描组合时互不覆盖。
 
@@ -54,7 +54,7 @@ make test                             # 批量运行全部裸机测试并汇总
 
 ```sh
 cd gem5
-./build/ARM/gem5.opt ../gem5-ext/configs/run_gw100.py \
+./build/GW100/gem5.opt ../gem5-ext/configs/run_gw100.py \
     --workload baremetal \
     --kernel ../build/gw100-baremetal/hello.elf \
     --max-ticks 10000000000
@@ -107,7 +107,7 @@ for h in timing o3; do make run HOST=$h; done
 ## Linux（可选，后续对比用）
 
 ```sh
-./build/ARM/gem5.opt ../gem5-ext/configs/run_gw100.py --workload linux
+./build/GW100/gem5.opt ../gem5-ext/configs/run_gw100.py --workload linux
 ```
 
 首次运行会下载 `arm-ubuntu-24.04-boot-with-systemd` 资源，需要网络。
