@@ -297,7 +297,7 @@ MSI-X 表和 PBA 的访问规则以 PCIe 规范为准（DWORD 和 QWORD 访问�
 - **待发槽**：每个 doorbell 有一个待发槽（值和有效位），每个事件有一个待发位。host 写 doorbell 时覆盖槽中的值并置有效位；事件发生时置待发位。PCIe 子系统从待发槽中取当时的值发出 `DB_WR`、清有效位；发出与新的写入在同一周期时，新的写入优先，有效位保持为 1。事件同理，多次发生合并为一个 `EVENT`。因此每个 doorbell 只保证固件最终收到最后一次写入的值，这正是命令协议所需的（`spec-mgmt-tile` §6.2）。
 - ML 尚未建立时（`spec-mgmt-link` §7.1），适配器不接受请求，doorbell 和事件留在待发槽中，PCIe 子系统照常接收 host 的写入；链路建立后再发出。
 - ML 处于故障态时，适配器接受并丢弃这些写；此时 `DEV_STATUS.DEV_FATAL` 已置位（`spec-mgmt-link` §7.5），host 应复位设备。
-- 待发槽随 PCIe 子系统的复位清除；FLR 也清除 doorbell 的待发槽，FLR 之前的 doorbell 不再发出。
+- 待发槽随 PCIe 子系统的复位清除；FLR 也清除 doorbell 的待发槽，FLR 之前的 doorbell 不再发出，FLR 进行中的 doorbell 被丢弃（§13.2）。
 
 HIF 的寄存器（包括影子寄存器和 HDMA 的寄存器）是 ML 的目标，必须在 16 个 `clk_pcie` 周期内完成一次访问，不等待固件（`spec-mgmt-link` §2.3）。
 
@@ -763,16 +763,27 @@ host → 设备方向的带宽取决于 host RC 把读完成拆成多大，这�
 - FLR 完成后，设备不得再访问 host 内存，也不得发出 MSI-X 消息。
 - **FLR 与 ML**：FLR 不复位 ML（`spec-mgmt-link` §7.6）。PCIe 子系统按以下顺序通知固件：
   1. 复位 HDMA，并在"FLR 进行中"期间一直保持复位：寄存器写入被忽略，不读取描述符，不访问 host 内存。它在途的描述符读写按 `spec-mgmt-link` §7.4 撤销，不等待；
-  2. 复位本功能对 host 可见的状态，清除 doorbell 的待发槽（§5.3）；置位内部状态"FLR 进行中"，FLR 序号 `FLR_SEQ` 加 1。`FLR_SEQ` 为 16 位，按 2¹⁶ 回绕，冷复位、热复位和设备完全复位时清零，FLR 不清零；
+  2. 复位本功能对 host 可见的状态，清除 doorbell 的待发槽（§5.3）；置位内部状态"FLR 进行中"（已经置位时保持）；
   3. STAGE 为 1 – 3 时，按 §7.2 的"启动期间的 FLR"排空启动写入；
-  4. 经 ML 以屏障事件发出一个 FLR 事件，携带 `FLR_SEQ`（`spec-mgmt-link` §5 规则 6、`spec-mgmt-tile` §6.3）。固件或启动 ROM 看到它时，复位前已被 ML 接受的描述符回写、HDMA 事件、doorbell 和启动写入都已处理完毕，之后不会再有。LIMIT 未锁存时，每次 FLR 只发一个 FLR 事件；使未确认次数达到 2¹⁵、从而锁存 LIMIT 的那次 FLR 不再发出事件（第 7 步）；上一次 FLR 的事件尚未被 ML 接受时又发生 FLR，不再单独发出上一次的事件，由本次的事件代替：它携带最新的序号，在本次的第 1 – 3 步之后才被接受，因此同时覆盖两次 FLR 之前的请求。已被 ML 接受的旧事件不能撤回，照常送达；
-  5. **确认**：HIF 保存 `LAST_ACK`，即最后一次被接受的确认序号，复位值与 `FLR_SEQ` 相同（0）。固件或启动 ROM 清理完毕后，经 ML 把从 FLR 事件读到的序号 S 写入 `FLR_ACK`。HIF 在 `FLR_ACK` 的值等于当前 `FLR_SEQ`、且没有锁存第 7 步的上限时接受它：清除"FLR 进行中"，`LAST_ACK` ← `FLR_SEQ`；否则忽略。固件用 64 位的 `FLR_STATUS` 一次读到一致的快照：[0] IN_PROGRESS，FLR 进行中；[1] LIMIT，第 7 步的上限已锁存；[31:16] `LAST_ACK`；[47:32] `FLR_SEQ`。按 `spec-mgmt-link` §5 规则 2，写 `FLR_ACK` 之后的读反映这次写。读回 LIMIT = 0 且 `LAST_ACK` = S 即确认成功，此时 IN_PROGRESS 可能因之后又发生的 FLR 而为 1，新的事件随后到达。读回的其他情况和读失败的处理见 `spec-mgmt-tile` §9。`FLR_ACK`、`FLR_STATUS` 位于 HIF 寄存器区，只对固件可见，偏移随 HIF 寄存器区的布局确定（`spec-mgmt-tile` §12）。
-  6. **同周期的优先级**：新的 FLR 与 `FLR_ACK` 在同一周期到达时，先处理 FLR（置位"FLR 进行中"、`FLR_SEQ` 加 1），`FLR_ACK` 与加 1 之后的值比较，因此不会匹配；"FLR 进行中"不会出现短暂清除。
-  7. **序号不会混淆**：(`FLR_SEQ` − `LAST_ACK`) mod 2¹⁶ 是尚未确认的 FLR 次数。它达到 2¹⁵ 时，HIF 锁存 LIMIT 和 `DEV_FATAL`，保持"FLR 进行中"，此后的 `FLR_ACK` 一律忽略，只有设备完全复位、热复位、冷复位能清除。锁存与同周期的 `FLR_ACK` 冲突时，锁存优先。锁存之后再发生 FLR，仍按 PCIe 规范复位本功能对 host 可见的状态，但 `FLR_SEQ` 不再加 1，也不再发出 FLR 事件；固件看到 LIMIT = 1 就停止恢复，不依据序号做任何判断。在 LIMIT 锁存之前，任何 FLR 事件携带的序号 S 都落在 (`LAST_ACK`, `FLR_SEQ`] 这个长度小于 2¹⁵ 的区间内，或者等于已经确认过的 `LAST_ACK`；固件比较 S 与 `LAST_ACK`，就能区分新的 FLR 和重复送达的事件。固件在读回之前不发出下一个确认，同一时刻最多只有一个 `FLR_ACK` 在途。
+  4. 经 ML 以屏障事件 `BARRIER` 发出 FLR 事件（`spec-mgmt-link` §5 规则 6、`spec-mgmt-tile` §6.3）。固件或启动 ROM 看到它时，复位前已被 ML 接受的描述符回写、HDMA 事件、doorbell 和启动写入都已处理完毕，之后不会再有。上一次 FLR 的事件尚未被 ML 接受时又发生 FLR，两者合并为一个事件，在本次的第 1 – 3 步之后发出；已被 ML 接受的事件不能撤回，照常送达。从 FLR 开始，到它的事件的 OK 返回 HIF 为止，称为该 FLR 的"处理中"。收到 OK 时，事件已经写入管理 Tile 的事件寄存器。屏障事件以 REJECT 或 FAULT 结束时，视为硬件故障：HIF 立即置位 FAIL（第 7 步）和 `DEV_FATAL`，STAGE ≠ 4 时同时锁存启动通路故障（§7.2）。REJECT 本身不使 ML 进入故障态，但这次 FLR 已无法完成；
+  5. **送达与取走**：某个 FLR 的 `BARRIER` 的 OK 返回时，HIF 置位 `FLR_STATUS.DELIVERED`。固件或启动 ROM 开始处理 FLR 时，先写 `FLR_CTRL.TAKE`（W1S）清除 DELIVERED，再读 `FLR_STATUS`。OK 返回与 TAKE 在同一周期时，置位优先。DELIVERED = 0 说明此后送达的 FLR 事件都已被固件"取走"：固件在 TAKE 之后才开始清理，此时这些 FLR 的屏障都已排空；
+  6. **确认**：固件清理完毕后写 `FLR_CTRL.DONE`（W1S），再读 `FLR_STATUS`。HIF 只在以下条件**同时**成立时接受 DONE，清除"FLR 进行中"，否则忽略：没有任何 FLR 处于"处理中"；DELIVERED = 0；FAIL = 0。按 `spec-mgmt-link` §5 规则 2，写 DONE 之后的读反映这次写。判定使用包含本周期事件的状态：同一周期到达的新 FLR、BARRIER 的 OK、FAIL 都先生效，再判定 DONE；因此新的 FLR 与 DONE 同周期时 DONE 被忽略，"FLR 进行中"不会出现短暂清除。固件的处理见 `spec-mgmt-tile` §9；
+  7. **处理超时**：HIF 为"处理中"计时，超过 `pcie.flr_proc_timeout` = 10 ms（TBD）时视为硬件故障：置位 FAIL 和 `DEV_FATAL`，STAGE ≠ 4 时同时锁存启动通路故障（§7.2），此后的 DONE 一律忽略，只有设备完全复位、热复位、冷复位能清除。计时规则：
+     - 只在 ML 处于 UP 时计时。ML 尚未建立时（例如 STAGE 0 发生的 FLR），事件只能等待链路建立，计时暂停；ML 长期不建立属于启动问题，由 host 的启动超时处理（§6.4），不在这里判定。
+     - 多个 FLR 合并为一个事件时，计时从最近一次 FLR 重新开始。host 持续发起 FLR 时设备可以一直不完成，这由 host 自己造成，不视为故障。
+     - 依据：排空和屏障中的每个 ML 请求都在 `ml.timeout` 内结束或使链路进入故障态；正常情况下"处理中"远短于 1 ms（推算）。按入站缓冲深度推导的最坏值列为待决。
+
+  `FLR_CTRL`（[0] TAKE，[1] DONE，均为 W1S）和 `FLR_STATUS`（[0] IN_PROGRESS："FLR 进行中"；[1] DELIVERED；[2] FAIL；其余 RsvdZ）位于 HIF 寄存器区，只对固件可见，偏移随 HIF 寄存器区的布局确定（`spec-mgmt-tile` §12）。
+
+- **为什么不需要序号**：
+  - 每次 FLR 最多发出一个事件。DONE 被接受时，没有 FLR 处于"处理中"，所以链路上没有尚未送达的 FLR 事件；又因为 DELIVERED = 0，所有已经送达的事件都在固件最近一次 TAKE 之前送达，固件的清理在 TAKE 之后，因此晚于这些 FLR 的屏障排空。事件寄存器中残留的 FLR 位不会导致清理早于排空：若它对应的 FLR 尚未送达屏障，DELIVERED 之后会被置位，DONE 被拒绝，固件重做。
+  - 从第 2 步起到确认为止，门控一直有效：启动窗口关闭、`FW_READY` 读为 0、doorbell 被丢弃、HDMA 保持复位，host 无法在设备中制造新的状态。所以在一次清理尚未确认时又发生的 FLR，不会带来新的需要清理的东西，可以与前一次合并，由同一次 DONE 确认。
+  - 管理 CPU 恢复期间按程序顺序、经 ML 写入 HIF 寄存器的 posted 写（HDMA 寄存器、`FW_READY`），与之后的 DONE 同方向，按顺序处理（`spec-mgmt-link` §5 规则 1）：新 FLR 之后才被 HIF 处理的写受门控而不生效，下一次 DONE 排在它们之后，所以它们不会在下一次确认之后才生效。这一论证不覆盖本地 SRAM、其他 Tile 和其他发起方的恢复操作，固件在新 FLR 后要重新清理这些状态。
 - **FLR 进行中的门控**：从第 2 步起到 HIF 清除"FLR 进行中"为止：
   - 启动窗口关闭，不接受 `FW_START`；
   - host 读到的 `FW_READY` 为 0；固件对 `FW_READY` 写 1 被忽略，确认之后仍为 0，由固件重新置位；
   - 固件写入的 STAGE 为 1 – 3 时，host 读到 STAGE = 1；为 4 或 0xF 时照实读到；
+  - host 写 doorbell 被接收后丢弃，不进入待发槽；
   - HDMA 保持复位（第 1 步）；设备不发出 MSI-X 和 INTx，固件写中断请求寄存器被忽略。
 
   因此即使启动 ROM 在看到 FLR 事件之前按普通路径写了 STAGE = 2，或者固件在看到 FLR 事件之前写了 `FW_READY` = 1 或配置了 HDMA，这些都不会在本次 FLR 确认之后生效，host 也不会在确认之前看到窗口打开或固件就绪。
@@ -816,6 +827,7 @@ host → 设备方向的带宽取决于 host RC 把读完成拆成多大，这�
 | `pcie.max_outstanding_reads` | 64 | §10.3 |
 | `pcie.completion_buffer` | 32 KiB（推算） | §10.3 |
 | `pcie.stale_tag_quarantine` | 250 ms | §10.3、§13.2，不小于设备支持的最长完成超时（范围 B 的上限） |
+| `pcie.flr_proc_timeout` | 10 ms（TBD） | §13.2，一个 FLR 处于"处理中"的上限 |
 | `addr.device_pa_bits` | 见 `spec-address-map` §10 | §7 |
 | `dev.timestamp_hz` | 见 `spec-clock-reset-power` §10 | §6 |
 
@@ -839,7 +851,7 @@ host → 设备方向的带宽取决于 host RC 把读完成拆成多大，这�
 | F8 | MSI-X：表读写、屏蔽与 Pending、各中断源发到正确的向量 |
 | F9 | INTx：MSI-X 未使能时按 §8.4 置位和撤销；Interrupt Disable 生效 |
 | F10 | 由 host 加载固件的启动流程（§6.4）：启动窗口的合法与非法写入、`FW_START` 之前的写入全部可见、`FW_START` 之后窗口关闭、各 ERROR 编码及失败后重新加载；启动通路故障（ERROR = LINK）锁存后 FLR 不清除，只能设备完全复位恢复；ML 故障态下 `DEV_FATAL` 保持为 1，FLR 后仍为 1 |
-| F11 | FLR：100 ms 内完成；完成后不再访问 host 内存；状态复位；固件不重启，`FW_READY` 按 §13.2 清零后重新置位。启动期间的 FLR：入口已计数、尚未交给 ML 的启动写入在 FLR 事件之前写入 SRAM；FLR 事件在 ROM 的各检查点之前、之后、跳转前后到达，以及固件写 `FW_READY` 的同一周期到达时，host 都不会在 `FLR_ACK` 之前看到窗口打开或 `FW_READY` = 1；连续两次 FLR 时，旧序号的 `FLR_ACK` 被忽略；`FLR_ACK` 与新 FLR 同周期时门控不出现短暂清除；FLR 进行中固件写 `FW_READY`、HDMA 寄存器和中断请求都不生效；未确认的 FLR 达到 2¹⁵ 次时锁存 `DEV_FATAL`，之后的 `FLR_ACK` 不生效；`FLR_ACK` 已被接受、读回之前又发生 FLR 时，固件以 `LAST_ACK` 判定确认成功，之后的新事件不会被误判为重复 |
+| F11 | FLR：100 ms 内完成；完成后不再访问 host 内存；状态复位；固件不重启，`FW_READY` 按 §13.2 清零后重新置位。启动期间的 FLR：入口已计数、尚未交给 ML 的启动写入在 FLR 事件之前写入 SRAM；FLR 事件在 ROM 的各检查点之前、之后、跳转前后到达，以及固件写 `FW_READY` 的同一周期到达时，host 都不会在确认之前看到窗口打开或 `FW_READY` = 1。确认：DONE 在某个 FLR 处于"处理中"（包括事件已被 ML 接受、OK 尚未返回）或与新 FLR 同周期到达时被忽略，门控不出现短暂清除；清理期间又发生的 FLR 与前一次合并；确认之后运行中送达的旧事件被固件忽略且不触发重新初始化；新 FLR 发生在读回、初始化、置位 `FW_READY` 的各个边界时，固件按新 FLR 重做清理。FLR 进行中 doorbell 被丢弃，固件写 `FW_READY`、HDMA 寄存器和中断请求都不生效；事件寄存器中残留旧 FLR 位、新 FLR 的屏障尚未送达时开始的清理，其 DONE 因 DELIVERED 被拒绝；FLR 处于"处理中"超过 `pcie.flr_proc_timeout` 时置位 FAIL 和 `DEV_FATAL`；ML 长时间处于 DOWN 时不计时，刚 UP 时开始计时；连续 FLR 合并时计时重新开始；BARRIER 的 OK 与 TAKE、DONE 同周期，以及事件已写入 pending 而 OK 尚未返回时固件先 TAKE，DONE 都按包含本周期 OK 的状态判定 |
 | F12 | D3hot 往返后设备复位，驱动可重新初始化 |
 | F13 | DMA 读收到 UR、CA 或超时时按 §12.2 处理 |
 | F14 | 固件停止响应时，BAR0、BAR2 的读写仍以成功完成结束，入站方向不被反压（§5.3） |
@@ -863,6 +875,7 @@ host → 设备方向的带宽取决于 host RC 把读完成拆成多大，这�
 | 迟到完成与复用 tag 冲突的残留风险 | 作为已知限制接受，靠隔离、完成校验和复位降低 | §10.3；需在系统验证中评估是否需要更强的恢复条件 |
 | PCIe 规范中引用的数值（FLR 100 ms 等） | 按本文档执行 | 待回 PCIe Base Spec 原文核对 |
 | Subsystem Vendor ID、Subsystem ID 的取值 | 熔丝未烧写时等于 Vendor ID、Device ID | §4.1；由板卡厂商决定 |
+| `pcie.flr_proc_timeout` | 10 ms | §13.2；待入站缓冲深度确定后按最坏排空时间复核 |
 
 以下各项已按主流做法确定，选定 PCIe 控制器 IP 时作为验收项确认：入站 posted 写在控制器内部保持顺序（PCIe 顺序规则的要求，§7.2 对 `FW_START` 的保证依赖它）；控制器的核心时钟不依赖链路状态（`spec-clock-reset-power` §3.2）；§10.4 的接收信用与 replay buffer。
 

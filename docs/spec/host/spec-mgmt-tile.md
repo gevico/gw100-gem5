@@ -283,7 +283,7 @@ ML 本身（事务、顺序、流控、链路状态与故障、ML 的寄存器�
 |---|---|---|
 | `BOOT_WR` | SRAM 装载区：本地地址 = 0x1000_0000 + 偏移 | 偏移加长度超过 `mgmt.fw_load_max`：以 REJECT 结束（§4.4） |
 | `DB_WR` | doorbell 信箱的 `DB_SLOT[i]`，i 为地址字段（§6.2） | i ≥ `mgmt.db_slots`：拒绝，由适配器记录 `WR_REJECT` |
-| `EVENT` | 事件寄存器：数据的 [7:0] 按位或入 `EVT_PENDING` 的 [7:0]；其中 FLR 位（[1]）置位时，数据的 [31:16] 同时写入 `EVT_FLR_SEQ`（§6.3） | [15:8] 不为 0，或 FLR 位为 0 而 [31:16] 不为 0：拒绝，记录 `WR_REJECT`。`EVT_PENDING` 的 Tile 事件位只能经 NoC 目标端口写入 |
+| `EVENT`、`BARRIER` | 事件寄存器：数据的 [7:0] 按位或入 `EVT_PENDING` 的 [7:0]（§6.3）。`BARRIER` 在写入之后返回 OK | [31:8] 不为 0：`EVENT` 拒绝并记录 `WR_REJECT`，`BARRIER` 以 REJECT 结束。`EVT_PENDING` 的 Tile 事件位只能经 NoC 目标端口写入 |
 | `DESC_RD`、`DESC_WR` | SRAM，按本地地址 | 不在 SRAM 范围内或违反 §4.4 的访问控制：以 REJECT 结束 |
 
 - `BOOT_WR` 和 `DESC_WR` 的 OK 响应在数据写入 SRAM、之后 CPU 的读能读到新值时才返回（`spec-mgmt-link` §4.1）。
@@ -345,7 +345,6 @@ ML 本身（事务、顺序、流控、链路状态与故障、ML 的寄存器�
 |---|---|---|
 | `EVT_PENDING` | RW1C | 各位对应一个事件，见下表；事件到达时置位 |
 | `EVT_MASK` | RW | 1 表示屏蔽该位的中断 |
-| `EVT_FLR_SEQ` | RO | [15:0]：最近一次 FLR 事件携带的序号（`spec-pcie` §13.2）。与 `EVT_PENDING.FLR` 由同一个事务原子地写入 |
 
 | 位 | 事件 | 来源 |
 |---|---|---|
@@ -423,7 +422,7 @@ ML 本身（事务、顺序、流控、链路状态与故障、ML 的寄存器�
 | 2 | 初始化必要的 CSR；等待 `SRAM_INIT_DONE`；在 ROM 保留区建立栈；等待 `ML_STATUS.UP`（`spec-mgmt-link` §7.2），不设超时 | 0 |
 | 3 | 写 STAGE = 1。不配置 PCIe 控制器：控制器和 PHY 的参数由硬件的默认值和熔丝决定；链路训练和配置空间由硬件在复位后自动开始，不等待启动 ROM | 1 |
 | 4 | 写 STAGE = 2，启动窗口打开 | 2 |
-| 5 | 等待 `EVT_PENDING` 中的 `FW_START` 或 `FLR`（轮询或中断）。`FLR` 置位时按 §9 处理（包括写 STAGE = 2 和 `FLR_ACK`），然后回到本步。`FW_START` 置位时，HIF 已把 STAGE 置为 3 并关闭启动窗口 | 3 |
+| 5 | 等待 `EVT_PENDING` 中的 `FW_START` 或 `FLR`（轮询或中断）。`FLR` 置位时按 §9 处理（包括写 STAGE = 2 和确认），然后回到本步。`FW_START` 置位时，HIF 已把 STAGE 置为 3 并关闭启动窗口 | 3 |
 | 6 | 读取镜像大小，检查本次加载是否有非法写入；检查镜像头（§8.2）；计算并比对镜像的摘要 | 3 |
 | 7 | 失败：先检查 `EVT_PENDING.FLR`，置位则按 §9 处理并回到第 5 步；否则写启动错误码，清零镜像大小，写 STAGE = 2，回到第 5 步 | 2 |
 | 8 | 成功：按 §8.3 设置 PMP，清零 ROM 保留区以外的运行区；跳转前最后检查一次 `EVT_PENDING.FLR`，置位则按 §9 处理并回到第 5 步；否则跳转到固件入口 | 3 |
@@ -509,22 +508,21 @@ ML 本身（事务、顺序、流控、链路状态与故障、ML 的寄存器�
 - 固件看到 FLR 事件时，复位前已被 ML 接受的描述符回写、HDMA 事件和 doorbell 都已处理完毕（`spec-pcie` §13.2）。固件应先清零 `EVT_PENDING` 中的 `HDMA_NOTIFY`、`HDMA_ERR` 和全部 `DB_PENDING`，它们属于复位前；然后再重新初始化描述符环和命令协议。HDMA 在固件重新初始化之前不会产生新事件，host 在 `FW_READY` = 1 之前不会写 doorbell，因此不会误清新的事件。
 - 固件清理期间，host 可能已经开始读取状态。由于 `FW_READY` 为 0，host 不会使能命令协议。
 - **FLR 的处理与确认**（启动 ROM 和固件相同）。寄存器和 HIF 一侧的规则见 `spec-pcie` §13.2：
-  1. 先清零 `EVT_PENDING.FLR`，再读 `EVT_FLR_SEQ` 得到序号 S（两次本地访问按程序顺序完成）。清零与读取之间若又到达新的 FLR 事件，读到的是新的序号，处理它即可；
-  2. 读 `FLR_STATUS`。LIMIT = 1 时设备已锁存致命错误，停止恢复，等待 host 复位设备；否则 `LAST_ACK` = S 说明这次 FLR 已经确认过，事件是重复送达的，跳到第 6 步；
-  3. 清理。HDMA 在确认之前由 HIF 保持复位，清理不需要也不能访问 HDMA：
+  1. 清零 `EVT_PENDING.FLR`，写 `FLR_CTRL.TAKE`，再读 `FLR_STATUS`：
+     - FAIL = 1：HIF 已判定 FLR 处理故障并置位致命错误，停止，等待 host 复位设备；
+     - IN_PROGRESS = 0：这是已经确认过的 FLR 留下的事件，忽略它，回到原来的工作，不做清理，也不重新初始化；
+  2. 清理。HDMA 在确认之前由 HIF 保持复位，清理不需要也不能访问 HDMA：
      - 启动 ROM：放弃本次加载，见下一条；
      - 固件：清除命令协议的全部上下文和各 Tile 中属于本功能的状态，清零属于复位前的事件和 doorbell（见上文）；
-  4. 写 `FLR_ACK` = S，再读 `FLR_STATUS`，按以下顺序判断：
-     - LIMIT = 1：设备已锁存致命错误，停止恢复，等待 host 复位设备（即使 `LAST_ACK` = S）；
-     - `LAST_ACK` = S：确认成功；
-     - `FLR_SEQ` ≠ S：确认之前又发生了 FLR，这次确认被忽略，等待新的事件；
-     - 其他（`LAST_ACK` ≠ S 且 `FLR_SEQ` = S）：确认没有生效，置位致命错误并停止；
-  5. 第 2、4 步的 `REG_RD` 失败时（访问错误异常）：链路已处于故障态或固件访问了错误的地址，设备不能继续使用，置位致命错误（若仍可写）并停止。不得把这次 FLR 当作已确认；
-  6. 再检查一次 `EVT_PENDING.FLR`，置位则回到第 1 步；
-  7. 固件确认成功后，HDMA 退出复位，固件重新初始化 HDMA 的通道和描述符环，再置位 `FW_READY`。
+  3. 确认循环：
+     - `EVT_PENDING.FLR` 置位：回到第 1 步；
+     - 否则写 `FLR_CTRL.DONE`，再读 `FLR_STATUS`，按以下顺序判断：FAIL = 1，按第 1 步的 FAIL 处理；IN_PROGRESS = 0，确认成功，进入第 5 步；DELIVERED = 1，有 FLR 事件在 TAKE 之后送达，回到第 1 步；其他（某个 FLR 仍处于"处理中"），重复本步；
+     - 本步不另设超时：HIF 以 `pcie.flr_proc_timeout` 监视"处理中"，超时时置位 FAIL；
+  4. 第 1、3 步的 `REG_RD` 失败时（访问错误异常）：链路已处于故障态或固件访问了错误的地址，设备不能继续使用，置位致命错误（若仍可写）并停止，不得把这次 FLR 当作已确认；
+  5. 恢复：HDMA 退出复位，固件重新初始化 HDMA 的通道、描述符环和命令协议，最后置位 `FW_READY`。恢复期间随时可能发生新的 FLR：新 FLR 发生后 HIF 立即恢复门控，此后被 HIF 处理的写都不生效，此前已经生效的由 FLR 复位；同一方向的写按顺序处理，所以恢复期间的写不会越过下一次 DONE。固件在恢复的每一步之间以及置位 `FW_READY` 之后检查 `EVT_PENDING.FLR`，置位就放弃恢复，回到第 1 步。
 
-  去重只依据 HIF 中的 `LAST_ACK`，固件和启动 ROM 不需要在本地保存或交接序号。HIF 在确认之前对 host 屏蔽窗口和 `FW_READY`、忽略固件对 `FW_READY` 写 1、保持 HDMA 复位，因此清理期间写 STAGE、`FW_READY` 或 HDMA 寄存器不会过早生效。
-- STAGE 不是 4 时发生 FLR（启动尚未完成）：HIF 关闭启动窗口，等旧的启动写入都已提交，再以屏障事件发出 FLR 事件（`spec-pcie` §7.2）。启动 ROM 在 §8.1 的检查点看到 FLR 后放弃本次加载：按上一条读取序号，清零 `EVT_PENDING.FW_START`，清零镜像大小和错误码，写 STAGE = 2，最后按上一条确认，确认成功后启动窗口打开。
+  HIF 在确认之前对 host 屏蔽窗口和 `FW_READY`、丢弃 doorbell、忽略固件对 `FW_READY` 写 1、保持 HDMA 复位，因此清理期间写 STAGE、`FW_READY` 或 HDMA 寄存器不会过早生效。固件和启动 ROM 都不需要保存任何状态来区分新旧 FLR。
+- STAGE 不是 4 时发生 FLR（启动尚未完成）：HIF 关闭启动窗口，等旧的启动写入都已提交，再以屏障事件发出 FLR 事件（`spec-pcie` §7.2）。启动 ROM 在 §8.1 的检查点看到 FLR 后放弃本次加载：清零 `EVT_PENDING.FW_START`，清零镜像大小和错误码，写 STAGE = 2，最后按上一条确认，确认成功后启动窗口打开。
 - 启动通路故障已锁存时（`spec-pcie` §7.2），FLR 不清除锁存：STAGE 保持 0xF、ERROR 保持 LINK，启动窗口保持关闭，启动 ROM 对 STAGE 的写入无效。
 
 ---
