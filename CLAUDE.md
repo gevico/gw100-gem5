@@ -39,7 +39,7 @@ GW100：面向端侧大模型推理的数据流架构 ASIC，以 PCIe 设备接�
 
 ```sh
 make check                                                  # 检查工具链、Python 和目录
-make gem-build                                              # 构建 gem5/build/ARM/gem5.opt 和编译数据库
+make gem-build                                              # 构建 gem5/build/GW100/gem5.opt（ARM + RISC-V）和编译数据库
 make run TEST=hello                                         # 构建并运行一个裸机测试
 make test                                                   # 批量运行全部裸机测试并汇总
 make vscode-config                                          # 生成 .clangd
