@@ -54,6 +54,8 @@ GEM5_SCONS = cd gem5 && $(if $(PYTHON_CONFIG),PYTHON_CONFIG=$(PYTHON_CONFIG) )$(
 # 运行配置。GEM5_OPTS 给 gem5 本身（写在配置脚本之前），CONFIG_ARGS 给配置脚本。
 # 例：make run TEST=pcie_regs GEM5_OPTS="--debug-flags=Gw100Pcie"
 BAREMETAL_DIR := build/gw100-baremetal
+# 管理 Tile 的 RISC-V 程序（启动 ROM 等），run_gw100.py 默认从这里取 rom.elf
+FIRMWARE_DIR := build/gw100-firmware
 TEST ?= hello
 BAREMETAL_ELF := $(BAREMETAL_DIR)/$(TEST).elf
 GEM5_CONFIG ?= gem5-ext/configs/run_gw100.py
@@ -75,7 +77,7 @@ HOSTS ?= timing atomic
 TESTS ?=
 TEST_JOBS ?= $(JOBS)
 TEST_TIMEOUT ?= 300
-TEST_MAX_TICKS ?= 10000000000
+TEST_MAX_TICKS ?= 500000000000
 TEST_OUTDIR ?= gem5/m5out/tests
 BMTEST = $(PYTHON) tools/bmtest.py --gem5 gem5/$(GEM5_TARGET) --config $(GEM5_CONFIG) \
 	--baremetal-dir baremetal --build-dir $(BAREMETAL_DIR) --outdir $(TEST_OUTDIR) \
@@ -90,14 +92,14 @@ VSCODE_CDB := gem5/$(GEM5_CDB)
 AARCH64_GDB ?= $(shell command -v aarch64-linux-gnu-gdb 2>/dev/null || command -v gdb-multiarch 2>/dev/null)
 
 .DEFAULT_GOAL := help
-.PHONY: all run test gem-build FORCE baremetal-build vscode-config commit-check clean check format help
+.PHONY: all run test gem-build FORCE baremetal-build firmware-build vscode-config commit-check clean check format help
 
-all: gem-build baremetal-build
+all: gem-build baremetal-build firmware-build
 
-run: gem-build baremetal-build
+run: gem-build baremetal-build firmware-build
 	$(RUN_GEM5)
 
-test: gem-build baremetal-build
+test: gem-build baremetal-build firmware-build
 	$(BMTEST)
 
 gem-build: $(GEM5_BIN)
@@ -138,8 +140,12 @@ vscode-config:
 		$(if $(filter command line,$(origin TEST)),--test $(TEST))
 	@test -f $(VSCODE_CDB) || echo "[WARN] 还没有 $(VSCODE_CDB)；运行 make gem-build 生成"
 
-baremetal-build:
-	$(MAKE) -C baremetal BUILD_DIR=$(abspath $(BAREMETAL_DIR))
+baremetal-build: firmware-build
+	$(MAKE) -C baremetal BUILD_DIR=$(abspath $(BAREMETAL_DIR)) \
+		FW_IMAGE=$(abspath $(FIRMWARE_DIR))/fw.img
+
+firmware-build:
+	$(MAKE) -C firmware BUILD_DIR=$(abspath $(FIRMWARE_DIR))
 
 commit-check:
 	@echo "== 提交检查 =="
@@ -232,6 +238,7 @@ help:
 	@echo "  gem-build        gem5-ext 源码或 gem5 子模块有变化时，构建 gem5/$(GEM5_TARGET) 和编译数据库；"
 	@echo "                   make -B gem-build 强制构建（改了构建选项时用）"
 	@echo "  baremetal-build  构建全部裸机测试（调用 baremetal/Makefile）"
+	@echo "  firmware-build   构建管理 Tile 的启动 ROM（调用 firmware/Makefile，需要 riscv64-elf-gcc）"
 	@echo "  vscode-config    生成 .clangd、联合调试配置，关闭 cpptools IntelliSense（TEST= 指定 test）"
 	@echo "  commit-check     检查暂存文件头、最近提交信息和 DCO"
 	@echo "  check            检查 macOS、编译工具链、Python 和目录"
