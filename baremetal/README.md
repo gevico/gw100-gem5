@@ -107,7 +107,7 @@ make -C baremetal disasm TEST=hello
 cd gem5
 lldb -o "process handle SIGIO -s false -n false -p true" \
      -o "breakpoint set -n gem5::gw100::Bar0Handler::access" -o run -- \
-  ./build/ARM/gem5.opt --listener-mode=on ../gem5-ext/configs/run_gw100.py \
+  ./build/GW100/gem5.opt --listener-mode=on ../gem5-ext/configs/run_gw100.py \
   --kernel ../build/gw100-baremetal/pcie_regs.elf --wait-gdb
 
 # 终端 2：aarch64 gdb 调试裸机程序
