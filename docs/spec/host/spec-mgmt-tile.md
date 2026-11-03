@@ -13,14 +13,14 @@
 
 ### 1.1 范围
 
-管理 Tile 是设备内部唯一运行通用软件的地方。它包含一个 RISC-V 管理 CPU、启动 ROM、片上 SRAM，以及连接主机接口（HIF：PCIe 控制器、HDMA 及其寄存器，见 `spec-arch` §1.4）的专用管理链路（ML）。启动 ROM 把固件装入 SRAM 并启动它；固件负责初始化设备、实现命令协议、编程 HDMA、调度各 Tile。
+管理 Tile 是设备内部唯一运行通用软件的地方。它包含一个 RISC-V 管理 CPU、启动 ROM、片上 SRAM，以及连接主机接口（HIF：PCIe 控制器、HDMA 及其寄存器，见 `spec-arch` §1.4）的管理链路（ML，`spec-mgmt-link`）在管理 Tile 一侧的适配器。启动 ROM 把固件装入 SRAM 并启动它；固件负责初始化设备、实现命令协议、编程 HDMA、调度各 Tile。
 
 本文档定义：
 
 - 管理 Tile 的结构、管理 CPU 和本地地址空间；
 - 启动 ROM 的行为、固件镜像的最小格式和交接约定；
 - SRAM 的划分、端口、ECC 和访问控制；
-- ML：事务、顺序、流控、复位与排空；
+- ML 在管理 Tile 一侧的接入：目标译码和管理 CPU 经 ML 的访问；
 - 管理 Tile 与 HIF 之间的分工，包括 doorbell 信箱和 host 可见状态的影子寄存器；
 - 中断、定时器、看门狗；
 - 复位、性能要求和验收标准。
@@ -28,6 +28,7 @@
 下列内容不在本文档范围内：
 
 - HIF 对 host 呈现的行为（BAR、寄存器偏移、启动握手的 host 侧流程），见 `spec-pcie`；本文档只说明管理 Tile 一侧如何配合；
+- ML 本身：事务、顺序、流控、链路状态与故障、ML 的寄存器，见 `spec-mgmt-link`；
 - 命令协议的语义（`spec-hdi`）、HDMA 的描述符格式（`spec-host-dma`）；
 - 固件的软件结构（是否使用 RTOS、任务划分）；
 - 设备内存的训练算法、NoC 和各 Tile 的编程接口（将由 `spec-dram`（待写）、`spec-noc`（待写）、`spec-compute-tile`（待写） 定义）；
@@ -59,7 +60,7 @@ flowchart LR
   NI <--> NOC[NoC<br/>Tile、Memory Tile]
 ```
 
-- **ML**：管理 Tile 与 HIF 之间的点对点链路，不经过 NoC，复位后不需要软件配置即可使用（§5）。
+- **ML**：管理 Tile 与 HIF 之间的点对点链路，不经过 NoC，复位后不需要软件配置即可使用（`spec-mgmt-link`）。管理 Tile 一侧的接入见 §5。
 - **NI**：固件经此访问各 Tile、Memory Tile 和设备内存；其他 Tile 经此向管理 Tile 发送事件。只在固件运行之后使用。
 
 ### 1.3 约定
@@ -86,7 +87,7 @@ flowchart LR
 |---|---|
 | RO | 只读，写入被忽略 |
 | RW | 可读写 |
-| RW1C | 读出状态；写 1 清零对应位，写 0 无效 |
+| RW1C | 读出状态；写 1 清零对应位，写 0 无效。同一周期内硬件置位与软件清零冲突时，置位优先 |
 | W1S | 写 1 触发动作或置位，写 0 无效；读回 0 |
 | RsvdZ | 保留；读回 0，软件必须写 0 |
 
@@ -100,12 +101,11 @@ flowchart LR
 | M 模式 / U 模式 | machine mode / user mode | RISC-V 的机器模式 / 用户模式 |
 | PMP | Physical Memory Protection | RISC-V 按物理地址区域检查访问权限的机制，不做地址翻译 |
 | ECC | Error-Correcting Code | SRAM 的纠错码（§4.3） |
-| ML | Management Link | 管理链路：HIF 与管理 Tile 之间点对点、不经过 NoC 的链路（§5） |
-| 链路纪元 | epoch | ML 复位前后用来识别旧响应的代际编号（§5.6） |
+| ML | Management Link | 见 `spec-mgmt-link` §1.3 |
 | doorbell 信箱 | doorbell mailbox | 管理 Tile 中接收 doorbell 写入值的覆盖式槽位（§6.2）；与 host 可见的 doorbell 页（`spec-hdi` §1.3）不同 |
 | 影子寄存器 | shadow register | 放在 HIF 中、由固件经 ML 更新的 host 可见寄存器（§6.1） |
 | 启动阶段（STAGE） | — | 见 `spec-pcie` §6.4 |
-| 启动窗口 | boot window | 见 `spec-pcie` §1.4；写入落入 SRAM 的路径见 §5.3 |
+| 启动窗口 | boot window | 见 `spec-pcie` §1.4；写入经 ML 落入 SRAM 装载区（§5.1） |
 | 本地地址 | local address | 管理 CPU 本地地址空间中的地址（§3.3）。DPA 按固定偏移映射在其中；与 DPA 空间中的 Tile 本地窗口不同 |
 | DPA、initiator、请求、RMW | — | 见 `spec-address-map` §1.3。本文档 §4 中 SRAM 的 initiator 指访问 SRAM 的各方：管理 CPU、ML、NoC 的 target 端口 |
 | FLR | — | 见 `spec-pcie` §1.4 |
@@ -137,18 +137,14 @@ flowchart LR
 
 ### 2.3 与 HIF 之间用专用 ML，不经过 NoC
 
-- **决定**：管理 Tile 与 HIF 之间设一条点对点的 ML，承载启动写入、doorbell、事件、寄存器访问和 HDMA 的描述符访问。
-- **理由**：
-  - 启动时 NoC 尚未由固件配置；如果启动写入要经过 NoC，就会出现"要用固件配置 NoC，而固件本身要经过 NoC 才能装入"的循环依赖。
-  - 控制流量小、对延迟敏感。与 NoC 上的大块数据分开，延迟可以预测，也不会因数据流量拥塞而推迟 doorbell 和中断的处理。
-  - ML 只有两个端点，顺序保证和排空都比在 NoC 上容易实现（§5.4）。
+决定与理由见 `spec-mgmt-link` §2.1。
 
-### 2.4 ML 上的任何事务都不依赖固件完成
+### 2.4 管理 Tile 一侧的 ML 目标不依赖固件完成
 
-- **决定**：ML 两端的目标都是硬件：SRAM、doorbell 信箱、事件寄存器、HIF 的寄存器。它们在有限时间内完成服务，任何事务的完成都不等待固件。
+- **决定**：管理 Tile 一侧作为 ML 目标的 SRAM、doorbell 信箱、事件寄存器都是硬件，在有限时间内完成服务，任何事务的完成都不等待固件。
 - **理由**：
-  - host 对设备的写入必须被立即接收，否则固件卡死会反压 PCIe 的整个入站方向。doorbell 写入落入信箱的覆盖式槽位（§6.2），信箱任何时候都能接收。
-  - 两个方向的事务都不依赖对方的软件，ML 就不会因为双方互相等待而死锁。
+  - 这是 ML 不反压 host、不会死锁的前提（`spec-mgmt-link` §2.3）。
+  - doorbell 写入落入信箱的覆盖式槽位（§6.2），事件只置位 pending 位（§6.3），两者任何时候都能接收。
 
 ### 2.5 host 可见的状态放在 HIF，固件更新影子寄存器
 
@@ -174,7 +170,7 @@ flowchart LR
 | 启动 ROM | `mgmt.rom_size` = 64 KiB，复位向量所在 |
 | SRAM | `mgmt.sram_size` = 2 MiB，分为多个 bank，带 ECC（§4） |
 | 本地互连 | 连接 CPU、ROM、SRAM、本地寄存器、ML 适配器、NI |
-| ML 适配器 | ML 在管理 Tile 一侧的端点（§5） |
+| ML 适配器 | ML 在管理 Tile 一侧的端点（§5、`spec-mgmt-link` §3） |
 | doorbell 信箱与事件寄存器 | 接收 HIF 转来的 doorbell 和事件（§6.2、§6.3） |
 | 中断控制器 | RISC-V 标准的 CLINT（定时器和软件中断）加 PLIC（外部中断）（§7） |
 | 看门狗 | 两级超时（§7.4） |
@@ -202,16 +198,16 @@ flowchart LR
 |---|---|---|---|
 | 0x0000_0000 | `mgmt.rom_size` | 启动 ROM | 只读、可执行 |
 | 0x1000_0000 | `mgmt.sram_size` | SRAM | 读写、可执行 |
-| 0x2000_0000 | 64 KiB | 管理 Tile 本地寄存器：CLINT、看门狗、ML 状态、SRAM 控制、访问控制 | 读写 |
+| 0x2000_0000 | 64 KiB | 管理 Tile 本地寄存器：CLINT、看门狗、ML 寄存器（起始 `ML_BASE`，TBD；定义见 `spec-mgmt-link` §8.1）、SRAM 控制、访问控制 | 读写 |
 | 0x2001_0000 | 64 KiB | doorbell 信箱与事件寄存器 | 读写 |
 | 0x2002_0000 | 4 KiB | CRC（`spec-clock-reset-power` §6） | 读写，只限 M 模式 |
 | 0x2C00_0000 | 64 MiB | PLIC | 读写 |
-| 0x3000_0000 | 256 MiB | HIF 的寄存器，经 ML 访问（§6.1） | 读写，32 位或 64 位 |
+| 0x3000_0000 | 256 MiB | HIF 的寄存器，经 ML 访问（§5.2、§6.1） | 读写，32 位或 64 位 |
 | 0x100_0000_0000 | 2^`addr.device_pa_bits` | DPA 空间，经 NoC 访问：本地地址 = 0x100_0000_0000 + DPA | 读写 |
 | 其余 | | 保留：访问产生访问错误异常 | |
 
-- SRAM 在 DPA 空间中的位置 `mgmt.sram_device_pa`，即管理 Tile 窗口的 SRAM 区，见 `spec-address-map` §4.2：其他 Tile 经 NoC 访问 SRAM 时使用。HDMA 访问描述符环时，使用 SRAM 的本地地址，经 ML 访问（§5.2）。
-- 访问保留地址、目标返回错误、访问超时（§5.5），都以同步的访问错误异常报告给管理 CPU（load/store access fault 或 instruction access fault），不得让 CPU 无限等待。
+- SRAM 在 DPA 空间中的位置 `mgmt.sram_device_pa`，即管理 Tile 窗口的 SRAM 区，见 `spec-address-map` §4.2：其他 Tile 经 NoC 访问 SRAM 时使用。HDMA 访问描述符环时，使用 SRAM 的本地地址，经 ML 访问（§5.1）。
+- 访问保留地址、目标返回错误、经 ML 的访问以 REJECT 或 FAULT 结束（`spec-mgmt-link` §4.4），都以同步的访问错误异常报告给管理 CPU（load/store access fault 或 instruction access fault），不得让 CPU 无限等待。
 
 ### 3.4 NI
 
@@ -257,7 +253,8 @@ SRAM 有三个 initiator：
 - 可纠正错误：纠正后返回数据，计数并可产生中断（§7.2）。
 - 不可纠正错误：
   - CPU 取指或读数据：访问错误异常；
-  - ML 的读：以错误响应返回，由 HDMA 按设备地址错误处理；
+  - ML 的读：以 REJECT 返回，由 HDMA 按设备地址错误处理；
+  - ML 的写需要 RMW、而读出的字有不可纠正错误：不写入，以 REJECT 返回，该字保持不变（`spec-mgmt-link` §4.4）；
   - NoC 目标端口的读：以错误响应返回；
   - 同时记录出错地址，产生中断。
 
@@ -267,8 +264,8 @@ SRAM 有三个 initiator：
 
 | initiator | 允许访问的区间 | 违反时 |
 |---|---|---|
-| ML 的启动写入 | 只在 STAGE = 2 期间，且只能写装载区；由 HIF 和 SRAM 控制器共同保证（§5.3） | 丢弃，记录 |
-| ML 的 HDMA 访问 | `DESC_BASE` – `DESC_LIMIT`，由固件设置 | 以错误响应返回 |
+| ML 的启动写入 | 只能写装载区。是否允许启动写入（STAGE、窗口是否打开）由 HIF 在入口处接受原始写时判定（`spec-pcie` §7.2），SRAM 控制器不按 STAGE 检查：`FW_START` 或 FLR 之后排空的旧写照常写入 | 越出装载区：以 REJECT 结束，记录 |
+| ML 的 HDMA 访问 | `DESC_BASE` – `DESC_LIMIT`，由固件设置 | 以 REJECT 结束 |
 | NoC 目标端口 | 最多 `mgmt.noc_windows` = 4 个由固件设置的区间，各自可设为只读或读写；复位后全部关闭 | 以错误响应返回，记录 |
 | 管理 CPU | 全部；由 PMP 进一步限制 | — |
 
@@ -276,88 +273,33 @@ SRAM 有三个 initiator：
 
 ---
 
-## 5. 管理链路（ML）
+## 5. ML 的接入
 
-### 5.1 物理组织
+ML 本身（事务、顺序、流控、链路状态与故障、ML 的寄存器）见 `spec-mgmt-link`。本节只规定管理 Tile 一侧怎样接入：ML 适配器把收到的事务交给哪个目标，管理 CPU 怎样经 ML 访问 HIF。
 
-- ML 两端各有一个适配器：HIF 侧和管理 Tile 侧。适配器把各自内部的访问转换为链路事务，并负责 CDC、超时、复位与排空。
-- 两个方向各有独立的**请求通道**和**响应通道**，每个通道经异步 FIFO CDC。
-- 数据位宽 128 位，在 HIF 一侧以 `clk_pcie`（250 MHz）传输，带宽 4 GB/s（推算）。它低于 PCIe 链路的写入能力，启动窗口的持续写入可能因此对 PCIe 入站方向形成反压（§10 P4）。
-- 复位后不需要任何软件配置即可传输。
-- 管理 Tile 应与 HIF 相邻放置，使 ML 的连线最短。不相邻时可以用流水寄存器或中继实现，代价是面积和延迟增加；这属于物理设计的优化目标，不是架构约束。
+### 5.1 目标译码
 
-### 5.2 事务
+| 事务 | 目标 | 不满足时 |
+|---|---|---|
+| `BOOT_WR` | SRAM 装载区：本地地址 = 0x1000_0000 + 偏移 | 偏移加长度超过 `mgmt.fw_load_max`：以 REJECT 结束（§4.4） |
+| `DB_WR` | doorbell 信箱的 `DB_SLOT[i]`，i 为地址字段（§6.2） | i ≥ `mgmt.db_slots`：拒绝，由适配器记录 `WR_REJECT` |
+| `EVENT` | 事件寄存器：数据的 [7:0] 按位或入 `EVT_PENDING` 的 [7:0]；其中 FLR 位（[1]）置位时，数据的 [31:16] 同时写入 `EVT_FLR_SEQ`（§6.3） | [15:8] 不为 0，或 FLR 位为 0 而 [31:16] 不为 0：拒绝，记录 `WR_REJECT`。`EVT_PENDING` 的 Tile 事件位只能经 NoC 目标端口写入 |
+| `DESC_RD`、`DESC_WR` | SRAM，按本地地址 | 不在 SRAM 范围内或违反 §4.4 的访问控制：以 REJECT 结束 |
 
-**HIF → 管理 Tile**
+- `BOOT_WR` 和 `DESC_WR` 的 OK 响应在数据写入 SRAM、之后 CPU 的读能读到新值时才返回（`spec-mgmt-link` §4.1）。
+- doorbell 信箱和事件寄存器每个 `clk_mgmt` 周期都能接收一个事务；SRAM 的等待时间上限见 §4.2。
 
-| 事务 | 类型 | 目标 | 说明 |
-|---|---|---|---|
-| `BOOT_WR` | 写，需要提交确认 | SRAM 装载区 | host 经启动窗口写入的镜像数据；只在 STAGE = 2 期间出现；每笔 64 位的整数倍 |
-| `DB_WR` | posted 写 | doorbell 信箱 | host 写 doorbell 后转来的值（§6.2） |
-| `EVENT` | posted 写 | 事件寄存器 | 置位事件（§6.3），例如 `FW_START`、FLR、HDI 寄存器被写入 |
-| `DESC_RD` | 读 | SRAM 描述符环 | HDMA 读取描述符 |
-| `DESC_WR` | posted 写 | SRAM 描述符环 | HDMA 回写描述符状态 |
+### 5.2 管理 CPU 的访问
 
-**管理 Tile → HIF**
+- 管理 CPU 访问本地地址 0x3000_0000 起的 HIF 寄存器区时，load 转为 `REG_RD`，store 转为 `REG_WR`。只允许按长度自然对齐的 32 位或 64 位访问，其他访问产生访问错误异常。
+- `REG_WR` 是 posted 写：store 进入 ML 后即完成。固件需要确认写入已经生效时，随后读一次 HIF 寄存器区中的任意寄存器（`spec-mgmt-link` §5 规则 2）。
+- `ML_STATUS.UP` = 0（链路尚未建立或处于故障态）时，load 和 store 都立即产生访问错误异常，不发出事务。
+- `REG_RD` 以 REJECT 或 FAULT 结束时，产生 load 访问错误异常（§3.3）。
 
-| 事务 | 类型 | 目标 | 说明 |
-|---|---|---|---|
-| `REG_RD` | 读 | HIF 寄存器 | 固件读 HIF 和 HDMA 的寄存器 |
-| `REG_WR` | posted 写 | HIF 寄存器 | 固件写寄存器，包括更新影子寄存器（§6.1） |
+### 5.3 启动写入的带宽
 
-每笔读请求带一个 tag，响应按 tag 返回。发起方在发出读请求之前必须预留好接收响应的空间，因此**响应通道在任何时候都能被接收**，不会因为对方的请求通道堵塞而停顿。
-
-### 5.3 顺序
-
-1. 同一方向上的写（posted 写和 `BOOT_WR`）按发出顺序在目标处生效。
-2. 同一方向上的读，不越过该方向此前发出的写：读到的结果反映此前所有写的效果。
-3. `EVENT` 不越过同一方向此前发出的写。因此固件收到某个事件时，引起该事件的写都已生效。
-4. **启动写入的提交保证**：
-   - HIF 在入站译码的入口处（BAR 分流之前、入站事务唯一的有序点）对 `BOOT_WR` 计数：接受一笔时加 1，收到管理 Tile 侧的提交确认时减 1。提交确认表示数据已写入 SRAM 并可被 CPU 读到。
-   - HIF 接受 host 对 `FW_START` 的写入时，立即关闭启动窗口，然后等计数归零，才经 ML 发出 `FW_START` 事件。
-   - 因此启动 ROM 收到 `FW_START` 事件时，host 在 `FW_START` 之前写入的镜像都已在 SRAM 中，且之后不会再有启动写入。
-   - 这一保证依赖 PCIe 控制器在入站方向保持 posted 写的顺序；选定 IP 时作为验收项确认（`spec-pcie` §16）。
-   - host 能观察到的效果见 `spec-pcie` §6.4。
-
-### 5.4 流控
-
-- 每个通道按信用流控：发送方只在持有对方的信用时发送。
-- HIF → 管理 Tile 方向的 posted 写和事件，其目标（信箱、事件寄存器、SRAM）都在有限时间内接收（§2.4），因此信用总会在有限时间内归还，host 的入站写不会被固件反压。
-- `DESC_RD` 与 `BOOT_WR` 不会同时出现：HDMA 只在固件运行后使用，启动写入只在 STAGE = 2 期间出现。
-
-### 5.5 超时与错误
-
-- 每笔读请求和 `BOOT_WR` 都有超时 `mgmt.link_timeout` = 10 µs。超时的请求以错误结束：
-  - 固件的 `REG_RD`：访问错误异常（§3.3），并记录在 `ML_ERR`；
-  - HDMA 的 `DESC_RD`：返回错误，由 HDMA 按设备地址错误处理；
-  - `BOOT_WR`：视为硬件故障。超时的写可能仍会在之后写入 SRAM，不能让 host 在原地重新加载。超时由 HIF 一侧检测，处理全部由 HIF 的硬件完成，不经过 ML、不依赖启动 ROM：
-    - 锁存**启动通路故障**：`BOOT_STATUS` 被强制为 STAGE = 0xF、ERROR = LINK（`spec-pcie` §6.4），`FW_READY` = 0；
-    - 立即关闭启动窗口，之后不再接受 `FW_START`；若 `FW_START` 已被接受、`FW_START` 事件尚未发出，则取消该事件，启动 ROM 不会开始校验或跳转；
-    - 锁存只能由设备完全复位、热复位或冷复位清除，FLR 不清除它（§9）。复位会清除管理 Tile 的 SRAM 和 ML 的全部状态（`spec-clock-reset-power` §4.2）。
-    - 启动 ROM 此时一直等待 `FW_START` 事件，不需要也不能再写 `BOOT_STATUS`。
-- 目标不存在的地址：以错误响应返回，处理同上。
-- 链路层错误（例如 FIFO 溢出、未知 tag 的响应）：丢弃并记录在 `ML_ERR`，产生中断；属于硬件故障，不应在正常运行中出现。
-
-### 5.6 复位与排空
-
-ML 两端可能经历不同的复位：
-
-| 事件 | HIF 侧 | 管理 Tile 侧 | ML |
-|---|---|---|---|
-| 冷复位、热复位 | 复位 | 复位 | 两端同时复位，之后重新建立 |
-| 设备完全复位 | PCIe 控制器、配置空间和链路保留；其余（包括 HDMA 和影子寄存器）复位 | 复位 | 重新建立 |
-| FLR | host 可见的状态复位，HDMA 复位 | 不复位 | 保持；HIF 发 FLR 事件 |
-| 看门狗第二级超时 | 不复位 | CPU 停住，本地硬件继续工作 | 保持 |
-
-当任一侧复位时，ML 按以下规则排空：
-
-1. 复位一侧的适配器丢弃自己的全部状态；另一侧通过 CDC 同步的复位信号得知对方正在复位。
-2. 另一侧对发往复位一侧、尚未收到响应的读请求，以"对端复位"错误结束；尚未发出的写请求丢弃。
-3. 两侧都退出复位后，适配器握手重新建立链路，并把**链路纪元**（epoch）加 1。每笔请求和响应都带纪元号，纪元不符的响应被丢弃，因此复位前发出的请求不会在复位后得到响应。
-4. 链路重新建立之前，HIF 不接受启动写入（启动窗口保持关闭），doorbell 写入由 HIF 暂存最新值，链路建立后再转发。
-5. 管理 Tile 本地寄存器中的 `ML_STATUS.UP` 表示链路已建立。为 0 时，管理 CPU 发往 ML 的访问以访问错误异常结束。ML 要在 HIF 的时钟运行之后才能建立（`spec-clock-reset-power` §3.2）。
-
-FLR 只复位 HIF 侧的部分状态，不复位 ML：HIF 在复位 HDMA 之前，先让其在途的 `DESC_RD` 完成或以错误结束，然后发出 FLR 事件。
+- STAGE 2 期间 `clk_mgmt` 为 `XTAL`，SRAM 接收 `BOOT_WR` 的带宽必须满足 `spec-mgmt-link` §9 P4：无 bank 冲突时，SRAM 必须能为 ML 持续写入至少 8 B/周期。
+- 启动 ROM 在 ROM 中执行，栈在 ROM 保留区。ROM 保留区应与装载区位于不同的 bank，使启动 ROM 的访问不与启动写入竞争。
 
 ---
 
@@ -367,7 +309,7 @@ FLR 只复位 HIF 侧的部分状态，不复位 ML：HIF 在复位 HDMA 之前�
 
 | 状态 | 存放位置 | host 的访问 | 固件的访问 |
 |---|---|---|---|
-| 启动阶段 STAGE | HIF | 读 | 写：0 → 1、→ 2、3 → 2（加载失败）、3 → 4、→ 0xF。2 → 3 由 HIF 在接受 `FW_START` 时自动完成；启动通路故障时由 HIF 强制为 0xF 并锁存，锁存期间固件的写入无效（§5.5） |
+| 启动阶段 STAGE | HIF | 读 | 写：0 → 1、→ 2、3 → 2（加载失败）、3 → 4、→ 0xF。2 → 3 由 HIF 在接受 `FW_START` 时自动完成；启动通路故障时由 HIF 强制为 0xF 并锁存，锁存期间固件的写入无效（`spec-pcie` §7.2） |
 | `FW_READY`、启动错误码 | HIF | 读 | 写。FLR 时由 HIF 自动清零 `FW_READY` |
 | 镜像大小 | HIF | STAGE = 2 时读写 | 读；加载失败时清零 |
 | 固件版本 | HIF | 读 | 写 |
@@ -403,15 +345,16 @@ FLR 只复位 HIF 侧的部分状态，不复位 ML：HIF 在复位 HDMA 之前�
 |---|---|---|
 | `EVT_PENDING` | RW1C | 各位对应一个事件，见下表；事件到达时置位 |
 | `EVT_MASK` | RW | 1 表示屏蔽该位的中断 |
+| `EVT_FLR_SEQ` | RO | [15:0]：最近一次 FLR 事件携带的序号（`spec-pcie` §13.2）。与 `EVT_PENDING.FLR` 由同一个事务原子地写入 |
 
 | 位 | 事件 | 来源 |
 |---|---|---|
-| [0] | `FW_START` | HIF：host 写入 `FW_START`，且之前的启动写入均已提交（§5.3） |
+| [0] | `FW_START` | HIF：host 写入 `FW_START`，且之前的启动写入均已提交（`spec-pcie` §7.2） |
 | [1] | `FLR` | HIF：FLR 已开始，host 可见的状态已复位 |
 | [2] | `HDI_WR` | HIF：host 写了命令协议控制器的可写寄存器 |
 | [3] | `BME_OFF` | HIF：host 清除了 Bus Master Enable |
 | [4] | `PM` | HIF：电源状态改变（D0 ↔ D3hot） |
-| [5] | `HDMA_NOTIFY` | HDMA：带通知标志的描述符完成；细节由 HDMA 的状态寄存器给出 |
+| [5] | `HDMA_NOTIFY` | HDMA：带通知标志的描述符完成；通知携带的信息怎样保存和读取见 `spec-host-dma` §11（待决） |
 | [6] | `HDMA_ERR` | HDMA：通道进入错误停止 |
 | [7] | `HOST_ERR` | HIF：其他 host 侧错误 |
 | [15:8] | — | RsvdZ |
@@ -439,7 +382,7 @@ FLR 只复位 HIF 侧的部分状态，不复位 ML：HIF 在复位 HDMA 之前�
 |---|---|
 | 1 | doorbell 信箱：`DB_PENDING & ~DB_MASK` 非零 |
 | 2 | 事件寄存器：`EVT_PENDING & ~EVT_MASK` 非零 |
-| 3 | ML 错误（`ML_ERR` 非零） |
+| 3 | ML 错误（`ML_ERR` 非零，`spec-mgmt-link` §8.1） |
 | 4 | SRAM 可纠正 ECC 错误（计数达到阈值） |
 | 5 | SRAM 不可纠正 ECC 错误 |
 | 6 | SRAM 访问控制违例 |
@@ -477,15 +420,17 @@ FLR 只复位 HIF 侧的部分状态，不复位 ML：HIF 在复位 HDMA 之前�
 | 步骤 | 启动 ROM 的动作 | STAGE |
 |---|---|---|
 | 1 | 从复位向量（本地地址 0）开始执行，以参考时钟运行 | 0 |
-| 2 | 初始化必要的 CSR；等待 `SRAM_INIT_DONE`；在 ROM 保留区建立栈；等待 `ML_STATUS.UP`（§5.6），不设超时 | 0 |
+| 2 | 初始化必要的 CSR；等待 `SRAM_INIT_DONE`；在 ROM 保留区建立栈；等待 `ML_STATUS.UP`（`spec-mgmt-link` §7.2），不设超时 | 0 |
 | 3 | 写 STAGE = 1。不配置 PCIe 控制器：控制器和 PHY 的参数由硬件的默认值和熔丝决定；链路训练和配置空间由硬件在复位后自动开始，不等待启动 ROM | 1 |
 | 4 | 写 STAGE = 2，启动窗口打开 | 2 |
-| 5 | 等待 `EVT_PENDING.FW_START`（轮询或中断）。此时 HIF 已把 STAGE 置为 3 并关闭启动窗口 | 3 |
+| 5 | 等待 `EVT_PENDING` 中的 `FW_START` 或 `FLR`（轮询或中断）。`FLR` 置位时按 §9 处理（包括写 STAGE = 2 和 `FLR_ACK`），然后回到本步。`FW_START` 置位时，HIF 已把 STAGE 置为 3 并关闭启动窗口 | 3 |
 | 6 | 读取镜像大小，检查本次加载是否有非法写入；检查镜像头（§8.2）；计算并比对镜像的摘要 | 3 |
-| 7 | 失败：写启动错误码，清零镜像大小，写 STAGE = 2，回到第 5 步 | 2 |
-| 8 | 成功：按 §8.3 设置 PMP，清零 ROM 保留区以外的运行区，跳转到固件入口 | 3 |
+| 7 | 失败：先检查 `EVT_PENDING.FLR`，置位则按 §9 处理并回到第 5 步；否则写启动错误码，清零镜像大小，写 STAGE = 2，回到第 5 步 | 2 |
+| 8 | 成功：按 §8.3 设置 PMP，清零 ROM 保留区以外的运行区；跳转前最后检查一次 `EVT_PENDING.FLR`，置位则按 §9 处理并回到第 5 步；否则跳转到固件入口 | 3 |
 
 - STAGE 和启动错误码的编码见 `spec-pcie` §6.4，启动 ROM 和固件按该编码写入。
+- 第 8 步最后一次检查之后才到达管理 Tile 的 FLR 事件（不论 FLR 本身何时开始），由固件处理：固件初始化时检查 `EVT_PENDING.FLR`，置位则按 STAGE = 4 的规则处理（§9）。镜像已经完整校验，固件照常运行；在固件确认之前，窗口、`FW_READY`、HDMA 和中断都受 HIF 的门控（`spec-pcie` §13.2）。
+- STAGE 0 期间（链路建立之前）发生的 FLR：没有启动写入需要排空，HIF 保持"FLR 进行中"，FLR 事件在链路建立后发出（`spec-mgmt-link` §7.1）；启动 ROM 在第 5 步之前不检查事件，进入第 5 步后看到它，按 §9 处理并确认，此前写入的 STAGE = 2 在确认之前不会打开窗口。
 - 启动 ROM 不访问 NoC、设备内存和 HDMA。
 - 启动 ROM 不使能看门狗。等待 host 加载期间没有超时，host 不加载时设备一直停在 STAGE 2。
 
@@ -561,9 +506,26 @@ FLR 只复位 HIF 侧的部分状态，不复位 ML：HIF 在复位 HDMA 之前�
 **FLR 期间的约束**
 
 - 固件收到 FLR 事件之前，HIF 已经复位了 host 可见的状态和 HDMA；固件不得假设任何复位前的命令协议状态仍然有效。
+- 固件看到 FLR 事件时，复位前已被 ML 接受的描述符回写、HDMA 事件和 doorbell 都已处理完毕（`spec-pcie` §13.2）。固件应先清零 `EVT_PENDING` 中的 `HDMA_NOTIFY`、`HDMA_ERR` 和全部 `DB_PENDING`，它们属于复位前；然后再重新初始化描述符环和命令协议。HDMA 在固件重新初始化之前不会产生新事件，host 在 `FW_READY` = 1 之前不会写 doorbell，因此不会误清新的事件。
 - 固件清理期间，host 可能已经开始读取状态。由于 `FW_READY` 为 0，host 不会使能命令协议。
-- STAGE 不是 4 时发生 FLR（启动尚未完成）：HIF 关闭启动窗口并发出 FLR 事件；启动 ROM 放弃本次加载，清零镜像大小和错误码，写 STAGE = 2 重新打开启动窗口。
-- 启动通路故障已锁存时（§5.5），FLR 不清除锁存：STAGE 保持 0xF、ERROR 保持 LINK，启动窗口保持关闭，启动 ROM 对 STAGE 的写入无效。
+- **FLR 的处理与确认**（启动 ROM 和固件相同）。寄存器和 HIF 一侧的规则见 `spec-pcie` §13.2：
+  1. 先清零 `EVT_PENDING.FLR`，再读 `EVT_FLR_SEQ` 得到序号 S（两次本地访问按程序顺序完成）。清零与读取之间若又到达新的 FLR 事件，读到的是新的序号，处理它即可；
+  2. 读 `FLR_STATUS`。LIMIT = 1 时设备已锁存致命错误，停止恢复，等待 host 复位设备；否则 `LAST_ACK` = S 说明这次 FLR 已经确认过，事件是重复送达的，跳到第 6 步；
+  3. 清理。HDMA 在确认之前由 HIF 保持复位，清理不需要也不能访问 HDMA：
+     - 启动 ROM：放弃本次加载，见下一条；
+     - 固件：清除命令协议的全部上下文和各 Tile 中属于本功能的状态，清零属于复位前的事件和 doorbell（见上文）；
+  4. 写 `FLR_ACK` = S，再读 `FLR_STATUS`，按以下顺序判断：
+     - LIMIT = 1：设备已锁存致命错误，停止恢复，等待 host 复位设备（即使 `LAST_ACK` = S）；
+     - `LAST_ACK` = S：确认成功；
+     - `FLR_SEQ` ≠ S：确认之前又发生了 FLR，这次确认被忽略，等待新的事件；
+     - 其他（`LAST_ACK` ≠ S 且 `FLR_SEQ` = S）：确认没有生效，置位致命错误并停止；
+  5. 第 2、4 步的 `REG_RD` 失败时（访问错误异常）：链路已处于故障态或固件访问了错误的地址，设备不能继续使用，置位致命错误（若仍可写）并停止。不得把这次 FLR 当作已确认；
+  6. 再检查一次 `EVT_PENDING.FLR`，置位则回到第 1 步；
+  7. 固件确认成功后，HDMA 退出复位，固件重新初始化 HDMA 的通道和描述符环，再置位 `FW_READY`。
+
+  去重只依据 HIF 中的 `LAST_ACK`，固件和启动 ROM 不需要在本地保存或交接序号。HIF 在确认之前对 host 屏蔽窗口和 `FW_READY`、忽略固件对 `FW_READY` 写 1、保持 HDMA 复位，因此清理期间写 STAGE、`FW_READY` 或 HDMA 寄存器不会过早生效。
+- STAGE 不是 4 时发生 FLR（启动尚未完成）：HIF 关闭启动窗口，等旧的启动写入都已提交，再以屏障事件发出 FLR 事件（`spec-pcie` §7.2）。启动 ROM 在 §8.1 的检查点看到 FLR 后放弃本次加载：按上一条读取序号，清零 `EVT_PENDING.FW_START`，清零镜像大小和错误码，写 STAGE = 2，最后按上一条确认，确认成功后启动窗口打开。
+- 启动通路故障已锁存时（`spec-pcie` §7.2），FLR 不清除锁存：STAGE 保持 0xF、ERROR 保持 LINK，启动窗口保持关闭，启动 ROM 对 STAGE 的写入无效。
 
 ---
 
@@ -572,12 +534,9 @@ FLR 只复位 HIF 侧的部分状态，不复位 ML：HIF 在复位 HDMA 之前�
 | 编号 | 要求 |
 |---|---|
 | P1 | host 写 doorbell，从 HIF 接收到该写，到管理 Tile 的 `DB_PENDING` 置位并向 CPU 发出中断，应不超过 100 ns（TBD） |
-| P2 | 固件经 ML 的 `REG_RD`，从发出到数据返回，应不超过 200 ns（TBD） |
-| P3 | HDMA 的 `DESC_RD`（32 B），从发出到数据返回，应不超过 200 ns（TBD），使每通道预取 2 个描述符就能掩盖读取延迟 |
-| P4 | ML 接收启动写入的持续带宽应不低于 3.5 GB/s（4 GB/s 扣除协议开销，推算）。超过时 PCIe 入站方向被反压，这是允许的：启动阶段没有其他入站流量需要保证，1 MiB 的镜像在 3.5 GB/s 下约需 0.3 ms（推算） |
-| P5 | CPU 访问 SRAM（无 bank 冲突）应为单周期 |
+| P2 | CPU 访问 SRAM（无 bank 冲突）应为单周期 |
 
-P3 的依据：一次 4 KiB 的传输在 8 GB/s 下约需 512 ns（推算），只要读取一个描述符的延迟明显短于此，预取深度 2 就足以让描述符读取不成为瓶颈。
+经 ML 的 `REG_RD`、HDMA 的 `DESC_RD` 的延迟和启动写入的带宽见 `spec-mgmt-link` §9。
 
 ---
 
@@ -589,24 +548,21 @@ P3 的依据：一次 4 KiB 的传输在 8 GB/s 下约需 512 ns（推算），�
 |---|---|
 | F1 | 启动：ROM 按 §8.1 推进 STAGE；合法镜像被校验通过并跳转到入口，交接状态符合 §8.3 |
 | F2 | 镜像检查：镜像头各字段、摘要的每一种错误都按校验失败处理并回到 STAGE 2；随后可重新加载成功 |
-| F3 | 启动写入的提交保证：`FW_START` 事件到达时，之前的启动写入在 SRAM 中全部可见；`FW_START` 之后的写入不改变装载区 |
+| F3 | 启动写入的提交保证：`FW_START` 事件到达时，之前的启动写入在 SRAM 中全部可见；`FW_START` 之后的写入不改变装载区（HIF 一侧的机制见 `spec-pcie` §7.2） |
 | F4 | doorbell 信箱：多次写同一 doorbell 只保留最后一个值；"先清 pending 再读值"的流程不丢失更新；固件停止处理时 host 的 doorbell 写入不被反压 |
 | F5 | 事件：每种事件都能置位 `EVT_PENDING` 并产生中断；事件不越过引起它的写入 |
-| F6 | ML 的复位与排空：任一侧复位时，另一侧的在途读以错误结束；复位后旧纪元的响应被丢弃 |
-| F7 | 超时：`REG_RD`、`DESC_RD`、`BOOT_WR` 超时时按 §5.5 处理，CPU 不会无限等待 |
-| F8 | SRAM：ECC 可纠正和不可纠正错误按 §4.3 处理；访问控制按 §4.4 处理，锁定后不可修改 |
-| F9 | 看门狗：第一级产生中断；第二级停住 CPU、置位 HIF 的致命错误，且不依赖固件和 ML |
-| F10 | FLR：管理 Tile 不复位；固件收到 FLR 事件、清理后重新置位 `FW_READY`；启动未完成时回到 STAGE 2；启动通路故障已锁存时保持 STAGE 0xF、启动窗口关闭 |
-| F12 | 启动写入超时：HIF 锁存启动通路故障（STAGE 0xF、ERROR = LINK），关闭启动窗口，取消待发的 `FW_START` 事件；启动 ROM 不校验、不跳转；只有设备完全复位、热复位、冷复位能清除 |
-| F11 | 设备完全复位：从启动 ROM 重新开始，`BOOT_REASON` = 2，`mtime` 不清零 |
+| F6 | ML 的接入：各事务按 §5.1 译码到目标，越界和非法掩码按 §5.1 处理；`ML_STATUS.UP` = 0 或 `REG_RD` 失败时 CPU 得到访问错误异常，不会无限等待 |
+| F7 | SRAM：ECC 可纠正和不可纠正错误按 §4.3 处理；访问控制按 §4.4 处理，锁定后不可修改 |
+| F8 | 看门狗：第一级产生中断；第二级停住 CPU、置位 HIF 的致命错误，且不依赖固件和 ML |
+| F9 | FLR：管理 Tile 不复位；固件收到 FLR 事件、清理后重新置位 `FW_READY`；启动未完成时回到 STAGE 2；启动通路故障已锁存时保持 STAGE 0xF、启动窗口关闭 |
+| F10 | 设备完全复位：从启动 ROM 重新开始，`BOOT_REASON` = 2，`mtime` 不清零 |
 
 **性能**
 
 | 编号 | 检查 |
 |---|---|
-| T1 | P1 – P3 的延迟在无竞争和 SRAM bank 冲突两种条件下测量，均满足要求 |
-| T2 | 启动窗口以最大载荷连续写入时，持续带宽满足 P4，反压期间不丢失数据 |
-| T3 | CPU 连续访问同一 bank 时，ML 的等待时间不超过 `mgmt.sram_max_wait` |
+| T1 | P1 的延迟在无竞争和 SRAM bank 冲突两种条件下测量，均满足要求 |
+| T2 | CPU 连续访问同一 bank 时，ML 的等待时间不超过 `mgmt.sram_max_wait` |
 
 ---
 
@@ -616,9 +572,9 @@ P3 的依据：一次 4 KiB 的传输在 8 GB/s 下约需 512 ns（推算），�
 |---|---|---|
 | HIF 内部寄存器的布局 | 实现定义 | §6.1；固件与 HIF 的实现一起确定 |
 | 外部中断源 9 – 31 | 保留 | §7.2 |
-| P1 – P3 的数值 | 100 ns、200 ns、200 ns | §10；随实现复核 |
+| P1 的数值 | 100 ns | §10；随实现复核 |
 
-以下各项 v0.1 不支持、留待后续版本：签名验证与安全启动（§8.2）、设备内存访问的数据缓存（§3.2）。PCIe 控制器入站 posted 写保持顺序，是 §5.3 提交保证的前提，选定 IP 时作为验收项确认（`spec-pcie` §16）。
+以下各项 v0.1 不支持、留待后续版本：签名验证与安全启动（§8.2）、设备内存访问的数据缓存（§3.2）。PCIe 控制器入站 posted 写保持顺序，是启动写入提交保证的前提（`spec-pcie` §7.2），选定 IP 时作为验收项确认（`spec-pcie` §16）。
 
 ---
 
@@ -633,7 +589,6 @@ P3 的依据：一次 4 KiB 的传输在 8 GB/s 下约需 512 ns（推算），�
 | `mgmt.sram_max_wait` | 16 个 SRAM 周期 | §4.2 |
 | `mgmt.noc_windows` | 4 | §4.4 |
 | `mgmt.cpu_freq` | 500 MHz | §3.2 |
-| `mgmt.link_timeout` | 10 µs | §5.5 |
 | `mgmt.db_slots` | 34 | §6.2；2 × (1 + 上下文数 16) |
 | `mgmt.sram_device_pa` | 见 `spec-address-map` §10 | |
 | `addr.device_pa_bits` | 见 `spec-address-map` §10 | |
