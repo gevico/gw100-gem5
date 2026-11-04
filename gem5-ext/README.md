@@ -4,7 +4,7 @@
 
 ## 构建
 
-命令都从仓库根目录开始执行。第一次构建是全量的，要十分钟以上；之后只改 gem5-ext 时，增量构建一两分钟。改了 C++ 或 SimObject 的 Python 参数之后要重新构建：`make gem-build`、`make run`、`make test` 会比较 `gem5-ext/src/` 下的源文件和 gem5 子模块的提交号，有变化才调用 scons，没有变化时直接跳过。改了 `PYTHON_CONFIG` 等构建选项时，用 `make -B gem-build` 强制构建。只改 `gem5-ext/configs/` 下的配置脚本不需要重新构建。
+命令都从仓库根目录开始执行。第一次构建是全量的，要十分钟以上；之后只改 gem5-ext 时，增量构建一两分钟。改了 C++ 或 SimObject 的 Python 参数之后要重新构建：`make gem-build`、`make run`、`make test` 会比较 `gem5-ext/src/` 下的源文件、`gem5-ext/patches/` 下的补丁和 gem5 子模块的提交号，有变化才调用 scons，没有变化时直接跳过。调用 scons 之前先应用 `gem5-ext/patches/` 中的 gem5 本体补丁（已经打过的跳过），说明见该目录的 README；应用后主仓库的 `git status` 显示 `gem5 (modified content)` 是预期的。改了 `PYTHON_CONFIG` 等构建选项时，用 `make -B gem-build` 强制构建。只改 `gem5-ext/configs/` 下的配置脚本不需要重新构建。
 
 ```sh
 uv pip install --python .venv/bin/python -r requirements-dev.txt   # 含 scons
