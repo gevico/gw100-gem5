@@ -44,6 +44,9 @@ GEM5_BIN := gem5/$(GEM5_TARGET)
 # 在运行时加载，不需要重新构建。
 GEM5_INPUTS := $(shell find gem5-ext/SConscript gem5-ext/src -type f \
 	\( -name '*.cc' -o -name '*.hh' -o -name '*.py' -o -name SConscript \) 2>/dev/null)
+# gem5 本体的补丁（gem5-ext/patches/README.md），按文件名顺序在构建前应用
+GEM5_PATCHES := $(sort $(wildcard gem5-ext/patches/*.patch))
+GEM5_INPUTS += $(GEM5_PATCHES)
 GEM5_HEAD := $(shell git -C gem5 rev-parse HEAD 2>/dev/null)
 GEM5_HEAD_STAMP := gem5/$(GEM5_BUILD)/.gw100-gem5-head
 GEM5_SCONS = cd gem5 && $(if $(PYTHON_CONFIG),PYTHON_CONFIG=$(PYTHON_CONFIG) )$(SCONS) \
@@ -94,7 +97,7 @@ VSCODE_CDB := gem5/$(GEM5_CDB)
 AARCH64_GDB ?= $(shell command -v aarch64-linux-gnu-gdb 2>/dev/null || command -v gdb-multiarch 2>/dev/null)
 
 .DEFAULT_GOAL := help
-.PHONY: all run test gem-build FORCE baremetal-build firmware-build vscode-config commit-check clean check format help
+.PHONY: all run test gem-build gem5-patch FORCE baremetal-build firmware-build vscode-config commit-check clean check format help
 
 all: gem-build baremetal-build firmware-build
 
@@ -108,8 +111,22 @@ gem-build: $(GEM5_BIN)
 
 # 改了 PYTHON_CONFIG 等构建选项、或怀疑构建状态不一致时，用 make -B gem-build 强制构建
 $(GEM5_BIN): $(GEM5_INPUTS) $(GEM5_HEAD_STAMP) $(GEM5_KCONFIG)
+	@$(MAKE) --no-print-directory gem5-patch
 	$(GEM5_SCONS)
 	@touch $@
+
+# 应用 gem5 本体的补丁：能反向应用的说明已经打过，跳过；能正向应用的就
+# 应用；两者都不行（例如 gem5 升级后补丁失效）时报错停止
+gem5-patch:
+	@for p in $(abspath $(GEM5_PATCHES)); do \
+		if git -C gem5 apply --reverse --check "$$p" 2>/dev/null; then \
+			:; \
+		elif git -C gem5 apply --check "$$p" 2>/dev/null; then \
+			git -C gem5 apply "$$p" && echo "[PATCH] 已应用 $$(basename $$p)"; \
+		else \
+			echo "[FAIL] gem5 补丁无法应用：$$(basename $$p)" >&2; exit 1; \
+		fi; \
+	done
 
 # 第一次构建时生成构建配置：以 build_opts/ARM 为基础，再打开 RISC-V
 $(GEM5_KCONFIG):
