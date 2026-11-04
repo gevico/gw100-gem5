@@ -91,7 +91,7 @@ scons --ignore-style EXTRAS=<仓库根目录>/gem5-ext \
 | 19 | SRAM ECC | 校验位不建模，没有故障注入，不会产生可纠正或不可纠正错误；相关寄存器存在 | — | 低 | 需要时加故障注入 |
 | 20 | CRC 的 Mesh 与 Compute Tile 控制 | `CRC_MESH_RST`、`CRC_CT_RST`、`CRC_CT_CLK_EN`、`CRC_CT_ISO` 按规格读写，但还没有 NoC、Memory Tile 和 Compute Tile 的模型可以作用；`CRC_ISO_ACK`、`CRC_ISO_FAIL` 读 0；`clk_core` 的切换只改寄存器，`PLL_DDR` 锁定后不驱动任何时钟 | 功能缺失 | 中 | 随 NoC、Memory Tile、Compute Tile 的模型接入 |
 | 21 | 管理 CPU 的停机 | gem5 的 `TimingSimpleCPU` 不能在任意时刻停住。停机请求经中断控制器 `Gw100MgmtInterrupts` 在下一个指令边界取走，优先于全部中断，CPU 随后去取启动 ROM 末尾保留的字，管理 Tile 扣下这次取指；设备完全复位时再用复位向量处的指令响应它。与规格的差别：停机请求到达时已经在途的取指，其指令仍会执行（规格要求丢弃）；没有调试模块，停住后无法读取 CPU 状态 | 功能偏差 | 低 | 待批准；或加调试模块，换用能丢弃在途取指的 CPU 模型 |
-| 22 | 设备完全复位中的 PLIC 与 CLINT | gem5 的 PLIC 没有复位接口，`Clint` 的复位会把 `mtime` 一起清零（规格要求设备完全复位保留 `mtime`），所以两者都不复位：PLIC 的使能、优先级、阈值，CLINT 的 `mtimecmp`、`msip` 保留复位前的值。启动 ROM 和当前固件不使用它们 | 功能偏差 | 低 | 随自己的 CLINT（#15）一起实现 PLIC 与 CLINT 的复位 |
+| 22 | 设备完全复位中的 PLIC 与 CLINT | gem5 的 PLIC 没有复位接口，`Clint` 的复位会把 `mtime` 一起清零（规格要求设备完全复位保留 `mtime`），所以两者都不复位：PLIC 的使能、优先级、阈值，CLINT 的 `mtimecmp`、`msip` 保留复位前的值。启动 ROM 不使用它们；CPU 复位后 `mstatus.MIE`、`mie` 为 0，固件在 `irq_init` 中重新设置 PLIC 的优先级、使能、阈值和 `mtimecmp` 之后才开中断，旧值不会引发中断 | 功能偏差 | 低 | 随自己的 CLINT（#15）一起实现 PLIC 与 CLINT 的复位 |
 | 23 | HDMA 的设备侧地址 | DPA 只接受设备内存的范围，Compute Tile 的 SRAM 尚未建模，指向它的描述符按 DEV_ADDR 失败；DEV_ECC 不会出现（#19） | 功能缺失 | 低 | 随 NoC 与 Compute Tile 的模型接入 |
 
 随旧模型删除而失效（2026-10-24），重建对应组件时不得重犯：
