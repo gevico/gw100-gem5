@@ -15,12 +15,13 @@ baremetal/
 
 | 公共库 | 内容 |
 |---|---|
-| `start.S`、`vectors.S`、`exception.c` | 启动：设栈、设异常向量、清零 .bss、打开通用定时器的事件流（约每 10 us 一个事件）、调用 `test_main`；任何异常都打印 ESR/ELR/FAR 后以 CRASH 退出 |
+| `start.S`、`vectors.S`、`exception.c` | 启动：设栈、设异常向量、清零 .bss、打开通用定时器的事件流（约每 10 us 一个事件）、调用 `test_main`；当前 EL（SPx）的 IRQ 进入 `bm_irq_dispatch`（`gic.h`），其余异常都打印 ESR/ELR/FAR 后以 CRASH 退出 |
 | `semihost.h` | 经 Arm semihosting 输出字符串、结束仿真 |
 | `console.h` | `bm_printf`、`bm_snprintf`（printf 子集，见头文件注释） |
 | `test.h` | 入口约定、断言宏 `TEST_ASSERT`、`TEST_EQ`、`TEST_NE`、`TEST_FAIL`、日志宏 `TEST_INFO`、退出码 |
 | `mmio.h` | `bm_read8/16/32/64`、`bm_write8/16/32/64`，自带屏障；`bm_relax()` 在轮询之间执行 `wfe`，等到下一个事件 |
 | `hdi.h` | host 一侧的 HDI 驱动库：控制器的使能与 BUSY 握手、队列、SQE 与 SGL 的构造、提交、按相位位读取 CQE |
+| `gic.h` | GICv3 与 ITS 的最小驱动：distributor 关闭安全扩展（DS = 1）、Group 1 以 IRQ 投递到 EL3；LPI 配置表与 pending 表、ITS 的设备表、集合表、命令队列和 ITT（放在 `platform.h` 的 `BM_GIC_MEM_BASE`）；`bm_its_map` 把（DeviceID、EventID）映射到 LPI；中断服务程序由 `bm_gic_init` 注册 |
 | `pci.h` | ECAM 配置读写、按 ID 查找设备、BAR 探测与分配、使能 Command 位、遍历 capability 链 |
 | `gw100.h` | GW100 的寄存器偏移与位定义（照抄 spec-pcie）；`gw100_open()` 找到设备、分配 BAR0/BAR2 并使能内存解码，`gw100_win_set()` 配置 BAR2 窗口 |
 | `platform.h` | 平台地址常量（VExpress_GEM5_V2：ECAM、PCI 内存窗口、GICv3 与 ITS）；换平台只改这里 |
@@ -69,6 +70,7 @@ baremetal/
 | `msix_intx` | 不加载固件：MSI-X capability、INT_SET 与错误产生的消息、表项 Mask 与 PBA（含屏蔽期间事件被处理）、Function Mask、BME、INTx 与 Interrupt Disable（`spec-pcie` §8、F8） |
 | `int_fw` | 加载中断请求的测试固件：CTX_VECTOR 映射、INT_REQ 的消息、INT_LEVEL 使清零的位重新置位（`spec-pcie` §6.5、§8.4） |
 | `hdi_copy` | HDI 的基本流程（驱动库 `lib/hdi.c`）：控制器使能，管理队列的 NOP、IDENTIFY，创建上下文、设置区间，COPY_H2D（1 MiB + 4 KiB，固件拆成两个描述符）、COPY_D2H（连续缓冲与 SGL），越权、字段非法、操作码非法、SGL 长度不符的错误完成，CQ 回绕，MSI-X 完成中断，销毁上下文（`spec-hdi` F1、F3、F6、F7、F10、F12 的一部分） |
+| `msix_its` | MSI-X 经 GICv3 ITS 交付给 host CPU：GW100 的 Requester ID 作为 DeviceID、事件映射到 LPI，INT_SET 产生的消息使中断服务程序被调用，屏蔽向量时只置 PBA、解除屏蔽后中断到达，HDI 管理命令的完成中断经 ITS 到达（`spec-pcie` §8.4，`spec-hdi` §12） |
 | `hdi_errors` | HDI 的其余路径：FILL、TIMESTAMP，跨上下文的 SIGNAL_EVENT 与 WAIT_EVENT（满足、超时、无权限），ABORT，中断合并的 THR、TIME 与错误完成，doorbell 写入不存在的上下文与越界、上下文的错误状态、GET_LOG，管理队列 doorbell 越界的致命错误与控制器复位，正常关闭（`spec-hdi` F2、F5、F11 – F14 的一部分） |
 | `dev_reset` | 设备完全复位：BAR 保留、寄存器恢复复位值，100 ms 内回到 STAGE 2，可以重新加载固件（`spec-pcie` §13.1，`spec-clock-reset-power` T3） |
 
