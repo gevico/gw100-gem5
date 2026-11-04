@@ -126,5 +126,15 @@ Gw100MgmtLink::release(Side side)
     (side == Side::Hif ? hif : mgmt).resetRelease();
 }
 
+/**
+ * 复位 side 这一端（设备完全复位时两端都复位，spec-mgmt-link
+ * §7.6）：在途事务丢弃，不再回调；由 release() 撤销
+ */
+void
+Gw100MgmtLink::reset(Side side)
+{
+    (side == Side::Hif ? hif : mgmt).resetAssert();
+}
+
 } // namespace gw100
 } // namespace gem5

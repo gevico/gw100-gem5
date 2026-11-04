@@ -7,6 +7,11 @@
  * - ROM 与 SRAM：MgmtSram；
  * - 看门狗的状态机：MgmtWdt；本类按 mtime 安排到期事件，第二级超时时
  *   停住管理 CPU 并置位 wdt_fatal 信号；
+ * - 管理 CPU 的停机与复位：经中断控制器 MgmtInterrupts 让 CPU 在指令
+ *   边界停住，停住后去取 ROM 末尾保留的字，本类扣下这次取指；
+ * - 设备完全复位（CRC 的复位时序）：收到 PCIe 设备的 dev_reset_req
+ *   后复位本 Tile、ML 的两端和 PCIe 的功能逻辑（pcie_reset），释放后
+ *   用复位向量处的指令响应扣下的取指，CPU 从启动 ROM 重新开始；
  * - ML、SRAM 控制、访问控制寄存器：MgmtLocalRegs；
  * - doorbell 信箱与事件寄存器：MgmtMailbox；
  * - 时钟复位控制器的寄存器：MgmtCrc；
@@ -19,8 +24,7 @@
 #define __GW100_MGMT_MGMT_TILE_HH__
 
 #include <array>
-#include <map>
-#include <vector>
+#include <set>
 
 #include "cpu/base.hh"
 #include "dev/intpin.hh"
@@ -29,7 +33,9 @@
 #include "params/Gw100MgmtTile.hh"
 #include "sim/clock_domain.hh"
 #include "sim/clocked_object.hh"
+#include "sim/signal.hh"
 #include "src/gw100/mgmt/crc/mgmt_crc.hh"
+#include "src/gw100/mgmt/intr/mgmt_interrupts.hh"
 #include "src/gw100/mgmt/mailbox/mgmt_mailbox.hh"
 #include "src/gw100/mgmt/regs/mgmt_local_regs.hh"
 #include "src/gw100/mgmt/sram/mgmt_sram.hh"
@@ -50,7 +56,7 @@ class Gw100MgmtTile : public ClockedObject, public MlTargetIf
     /** 按参数构造各组件 */
     explicit Gw100MgmtTile(const Params &p);
 
-    /** 返回名为 if_name 的端口：pio、wdt_fatal */
+    /** 返回名为 if_name 的端口：pio、wdt_fatal、dev_reset_req、pcie_reset */
     Port &getPort(const std::string &if_name,
                   PortID idx = InvalidPortID) override;
 
@@ -62,6 +68,12 @@ class Gw100MgmtTile : public ClockedObject, public MlTargetIf
 
     /** ML 管理侧的目标：处理 HIF 发来的请求（spec-mgmt-tile §5.1） */
     void mlRequest(const MlTxnPtr &txn, MlRespond respond) override;
+
+    /** dev_reset_req 置位：经同步器后开始设备完全复位 */
+    void raiseInterruptPin(int num);
+
+    /** dev_reset_req 撤销：PCIe 的功能逻辑复位时撤销，无动作 */
+    void lowerInterruptPin(int num);
 
   private:
     /** 本地总线上的响应端口 */
@@ -127,15 +139,6 @@ class Gw100MgmtTile : public ClockedObject, public MlTargetIf
     /** 在 when 时刻返回 pkt 的响应 */
     void respond(PacketPtr pkt, Tick when);
 
-    /**
-     * 把已经 makeResponse() 的 pkt 安排在 when 时刻发出；取指的响应
-     * 先放进 fetchResps，到时由 deliverFetches() 交给端口
-     */
-    void sendResp(PacketPtr pkt, Tick when);
-
-    /** 把到时的取指响应交给端口；CPU 停住后扣下，不再交付 */
-    void deliverFetches();
-
     /** 时刻 t 的时钟沿上，看门狗看到的同步后的 mtime 样本 */
     uint64_t mtimeSample(Tick t) const;
 
@@ -147,6 +150,24 @@ class Gw100MgmtTile : public ClockedObject, public MlTargetIf
 
     /** 看门狗第二级超时：置位 wdt_fatal 信号，停住管理 CPU */
     void haltCpu();
+
+    /** 请求管理 CPU 在下一个指令边界停住（正在 wfi 的 CPU 先唤醒） */
+    void requestCpuHalt();
+
+    /**
+     * 设备完全复位开始（spec-clock-reset-power §4.3）：复位 PCIe 的
+     * 功能逻辑、ML 的两端和本 Tile，CPU 停住，时钟回到 XTAL
+     */
+    void devResetAssert();
+
+    /** 设备完全复位释放：SRAM 开始硬件清零，ML 重新建立，CPU 重新开始 */
+    void devResetRelease();
+
+    /**
+     * 复位 CPU 的状态，用复位向量处的指令响应扣下的取指，CPU 从启动
+     * ROM 重新开始
+     */
+    void restartCpu();
 
     /** 把 pkt 标记为访问错误并在下一个时钟沿返回 */
     void respondError(PacketPtr pkt);
@@ -194,14 +215,34 @@ class Gw100MgmtTile : public ClockedObject, public MlTargetIf
     BaseCPU *cpu;
     /** 看门狗第二级超时的专用信号，接 HIF */
     IntSourcePin<Gw100MgmtTile> wdtFatal;
-    /** 看门狗第二级超时后，管理 CPU 已停住 */
+    /** 看门狗已进入第二级，管理 CPU 已请求停住 */
     bool halted = false;
-    /** 尚未交给端口的取指响应，按交付时刻排序 */
-    std::multimap<Tick, PacketPtr> fetchResps;
-    /** CPU 停住后扣下的取指，不再响应 */
-    std::vector<PacketPtr> heldFetches;
-    /** 在下一个取指响应的交付时刻调用 deliverFetches() 的事件 */
-    EventFunctionWrapper fetchEvent;
+    /** 管理 CPU 的中断控制器（停机请求经它送给 CPU） */
+    MgmtInterrupts *intr = nullptr;
+    /** CPU 停住后去取指的地址：启动 ROM 末尾保留的字 */
+    Addr haltPc = 0;
+    /** CPU 停住后扣下的取指 */
+    PacketPtr heldFetch = nullptr;
+    /** 复位已释放，等 CPU 停住后重新开始 */
+    bool restartPending = false;
+    /** CPU 经 ML 读 HIF 寄存器区、尚未完成的访问 */
+    std::set<PacketPtr> hifReads;
+    /** 设备完全复位的请求（来自 PCIe 设备） */
+    IntSinkPin<Gw100MgmtTile> devResetReq;
+    /** 送给 PCIe 设备的功能逻辑复位信号 */
+    SignalSourcePort<bool> pcieReset;
+    /** DEV_RESET 请求经同步器进入 clk_ao 域的延迟 */
+    const Tick devResetSync;
+    /** 设备完全复位的复位保持时间 */
+    const Tick devResetHold;
+    /** clk_mgmt 选择 XTAL 时，管理系统时钟域所用的频率档 */
+    const unsigned xtalPerfLevel;
+    /** 设备完全复位进行中 */
+    bool inDevReset = false;
+    /** 开始设备完全复位的事件 */
+    EventFunctionWrapper devResetAssertEvent;
+    /** 释放设备完全复位的事件 */
+    EventFunctionWrapper devResetReleaseEvent;
     /** 在看门狗下一次可能到期的时钟沿调用 wdtExpire() 的事件 */
     EventFunctionWrapper wdtEvent;
     /** 各中断源当前已送给 PLIC 的电平 */

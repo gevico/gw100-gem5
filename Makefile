@@ -76,7 +76,7 @@ RUN_GEM5 = cd gem5 && ./$(GEM5_TARGET) --outdir=$(GEM5_OUTDIR) $(GEM5_OPTS) \
 HOSTS ?= timing atomic
 TESTS ?=
 TEST_JOBS ?= $(JOBS)
-TEST_TIMEOUT ?= 300
+TEST_TIMEOUT ?= 900
 TEST_MAX_TICKS ?= 500000000000
 TEST_OUTDIR ?= gem5/m5out/tests
 BMTEST = $(PYTHON) tools/bmtest.py --gem5 gem5/$(GEM5_TARGET) --config $(GEM5_CONFIG) \

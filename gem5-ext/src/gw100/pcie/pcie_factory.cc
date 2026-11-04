@@ -58,7 +58,10 @@ PcieParts::PcieParts(const Gw100PciDeviceParams &p, const std::string &name,
       boot(bootCtrl, p.fw_load_max),
       hif(boot, bootCtrl),
       bar0(status, p.pio_latency),
-      bar2(bootCtrl, windows, status, devmem, p.bar2_latency)
+      bar2(bootCtrl, windows, status, devmem, p.bar2_latency),
+      shim(p.version, devCaps(p),
+           (p.link_speed & 0xF) | (uint32_t(p.link_width & 0x1F) << 4),
+           p.pio_latency)
 {}
 
 /**
@@ -72,6 +75,19 @@ PcieParts::resetRegisters()
     windowRegs.reset();
     boot.reset();
     windows.reset();
+}
+
+/**
+ * 设备完全复位：在 resetRegisters() 之外，再复位 FLR 保留的启动
+ * 状态、FW_VERSION 和 DEV_FATAL；ML 由外壳另行复位
+ */
+void
+PcieParts::devReset()
+{
+    // 先撤销 DEV_FATAL，否则 INT_STATUS 复位后 ERROR 会随即重新置位
+    bootCtrl.devReset();
+    boot.devReset();
+    resetRegisters();
 }
 
 /** 按组件分节保存全部状态 */

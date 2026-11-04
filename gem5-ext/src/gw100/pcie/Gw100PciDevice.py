@@ -80,6 +80,13 @@ class Gw100PciDevice(PciEndpoint):
         "（spec-mgmt-tile §7.4）"
     )
 
+    dev_reset_req = IntSourcePin(
+        "设备完全复位的请求，接管理 Tile（CRC）的 dev_reset_req"
+    )
+    func_reset = ResetResponsePort(
+        "CRC 送来的功能逻辑复位信号，接管理 Tile 的 pcie_reset"
+    )
+
     mgmt_link = Param.Gw100MgmtLink(
         NULL, "管理链路 ML；为空时设备不接管理 Tile（只用于寄存器层的测试）"
     )

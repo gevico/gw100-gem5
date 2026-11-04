@@ -113,6 +113,10 @@ class Gw100Config:
         s = make_mgmt_system(dev.mgmt_link, rom_elf)
         # 看门狗第二级超时的专用信号，不经过 ML（spec-mgmt-tile §7.4）
         s.tile.wdt_fatal = dev.wdt_fatal
+        # 设备完全复位：PCIe 设备向 CRC 请求，CRC 复位 PCIe 的功能逻辑
+        # （spec-clock-reset-power §4.3）
+        s.tile.dev_reset_req = dev.dev_reset_req
+        s.tile.pcie_reset = dev.func_reset
         return s
 
 

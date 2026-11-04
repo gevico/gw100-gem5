@@ -62,7 +62,8 @@ baremetal/
 | `boot_ok` | 上电初始化：经启动窗口加载固件，ROM 校验并跳转，固件置位 `FW_READY`（F10） |
 | `boot_errors` | 启动失败：镜像校验失败、`FW_SIZE` 非法、启动窗口的非法写入，各自回到 STAGE 2 后可重新加载（F10） |
 | `boot_flr` | 启动期间和固件运行期间的 FLR：门控、回到 STAGE 2 或重新就绪（F11） |
-| `wdt_fatal` | 加载看门狗测试固件：第二级超时后 `DEV_FATAL`、`INT_STATUS.ERROR` 置位，心跳停止，FLR 不清除（`spec-mgmt-tile` F8） |
+| `wdt_fatal` | 加载看门狗测试固件：第二级超时后 `DEV_FATAL`、`INT_STATUS.ERROR` 置位，心跳停止，FLR 不清除；设备完全复位后恢复（`spec-mgmt-tile` F8） |
+| `dev_reset` | 设备完全复位：BAR 保留、寄存器恢复复位值，100 ms 内回到 STAGE 2，可以重新加载固件（`spec-pcie` §13.1，`spec-clock-reset-power` T3） |
 
 **已知限制**：gem5 的 Simple CPU（timing、atomic）在访存收到错误响应时直接 panic，不会产生 data abort。因此测试无法验证"访问未解码地址会出错"这类行为，例如关闭 Memory Space 后再访问 BAR；这类检查只能验证配置寄存器本身。
 
@@ -78,7 +79,7 @@ make run TEST=pcie_regs                    # 只运行一个 test，输出直接
 
 - 每次运行的输出在 `gem5/m5out/tests/<host>/<test>/`，其中 `test.log` 是完整日志。
 - 失败时，运行器打印日志路径和测试程序的输出。
-- 其他变量：`TEST_JOBS`（并行数）、`TEST_TIMEOUT`（墙钟超时，秒）、`TEST_MAX_TICKS`（仿真 tick 上限，默认 10¹⁰，即仿真 10 ms）、`BOARD`、`DEVICE`。见 `make help`。
+- 其他变量：`TEST_JOBS`（并行数）、`TEST_TIMEOUT`（墙钟超时，秒，默认 900：atomic host 下墙钟时间与仿真时间成正比，加载两次固件的测试要几分钟）、`TEST_MAX_TICKS`（仿真 tick 上限，默认 5×10¹¹，即仿真 500 ms）、`BOARD`、`DEVICE`。见 `make help`。
 
 只编译不运行：
 

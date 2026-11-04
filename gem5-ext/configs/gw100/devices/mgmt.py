@@ -17,6 +17,7 @@
 from m5.objects import (
     AddrRange,
     Clint,
+    Gw100MgmtInterrupts,
     Gw100MgmtTile,
     NoncoherentXBar,
     Plic,
@@ -66,7 +67,8 @@ def make_mgmt_system(link, rom_elf: str) -> RiscvSystem:
     s.cpu.isa = [RiscvISA(riscv_type="RV64", enable_rvv=False,
                           privilege_mode_set="MU")]
     s.cpu.createThreads()
-    s.cpu.createInterruptController()
+    # 中断控制器加上管理 Tile 的停机请求（看门狗第二级、设备完全复位）
+    s.cpu.interrupts = [Gw100MgmtInterrupts()]
     s.cpu.connectBus(s.membus)
 
     s.plic = Plic(pio_addr=0x2C00_0000, pio_size=0x400_0000, n_src=32,
