@@ -6,7 +6,7 @@
 cache 等参数由 `gw100.hosts` 的预设提供；挂什么设备由 `gw100.devices`
 的预设决定，板卡只提供插槽。板卡用 `features()` 声明自己提供的能力。
 
-- arm_vexpress：AArch64，VExpress_GEM5_Foundation 平台
+- arm_vexpress：AArch64，VExpress_GEM5_V2 平台（GICv3 带 ITS）
 
 @see man-gem5-user, spec-pcie
 """

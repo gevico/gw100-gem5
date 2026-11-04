@@ -68,8 +68,8 @@ scons --ignore-style EXTRAS=<仓库根目录>/gem5-ext \
 
 ## 开发注意
 
-- PCIe endpoint 继承 `PciEndpoint`，Host 使用 `VExpress_GEM5_Foundation` 的 `GenericArmPciHost`；BAR0 为 1 MiB，BAR2 为 64 MiB（spec-pcie §5）。
-- `VExpress_GEM5_Foundation` 没有接 GICv3 ITS：设备的 MSI-X 消息照常作为内存写发出，裸机测试把表项地址指向 host 内存来观察它；Linux host 要接收 MSI-X 时需换成 `VExpress_GEM5_V2` 或加上 ITS。INTx 经 GIC 的 SPI（`int_base` 100 加设备号模 4）。
+- PCIe endpoint 继承 `PciEndpoint`，Host 使用 `VExpress_GEM5_V2` 的 `GenericArmPciHost`（ECAM 在 0x3000_0000，内存窗口为总线地址 0 – 0x3FFF_FFFF、CPU 地址 0x4000_0000 起的 1 GiB）；BAR0 为 1 MiB，BAR2 为 64 MiB（spec-pcie §5）。
+- `VExpress_GEM5_V2` 带 GICv3（GICv4）和 ITS（0x2E01_0000），设备的 MSI-X 消息写到 `GITS_TRANSLATER` 时由 ITS 翻译成 LPI 交给 CPU。现有裸机测试仍把表项地址指向 host 内存来观察消息，只检查设备一侧的语义；裸机库还没有配置 ITS。INTx 经 GIC 的 SPI（`int_base` 100 加设备号模 4）。
 - gem5 的 `PciDevice` 对 16 位的 Command 写只取低 8 位（Interrupt Disable 会丢失），`Gw100PciDevice::writeConfig` 把它转成 32 位写交给基类。
 - 旧的 TestHost 和 device-side 配置已删除；GW100 现在走 ARM board 的 VExpress PCIe。
 
