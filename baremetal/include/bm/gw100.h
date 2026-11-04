@@ -107,8 +107,12 @@ extern const uint8_t gw100_fw_wdt_image_end[];
 #define GW100_HDMA_CH(c, off) \
     (GW100_HDMA_MIRROR + 0x100 + 0x40 * (c) + (off))
 
-/* 保留的块：本阶段尚未实现（MSI-X、HDI） */
-#define GW100_RSVD_BLOCK_HDI    0x5000
+/* BAR0 的保留区域（spec-pcie §5.1：0x7000 – 0x7_FFFF） */
+#define GW100_RSVD_BLOCK        0x7000
+/* HDI 控制器寄存器（spec-hdi §4） */
+#define GW100_HDI               0x5000
+/* doorbell 页：页 p 在 GW100_DB(p)，p = 0 是管理队列 */
+#define GW100_DB(p)             (0x80000 + 0x1000 * (p))
 
 /** 打开后的 GW100 */
 typedef struct {

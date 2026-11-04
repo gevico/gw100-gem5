@@ -49,6 +49,7 @@ Gw100PciDevice::Gw100PciDevice(const Params &p)
     parts->bootCtrl.onFlrDone = [this] {
         parts->hdma.setHold(false);
         parts->intCtrl.setFlrGate(false);
+        parts->hdi.setGate(false);
     };
     parts->intCtrl.onIntx = [this](bool level) {
         if (level)
@@ -75,12 +76,24 @@ Gw100PciDevice::init()
     parts->hif.bindMl(ml);
     parts->bootCtrl.bindMl(ml);
     parts->hdmaMl.bind(ml);
+    dbClient = ml->addClient();
+    parts->hdi.sendDb = [this](unsigned slot, uint16_t value) {
+        auto t = std::make_shared<MlTxn>();
+        t->type = MlType::DbWr;
+        t->addr = slot;
+        t->len = 4;
+        t->be = 0xF;
+        t->data[0] = uint8_t(value);
+        t->data[1] = uint8_t(value >> 8);
+        return ml->submit(dbClient, t);
+    };
     ml->onChange = [this] {
         // ML_HIF_ERR 非零经电平信号送到管理 Tile 侧（spec-mgmt-link
         // §8.2）；链路状态的变化交给启动与 FLR 控制和 HDMA
         ml->setHifErrLevel(ml->errReg() != 0);
         parts->bootCtrl.mlChanged();
         parts->hdma.wake();
+        parts->hdi.trySendDoorbells();
     };
 }
 
@@ -324,6 +337,7 @@ Gw100PciDevice::functionReset(const char *why)
     // 复位，保持复位直到固件确认（spec-host-dma §8.4）
     parts->hdma.setHold(true);
     parts->intCtrl.setFlrGate(true);
+    parts->hdi.setGate(true);
     lastBme = false;
     parts->hdma.setBusMaster(false);
     parts->intCtrl.setBusMaster(false);

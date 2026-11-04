@@ -147,6 +147,8 @@ class Gw100PciDevice : public PciEndpoint
     SignalSinkPort<bool> funcResetPin;
     /** 上一次看到的 Bus Master Enable */
     bool lastBme = false;
+    /** doorbell 在 ML HIF 侧的客户端编号 */
+    unsigned dbClient = 0;
 };
 
 } // namespace gw100

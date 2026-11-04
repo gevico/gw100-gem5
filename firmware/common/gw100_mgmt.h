@@ -98,6 +98,9 @@
  */
 #define GW_TS_LOCK_CYCLES   25000UL
 
+/** DPA 空间的起始：本地地址 = GW_NI_BASE + DPA，经 NI 访问 */
+#define GW_NI_BASE          0x10000000000UL
+
 /** HIF 寄存器区的起始（经 ML 访问，只支持 32 位） */
 #define GW_HIF_BASE         0x30000000UL
 /** FW_BOOT_STATUS：[3:0] STAGE，[8] FW_READY，[23:16] ERROR */
