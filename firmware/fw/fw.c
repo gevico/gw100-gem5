@@ -1,18 +1,18 @@
 /**
  * @file  fw.c
- * @brief 管理 Tile 固件：初始化后置位 FW_READY，处理 FLR
+ * @brief 管理 Tile 固件：初始化后置位 FW_READY，处理 HDI 命令与 FLR
  *
- * 本阶段的最小固件：等待 PLL_TS 锁定、切换到工作时钟、使能并锁定
- * 看门狗，设置并锁定 HDMA 描述符区间的访问控制，初始化 HDMA 的通道
- * 0、1，写入固件版本，置 STAGE = 4 与 FW_READY（spec-mgmt-tile §8.5
- * 中尚未建模的步骤留待后续阶段），然后在主循环中等中断（irq.c）、
- * 喂狗，并按 §9 处理 FLR（确认之后重新初始化 HDMA）。
+ * 等待 PLL_TS 锁定、切换到工作时钟、使能并锁定看门狗，设置并锁定 HDMA
+ * 描述符区间的访问控制，初始化 HDMA 的通道 0、1，写入固件版本，置
+ * STAGE = 4 与 FW_READY（spec-mgmt-tile §8.5 中尚未建模的步骤留待后续
+ * 阶段），然后在主循环中等中断（irq.c）、喂狗，处理 HDI（hdi.c），并按
+ * §9 处理 FLR（确认之后重新初始化 HDMA）。
  *
  * 以 GW_FW_HDMA_TEST 编译时是 HDMA 的测试固件：初始化之后运行
  * hdma_test.c 中的传输，把结果写入 FW_VERSION_FW（0xD0A0_0000 | 步骤号，
  * 0 为通过），再置位 FW_READY。以 GW_FW_INT_TEST 编译时是中断请求的
  * 测试固件：运行 int_test.c，结果写入 FW_VERSION_FW（0x1A70_0000 | 步骤
- * 号）。
+ * 号）。这两种测试固件不处理 HDI。
  *
  * 以 GW_FW_WDT_TEST 编译时是看门狗的测试固件：初始化中自检第一级
  * 超时、PLIC 源 7 和合法喂狗，置位 FW_READY 后不再喂狗，只每 10 us
@@ -31,6 +31,7 @@
 #include "gw100_hdma.h"
 #include "gw100_image.h"
 #include "gw100_mgmt.h"
+#include "hdi.h"
 #include "irq.h"
 
 /** 镜像头：由 tools/fwpack.py 填写，链接时只占位 */
@@ -52,6 +53,14 @@ init_fail(void)
                GW_BOOT_STATUS(GW_STAGE_FAILED, 0, GW_ERR_INIT));
     gw_halt();
 }
+
+#if !defined(GW_FW_HDMA_TEST) && !defined(GW_FW_INT_TEST)
+/**
+ * 本固件处理 HDI 命令；HDMA、中断请求的测试固件不处理，镜像小一些，
+ * 启动 ROM 的校验也快一些
+ */
+#define FW_HDI
+#endif
 
 #ifndef GW_FW_WDT_TEST
 /** 每个通道的描述符环条目数 */
@@ -200,9 +209,12 @@ handle_flr(void)
     for (;;) {
         if (!(gw_flr_take() & GW_FLR_IN_PROGRESS))
             return;  /* 已经确认过的 FLR 留下的事件 */
-        /* 复位前的 HDMA 事件属于旧的请求（spec-mgmt-tile §9）；本阶段
-         * 没有命令协议的状态需要清理 */
+        /* 复位前的 HDMA 事件属于旧的请求（spec-mgmt-tile §9）；HDI 的
+         * 状态随 FLR 复位 */
         gw_write32(GW_EVT_PENDING, GW_EVT_HDMA_NOTIFY | GW_EVT_HDMA_ERR);
+#ifdef FW_HDI
+        hdi_reset();
+#endif
         if (gw_flr_confirm() != 0)
             continue;
         hdma_init();  /* FLR 复位了 HDMA */
@@ -248,19 +260,36 @@ fw_main(uint64_t hartid, const struct gw_boot_info *info)
 #else
     gw_write32(GW_FW_VERSION_FW, h->fw_version);
 #endif
+#ifdef FW_HDI
+    hdi_init(&chans[0], &chans[1], h->fw_version);
+#endif
     irq_init(WDT_LOAD / 4);
     set_ready();
+    int more = 0;
     for (;;) {
-        /* 主循环每次醒来都喂狗；定时器保证空闲时至少每 1/4 周期醒来 */
+        /* 主循环每次醒来都喂狗；定时器保证空闲时至少每 1/4 周期醒来。
+         * HDI 还有可以立即推进的工作时不睡眠 */
         wdt_kick();
         uint32_t ev, flags;
-        irq_wait(&ev, &flags);
+        uint64_t db;
+        irq_wait(&ev, &db, &flags, !more);
         (void)flags;
         if (ev & GW_EVT_FLR)
             handle_flr();  /* 它自己写 1 清零 EVT_PENDING.FLR */
-        /* 其余事件本阶段没有处理程序：清零后解除屏蔽 */
-        gw_write32(GW_EVT_PENDING, ev & ~GW_EVT_FLR);
+#ifdef FW_HDI
+        uint32_t own = hdi_event(ev);
+        if (db)
+            hdi_doorbells();
+        more = hdi_poll();
+#else
+        uint32_t own = 0;
+        gw_write32(GW_DB_PENDING0, (uint32_t)db);
+        gw_write32(GW_DB_PENDING1, (uint32_t)(db >> 32));
+#endif
+        /* 其余事件没有处理程序：清零后解除屏蔽 */
+        gw_write32(GW_EVT_PENDING, ev & ~(GW_EVT_FLR | own));
         irq_unmask(ev);
+        irq_unmask_db(db);
     }
 #endif
 }

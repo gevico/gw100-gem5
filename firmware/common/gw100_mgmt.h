@@ -64,6 +64,16 @@
 
 /** doorbell 信箱与事件寄存器的起始 */
 #define GW_MBOX_BASE        0x20010000UL
+/** DB_SLOT[i]：第 i 个 doorbell 最近一次写入的值 */
+#define GW_DB_SLOT(i)       (GW_MBOX_BASE + 4 * (i))
+/** DB_PENDING[0]（RW1C）：槽 0 – 31 */
+#define GW_DB_PENDING0      (GW_MBOX_BASE + 0x100)
+/** DB_PENDING[1]（RW1C）：槽 32 – 33 */
+#define GW_DB_PENDING1      (GW_MBOX_BASE + 0x104)
+/** DB_MASK[0] */
+#define GW_DB_MASK0         (GW_MBOX_BASE + 0x108)
+/** DB_MASK[1] */
+#define GW_DB_MASK1         (GW_MBOX_BASE + 0x10C)
 /** EVT_PENDING（RW1C） */
 #define GW_EVT_PENDING      (GW_MBOX_BASE + 0x200)
 /** EVT_MASK */
@@ -72,6 +82,8 @@
 #define GW_EVT_FW_START     (1u << 0)
 /** 事件位：FLR */
 #define GW_EVT_FLR          (1u << 1)
+/** 事件位：HDI_WR（host 写了 HDI 控制器的可写寄存器） */
+#define GW_EVT_HDI_WR       (1u << 2)
 
 /** CRC 寄存器的起始 */
 #define GW_CRC_BASE         0x20020000UL
@@ -115,13 +127,19 @@
 #define GW_BOOT_LOAD_STATUS (GW_HIF_BASE + 0x10014)
 /** FLR_CTRL：[0] TAKE，[1] DONE（W1S） */
 #define GW_FLR_CTRL         (GW_HIF_BASE + 0x12010)
+/** HDI 控制器寄存器的固件视角：偏移 off（spec-pcie §6.5） */
+#define GW_HDI_FW(off)      (GW_HIF_BASE + 0x11000 + (off))
+/** ERR_REQ（W1S）：只接受 [4] DB_INVALID */
+#define GW_ERR_REQ          (GW_HIF_BASE + 0x12008)
+/** ERR_REQ 的位：DB_INVALID */
+#define GW_ERR_DB_INVALID   (1u << 4)
 /** INT_REQ（W1S）：请求 host 中断（spec-pcie §6.5） */
 #define GW_INT_REQ          (GW_HIF_BASE + 0x12000)
 /** INT_LEVEL：固件对中断源条件的贡献 */
 #define GW_INT_LEVEL        (GW_HIF_BASE + 0x12004)
 /** CTX_VECTOR[n]：上下文 n 的 MSI-X 向量 */
 #define GW_CTX_VECTOR(n)    (GW_HIF_BASE + 0x12100 + 4 * (n))
-/** INT_STATUS 的位：ADMIN、FW_EVENT、CTX[n] */
+/** INT_STATUS 的位：ADMIN */
 #define GW_INT_ADMIN        (1u << 0)
 /** INT_STATUS 的位：FW_EVENT */
 #define GW_INT_FW_EVENT     (1u << 2)

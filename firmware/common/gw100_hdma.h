@@ -20,6 +20,8 @@
 #define GW_HDMA_BASE        GW_HIF_BASE
 /** HDMA_CTRL：[0] EN，[1] ABORT_ALL */
 #define GW_HDMA_CTRL        (GW_HDMA_BASE + 0x00C)
+/** HDMA_CTRL.ABORT_ALL（W1S） */
+#define GW_HDMA_ABORT_ALL   (1u << 1)
 /** 通道 c 的寄存器 off */
 #define GW_HDMA_CH(c, off)  (GW_HDMA_BASE + 0x100 + 0x40 * (c) + (off))
 /** CH_CTRL：[0] EN，[1] PAUSE，[2] ABORT，[3] RESUME，[11:8] WEIGHT */

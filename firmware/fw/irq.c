@@ -22,6 +22,8 @@
 #define PLIC_CLAIM0     (PLIC_BASE + 0x200004)
 /** CLINT 的 mtimecmp（hart 0） */
 #define CLINT_MTIMECMP  0x20004000UL
+/** PLIC 源：doorbell 信箱 */
+#define SRC_DB          1
 /** PLIC 源：事件寄存器 */
 #define SRC_EVT         2
 /** PLIC 源：ML 错误 */
@@ -37,6 +39,10 @@
 
 /** 处理程序记下、尚未交给主循环的事件位 */
 static volatile uint32_t pending_events;
+/** 处理程序记下、尚未交给主循环的 doorbell 槽位 */
+static volatile uint64_t pending_db;
+/** 额外的唤醒期限；0 表示没有 */
+static uint64_t deadline;
 /** 处理程序记下、尚未交给主循环的标志 */
 static volatile uint32_t pending_flags;
 /** 定时器周期 */
@@ -52,23 +58,35 @@ mtime(void)
     return *(volatile uint64_t *)GW_CLINT_MTIME;
 }
 
-/** 下一次定时器中断设在 period 之后 */
+/** 下一次定时器中断设在 period 之后，或更早的额外期限 */
 static void
 timer_rearm(void)
 {
-    *(volatile uint64_t *)CLINT_MTIMECMP = mtime() + tick;
+    uint64_t t = mtime() + tick;
+    if (deadline && deadline < t)
+        t = deadline;
+    *(volatile uint64_t *)CLINT_MTIMECMP = t;
 }
 
-/** 初始化：PLIC 源 2、3、7，定时器周期 period（mtime 周期），开中断 */
+/** 定时器最迟在 mtime 到达 t 时唤醒主循环（t = 0 表示没有额外的期限） */
+void
+irq_deadline(uint64_t t)
+{
+    deadline = t;
+    timer_rearm();
+}
+
+/** 初始化：PLIC 源 1、2、3、7，定时器周期 period（mtime 周期），开中断 */
 void
 irq_init(uint64_t period)
 {
     tick = period;
+    gw_write32(PLIC_PRIO(SRC_DB), 1);
     gw_write32(PLIC_PRIO(SRC_EVT), 1);
     gw_write32(PLIC_PRIO(SRC_ML), 1);
     gw_write32(PLIC_PRIO(SRC_WDT), 1);
-    gw_write32(PLIC_EN0, (1u << SRC_EVT) | (1u << SRC_ML) |
-                         (1u << SRC_WDT));
+    gw_write32(PLIC_EN0, (1u << SRC_DB) | (1u << SRC_EVT) |
+                         (1u << SRC_ML) | (1u << SRC_WDT));
     gw_write32(PLIC_THRESH0, 0);
     timer_rearm();
     __asm__ volatile("csrw mtvec, %0" ::"r"(fw_trap_entry));
@@ -82,6 +100,14 @@ external(void)
 {
     uint32_t src = gw_read32(PLIC_CLAIM0);
     switch (src) {
+      case SRC_DB: {
+        uint32_t p0 = gw_read32(GW_DB_PENDING0) & ~gw_read32(GW_DB_MASK0);
+        uint32_t p1 = gw_read32(GW_DB_PENDING1) & ~gw_read32(GW_DB_MASK1);
+        gw_write32(GW_DB_MASK0, gw_read32(GW_DB_MASK0) | p0);
+        gw_write32(GW_DB_MASK1, gw_read32(GW_DB_MASK1) | p1);
+        pending_db |= p0 | ((uint64_t)p1 << 32);
+        break;
+      }
       case SRC_EVT: {
         uint32_t p = gw_read32(GW_EVT_PENDING) & ~gw_read32(GW_EVT_MASK);
         gw_write32(GW_EVT_MASK, gw_read32(GW_EVT_MASK) | p);
@@ -111,6 +137,8 @@ fw_trap(uint64_t mcause)
         gw_halt();
     switch (mcause & 0x3F) {
       case 7:
+        if (deadline && deadline <= mtime())
+            deadline = 0;  /* 已到期：不再按它设置，否则反复进中断 */
         timer_rearm();
         pending_flags |= IRQ_TIMER;
         break;
@@ -123,29 +151,43 @@ fw_trap(uint64_t mcause)
 }
 
 /**
- * 取走中断框架记下的事件位（EVT_PENDING 的位，已被屏蔽）和标志；
- * 都没有时在 wfi 中等待中断。返回时中断是打开的
+ * 取走中断框架记下的事件位（EVT_PENDING 的位，已被屏蔽）、doorbell 槽位
+ * （DB_PENDING 的位，已被屏蔽）和标志；都没有且 block 不为 0 时在 wfi
+ * 中等待中断。返回时中断是打开的
  */
 void
-irq_wait(uint32_t *events, uint32_t *flags)
+irq_wait(uint32_t *events, uint64_t *doorbells, uint32_t *flags,
+         int block)
 {
     for (;;) {
         // 关中断后检查，再 wfi：检查之后到达的中断使 wfi 立即返回，
         // 开中断后进入处理程序，不会睡过头
         __asm__ volatile("csrc mstatus, %0" ::"r"(MSTATUS_MIE));
         uint32_t e = pending_events;
+        uint64_t d = pending_db;
         uint32_t f = pending_flags;
         pending_events = 0;
+        pending_db = 0;
         pending_flags = 0;
-        if (e == 0 && f == 0)
+        if (e == 0 && d == 0 && f == 0 && block)
             __asm__ volatile("wfi");
         __asm__ volatile("csrs mstatus, %0" ::"r"(MSTATUS_MIE));
-        if (e || f) {
+        if (e || d || f || !block) {
             *events = e;
+            *doorbells = d;
             *flags = f;
             return;
         }
     }
+}
+
+/** doorbell 槽位 slots 已处理（pending 已写 1 清零）：解除屏蔽 */
+void
+irq_unmask_db(uint64_t slots)
+{
+    gw_write32(GW_DB_MASK0, gw_read32(GW_DB_MASK0) & ~(uint32_t)slots);
+    gw_write32(GW_DB_MASK1,
+               gw_read32(GW_DB_MASK1) & ~(uint32_t)(slots >> 32));
 }
 
 /** 事件位 bits 已处理并写 1 清零：解除屏蔽 */
