@@ -62,6 +62,7 @@ baremetal/
 | `boot_ok` | 上电初始化：经启动窗口加载固件，ROM 校验并跳转，固件置位 `FW_READY`（F10） |
 | `boot_errors` | 启动失败：镜像校验失败、`FW_SIZE` 非法、启动窗口的非法写入，各自回到 STAGE 2 后可重新加载（F10） |
 | `boot_flr` | 启动期间和固件运行期间的 FLR：门控、回到 STAGE 2 或重新就绪（F11） |
+| `wdt_fatal` | 加载看门狗测试固件：第二级超时后 `DEV_FATAL`、`INT_STATUS.ERROR` 置位，心跳停止，FLR 不清除（`spec-mgmt-tile` F8） |
 
 **已知限制**：gem5 的 Simple CPU（timing、atomic）在访存收到错误响应时直接 panic，不会产生 data abort。因此测试无法验证"访问未解码地址会出错"这类行为，例如关闭 Memory Space 后再访问 BAR；这类检查只能验证配置寄存器本身。
 

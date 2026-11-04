@@ -90,6 +90,7 @@ Gw100MgmtTile::PioPort::getAddrRanges() const
     AddrRangeList r;
     r.push_back(RangeSize(MgmtSram::RomBase, tile.sram.romSize));
     r.push_back(RangeSize(MgmtSram::SramBase, tile.sram.sramSize));
+    r.push_back(RangeSize(MgmtWdt::Base, MgmtWdt::Size));
     r.push_back(RangeSize(MgmtLocalRegs::Base, MgmtLocalRegs::Size));
     r.push_back(RangeSize(MgmtMailbox::Base, MgmtMailbox::Size));
     r.push_back(RangeSize(MgmtCrc::Base, MgmtCrc::Size));
@@ -110,7 +111,16 @@ Gw100MgmtTile::Gw100MgmtTile(const Params &p)
           curTick()),
       pllPerfLevel(p.pll_perf_level),
       mgmtClk(dynamic_cast<SrcClockDomain *>(p.clk_domain)),
-      clkSwitchEvent([this] { mgmtClk->perfLevel(pllPerfLevel); }, name() + ".clkSwitch", false, Event::CPU_Switch_Pri),
+      clkSwitchEvent([this] {
+          mgmtClk->perfLevel(pllPerfLevel);
+          wdtUpdate();  // 时钟沿变了，重新安排到期事件
+      }, name() + ".clkSwitch", false, Event::CPU_Switch_Pri),
+      tsPeriod(p.timestamp_freq),
+      tsSync(p.ts_sync),
+      cpu(p.cpu),
+      wdtFatal(name() + ".wdt_fatal", 0, this),
+      fetchEvent([this] { deliverFetches(); }, name() + ".fetch"),
+      wdtEvent([this] { wdtExpire(); }, name() + ".wdt"),
       pio(name() + ".pio", *this),
       mlEvent([this] { mlFinish(); }, name() + ".mlFinish")
 {
@@ -122,16 +132,22 @@ Gw100MgmtTile::Gw100MgmtTile(const Params &p)
     };
     fatal_if(!link, "%s: 没有接管理链路", name());
     fatal_if(!plic, "%s: 没有接 PLIC", name());
+    fatal_if(cpu && cpu->numThreads != 1, "%s: 管理 CPU 只能有一个线程",
+             name());
     mailbox.onChange = [this] { updateIrqs(); };
     regs.onChange = [this] { updateIrqs(); };
 }
 
-/** 返回名为 if_name 的端口：pio */
+/** 返回名为 if_name 的端口：pio、wdt_fatal */
 Port &
 Gw100MgmtTile::getPort(const std::string &if_name, PortID idx)
 {
     if (if_name == "pio")
         return pio;
+    if (if_name == "wdt_fatal") {
+        fatal_if(idx > 0, "%s: wdt_fatal 只有一个", name());
+        return wdtFatal;
+    }
     return ClockedObject::getPort(if_name, idx);
 }
 
@@ -162,7 +178,7 @@ void
 Gw100MgmtTile::respond(PacketPtr pkt, Tick when)
 {
     pkt->makeResponse();
-    pio.schedTimingResp(pkt, when);
+    sendResp(pkt, when);
 }
 
 /** 把 pkt 标记为访问错误并在下一个时钟沿返回 */
@@ -171,7 +187,102 @@ Gw100MgmtTile::respondError(PacketPtr pkt)
 {
     pkt->makeResponse();
     pkt->setBadAddress();
-    pio.schedTimingResp(pkt, clockEdge(Cycles(1)));
+    sendResp(pkt, clockEdge(Cycles(1)));
+}
+
+/**
+ * 把已经 makeResponse() 的 pkt 安排在 when 时刻发出；取指的响应
+ * 先放进 fetchResps，到时由 deliverFetches() 交给端口
+ */
+void
+Gw100MgmtTile::sendResp(PacketPtr pkt, Tick when)
+{
+    if (!pkt->req->isInstFetch()) {
+        pio.schedTimingResp(pkt, when);
+        return;
+    }
+    // 停机时在途的取指照常结束但结果丢弃（spec-mgmt-tile §7.4），所以
+    // 取指的响应到交付时刻才决定是否交给 CPU
+    fetchResps.emplace(when, pkt);
+    Tick first = fetchResps.begin()->first;
+    if (!fetchEvent.scheduled())
+        schedule(fetchEvent, first);
+    else if (fetchEvent.when() > first)
+        reschedule(fetchEvent, first);
+}
+
+/** 把到时的取指响应交给端口；CPU 停住后扣下，不再交付 */
+void
+Gw100MgmtTile::deliverFetches()
+{
+    while (!fetchResps.empty() &&
+           fetchResps.begin()->first <= curTick()) {
+        PacketPtr pkt = fetchResps.begin()->second;
+        fetchResps.erase(fetchResps.begin());
+        if (halted)
+            heldFetches.push_back(pkt);
+        else
+            pio.schedTimingResp(pkt, curTick());
+    }
+    if (!fetchResps.empty())
+        schedule(fetchEvent, fetchResps.begin()->first);
+}
+
+/** 时刻 t 的时钟沿上，看门狗看到的同步后的 mtime 样本 */
+uint64_t
+Gw100MgmtTile::mtimeSample(Tick t) const
+{
+    Tick lag = cyclesToTicks(tsSync);
+    return t > lag ? (t - lag) / tsPeriod : 0;
+}
+
+/** 看门狗状态变化后：更新中断，进入第二级，重新安排到期事件 */
+void
+Gw100MgmtTile::wdtUpdate()
+{
+    updateIrqs();
+    if (wdt.stage2() && !halted)
+        haltCpu();
+    if (wdtEvent.scheduled())
+        deschedule(wdtEvent);
+    if (!wdt.counting())
+        return;
+    // 第一个满足 mtimeSample(e) ≥ T0 + L 的时钟沿 e
+    Tick lag = cyclesToTicks(tsSync);
+    uint64_t dl = wdt.deadline();
+    if (dl > (MaxTick - lag) / tsPeriod)
+        return;  // 远在仿真能到达的时刻之后
+    Tick target = dl * tsPeriod + lag;
+    Tick e = clockEdge();
+    if (target > e)
+        e = clockEdge(ticksToCycles(target - e));
+    schedule(wdtEvent, e);
+}
+
+/** 到期事件：在当前时钟沿判定一次自然到期 */
+void
+Gw100MgmtTile::wdtExpire()
+{
+    wdt.evaluate(mtimeSample(curTick()));
+    wdtUpdate();
+}
+
+/** 看门狗第二级超时：置位 wdt_fatal 信号，停住管理 CPU */
+void
+Gw100MgmtTile::haltCpu()
+{
+    halted = true;
+    inform("%s: 看门狗第二级超时，停住管理 CPU 并置位 DEV_FATAL", name());
+    // 专用信号与 CPU 停机互不依赖
+    if (wdtFatal.isConnected())
+        wdtFatal.raise();
+    // 正在等待中断（wfi）的 CPU 立即停住，不再被中断唤醒；其余情况下
+    // CPU 的下一次取指不再得到响应
+    if (cpu) {
+        ThreadContext *tc = cpu->getContext(0);
+        if (tc->status() == ThreadContext::Suspended)
+            tc->halt();
+    }
 }
 
 /**
@@ -203,6 +314,21 @@ Gw100MgmtTile::accessLocal(PacketPtr pkt, Tick now)
     }
     if (sz != 4 && sz != 8)
         return MaxTick;
+    if (a >= MgmtWdt::Base && a < MgmtWdt::Base + MgmtWdt::Size) {
+        Addr off = a - MgmtWdt::Base;
+        uint64_t v = 0;
+        if (wr) {
+            if (!wdt.write(off, sz, pkt->getUintX(ByteOrder::little),
+                           mtimeSample(now)))
+                return MaxTick;
+            wdtUpdate();
+        } else {
+            if (!wdt.read(off, sz, v))
+                return MaxTick;
+            pkt->setUintX(v, ByteOrder::little);
+        }
+        return one;
+    }
     if (a >= MgmtLocalRegs::Base && a < MgmtLocalRegs::Base +
         MgmtLocalRegs::Size) {
         uint64_t v = 0;
@@ -290,6 +416,10 @@ Gw100MgmtTile::accessHif(PacketPtr pkt)
 void
 Gw100MgmtTile::handleTiming(PacketPtr pkt)
 {
+    if (halted && pkt->req->isInstFetch()) {
+        heldFetches.push_back(pkt);  // CPU 已停住：不再取指
+        return;
+    }
     Addr a = pkt->getAddr();
     if (a >= HifBase && a < HifBase + HifSize) {
         accessHif(pkt);
@@ -390,6 +520,7 @@ Gw100MgmtTile::updateIrqs()
     lv[IrqCe] = regs.ceIrq();
     lv[IrqUe] = regs.ueIrq();
     lv[IrqAcl] = regs.aclIrq();
+    lv[IrqWdt] = wdt.stage1();
     for (unsigned s = 1; s < IrqCount; s++) {
         if (lv[s] == irqLevel[s])
             continue;

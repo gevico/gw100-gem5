@@ -1,0 +1,4 @@
+# MgmtWdt（src/gw100/mgmt/wdt/）的单元测试
+Import('*')
+
+GTest('mgmt_wdt.test', 'mgmt_wdt.test.cc', with_tag('gw100 mgmt wdt'))

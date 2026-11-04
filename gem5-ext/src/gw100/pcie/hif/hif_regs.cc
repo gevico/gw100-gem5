@@ -40,7 +40,7 @@ HifRegs::read(Addr off, uint32_t &v) const
       case BootBlk + 0x04: v = ctrl.fwSize(); return true;
       case BootBlk + 0x08: v = boot.fwVersion(); return true;
       case BootBlk + 0x0C:
-        v = (ctrl.debugWin ? 1u : 0) | (ctrl.devFatal ? 2u : 0);
+        v = (ctrl.debugWin ? 1u : 0) | (ctrl.devFatal() ? 2u : 0);
         return true;
       case BootBlk + 0x10: v = pciState ? pciState() : 0; return true;
       case BootBlk + 0x14: v = ctrl.bootLoadStatus(); return true;
@@ -66,7 +66,7 @@ HifRegs::write(Addr off, uint32_t v)
         // DEV_FATAL 只能置位
         ctrl.debugWin = v & 1;
         if (v & 2)
-            ctrl.devFatal = true;
+            ctrl.setDevFatal();
         return true;
       case BootBlk + 0x10:
       case BootBlk + 0x14:

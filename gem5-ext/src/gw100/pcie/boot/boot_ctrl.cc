@@ -277,8 +277,22 @@ BootCtrl::latchLinkFault()
     error = ErrLink;
     fwReady = false;
     fwStartPending = false;
-    devFatal = true;
+    setDevFatal();
     refreshWindow();
+}
+
+/**
+ * 置位 DEV_FATAL：硬件故障、固件经 DEV_CTRL_FW 请求，或看门狗第二级
+ * 超时的专用信号（spec-mgmt-tile §7.4）
+ */
+void
+BootCtrl::setDevFatal()
+{
+    if (fatal)
+        return;
+    DPRINTF(Gw100Boot, "置位 DEV_FATAL\n");
+    fatal = true;
+    status.setFatal(true);
 }
 
 /** FLR 处理失败：置位 FAIL 与 DEV_FATAL */
@@ -288,7 +302,7 @@ BootCtrl::flrFail()
     if (flrFailed)
         return;
     flrFailed = true;
-    devFatal = true;
+    setDevFatal();
     if (stage != 4)
         latchLinkFault();
     if (flrTimer.scheduled())
@@ -302,7 +316,7 @@ BootCtrl::mlChanged()
     if (!ml)
         return;
     if (ml->state() == MlLinkState::Failed) {
-        devFatal = true;
+        setDevFatal();
         if (stage != 4)
             latchLinkFault();
         if (flrProcessing())

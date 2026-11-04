@@ -1,0 +1,4 @@
+# wdt/：看门狗（spec-mgmt-tile §7.4）
+Import('*')
+
+Source('mgmt_wdt.cc', add_tags='gw100 mgmt wdt')

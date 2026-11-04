@@ -2,11 +2,18 @@
  * @file  fw.c
  * @brief 管理 Tile 固件：初始化后置位 FW_READY，处理 FLR
  *
- * 本阶段的最小固件：切换到工作时钟、检查 PLL_TS，写入固件版本，置
- * STAGE = 4 与 FW_READY（spec-mgmt-tile §8.5 中尚未建模的步骤留待后续
- * 阶段），然后在主循环中按 §9 处理 FLR。以 GW_FW_DEBUG_WIN 编译时，初始化和每次 FLR 之后
- * 开启 BAR2 调试窗口，供 host 的测试使用；正式固件只在 host 经
- * SET_FEATURE 请求时开启（spec-pcie §7.3）。
+ * 本阶段的最小固件：等待 PLL_TS 锁定、切换到工作时钟、使能并锁定
+ * 看门狗，写入固件版本，置 STAGE = 4 与 FW_READY（spec-mgmt-tile §8.5
+ * 中尚未建模的步骤留待后续阶段），然后在主循环中喂狗并按 §9 处理
+ * FLR。
+ *
+ * 以 GW_FW_WDT_TEST 编译时是看门狗的测试固件：初始化中自检第一级
+ * 超时、PLIC 源 7 和合法喂狗，置位 FW_READY 后不再喂狗，只每 10 us
+ * 把递增的计数写入 FW_VERSION_FW 作为心跳，等待第二级超时停住 CPU。
+ *
+ * 以 GW_FW_DEBUG_WIN 编译时，初始化和每次 FLR 之后开启 BAR2 调试窗口，
+ * 供 host 的测试使用；正式固件只在 host 经 SET_FEATURE 请求时开启
+ * （spec-pcie §7.3）。
  *
  * @see spec-mgmt-tile, spec-pcie
  */
@@ -37,10 +44,31 @@ init_fail(void)
     gw_halt();
 }
 
+/** 看门狗的超时周期：10 ms，以 mtime 计 */
+#define WDT_LOAD        1000000UL
+/** 看门狗测试固件的超时周期：2 ms */
+#define WDT_TEST_LOAD   200000UL
+/** 看门狗测试固件的心跳间隔：10 us */
+#define HEARTBEAT       1000UL
+
+/**
+ * 等待 PLL_TS 锁定（spec-mgmt-tile §8.5 第 1 步）：mtime 由它驱动，
+ * 超时只能以 mcycle 计；每次轮询先读 TS_LOCK
+ */
+static void
+ts_wait(void)
+{
+    uint64_t start = gw_mcycle();
+    while (!(gw_read32(GW_CRC_PLL_STATUS) & GW_PLL_TS_LOCK)) {
+        if (gw_mcycle() - start > GW_TS_LOCK_CYCLES)
+            init_fail();
+    }
+}
+
 /**
  * 切换到工作时钟（spec-clock-reset-power §3.4）：使能 PLL_CORE，在
  * clock.pll_lock_timeout 内等待锁定，把 clk_core、clk_mgmt 切换到 PLL
- * 并读回确认；再检查 PLL_TS 已锁定（§6）
+ * 并读回确认
  */
 static void
 clock_init(void)
@@ -54,9 +82,50 @@ clock_init(void)
     gw_write32(GW_CRC_CLK_SEL, 3u);
     if (gw_read32(GW_CRC_CLK_SEL) != 3u)
         init_fail();
-    if (!(gw_read32(GW_CRC_PLL_STATUS) & GW_PLL_TS_LOCK))
+}
+
+/** 先写非零的 WDT_LOAD，再在同一次写入中置 EN 和 LOCK（§7.4） */
+static void
+wdt_init(uint64_t load)
+{
+    gw_write64(GW_WDT_LOAD, load);
+    gw_write32(GW_WDT_CTRL, GW_WDT_EN | GW_WDT_LOCK);
+    if (gw_read32(GW_WDT_CTRL) != (GW_WDT_EN | GW_WDT_LOCK))
         init_fail();
 }
+
+/** 合法喂狗 */
+static void
+wdt_kick(void)
+{
+    gw_write32(GW_WDT_KICK, GW_WDT_KICK_MAGIC);
+}
+
+#ifdef GW_FW_WDT_TEST
+/**
+ * 看门狗自检：锁定后 WDT_LOAD 不可改；不喂狗时第一级超时置 STAGE1 并
+ * 挂起 PLIC 源 7；合法喂狗清除 STAGE1。失败按初始化失败处理
+ */
+static void
+wdt_selftest(void)
+{
+    gw_write64(GW_WDT_LOAD, 1);
+    if (gw_read64(GW_WDT_LOAD) != WDT_TEST_LOAD)
+        init_fail();
+    uint64_t start = mtime();
+    while (!(gw_read32(GW_WDT_STATUS) & GW_WDT_STAGE1)) {
+        if (mtime() - start > 2 * WDT_TEST_LOAD)
+            init_fail();
+    }
+    if (!(gw_read32(GW_PLIC_PENDING) & (1u << GW_IRQ_WDT)))
+        init_fail();
+    wdt_kick();
+    if (gw_read32(GW_WDT_STATUS) != 0)
+        init_fail();
+    if (gw_read32(GW_PLIC_PENDING) & (1u << GW_IRQ_WDT))
+        init_fail();
+}
+#endif
 
 /** 置位 FW_READY：固件可以接受命令 */
 static void
@@ -69,6 +138,7 @@ set_ready(void)
                GW_BOOT_STATUS(GW_STAGE_FW_RUN, 1, GW_ERR_NONE));
 }
 
+#ifndef GW_FW_WDT_TEST
 /** 处理 FLR（spec-mgmt-tile §9）：清理后确认，再重新置位 FW_READY */
 static void
 handle_flr(void)
@@ -84,6 +154,7 @@ handle_flr(void)
             return;
     }
 }
+#endif
 
 /** 固件的主流程；info 为启动 ROM 交来的启动信息 */
 void
@@ -92,11 +163,28 @@ fw_main(uint64_t hartid, const struct gw_boot_info *info)
     (void)hartid;
     (void)info;
     const struct gw_image_hdr *h = (const struct gw_image_hdr *)GW_SRAM_BASE;
+    ts_wait();
     clock_init();
+#ifdef GW_FW_WDT_TEST
+    wdt_init(WDT_TEST_LOAD);
+    wdt_selftest();
+    gw_write32(GW_FW_VERSION_FW, h->fw_version);
+    set_ready();
+    uint64_t next = mtime();
+    for (uint32_t n = 1;; n++) {
+        while (mtime() < next)
+            ;
+        next += HEARTBEAT;
+        gw_write32(GW_FW_VERSION_FW, n);
+    }
+#else
+    wdt_init(WDT_LOAD);
     gw_write32(GW_FW_VERSION_FW, h->fw_version);
     set_ready();
     for (;;) {
+        wdt_kick();
         if (gw_read32(GW_EVT_PENDING) & GW_EVT_FLR)
             handle_flr();
     }
+#endif
 }
