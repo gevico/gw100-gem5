@@ -32,6 +32,7 @@ wait_stage2(const gw100_t *g)
     while (GW100_BOOT_STAGE(bm_read32(g->bar0 + GW100_BOOT_STATUS)) != 2) {
         if (gw100_timestamp(g) - t0 > 100000000ull)
             TEST_FAIL("等待 STAGE = 2 超时");
+        bm_relax();
     }
 }
 
@@ -57,6 +58,7 @@ load(const gw100_t *g, const uint8_t *img, uint32_t size, uint32_t fw_size)
         if ((st & GW100_BOOT_FW_READY) || GW100_BOOT_STAGE(st) == 0xF ||
             (GW100_BOOT_STAGE(st) == 2 && GW100_BOOT_ERROR(st)))
             return st;
+        bm_relax();
     }
 }
 

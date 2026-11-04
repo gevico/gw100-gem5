@@ -48,7 +48,7 @@ test_main(void)
      * 设备完全复位清零，回到 STAGE 2 后再读 */
     TEST_INFO("等待回到 STAGE 2\n");
     while (GW100_BOOT_STAGE(bm_read32(r + GW100_BOOT_STATUS)) != 2)
-        ;
+        bm_relax();
     uint64_t dt = gw100_timestamp(&g) - t0;
     TEST_INFO("从 DEV_RESET 到 STAGE 2：%llu us\n",
               (unsigned long long)(dt / 100));

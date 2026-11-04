@@ -41,6 +41,7 @@ wait_status(const gw100_t *g, uint32_t mask, uint32_t want)
             return st;
         if (gw100_timestamp(g) - t0 > 100000000ull)
             TEST_FAIL("等待 BOOT_STATUS 超时，当前 0x%08x", st);
+        bm_relax();
     }
 }
 

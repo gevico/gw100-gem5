@@ -38,7 +38,7 @@ test_main(void)
     TEST_INFO("固件空闲 30 ms\n");
     uint64_t t1 = gw100_timestamp(&g);
     while (gw100_timestamp(&g) - t1 < 3000000ull)
-        ;
+        bm_relax();
     TEST_EQ(bm_read32(r + GW100_DEV_STATUS) & GW100_DEV_STATUS_FATAL, 0);
     TEST_ASSERT(bm_read32(r + GW100_BOOT_STATUS) & GW100_BOOT_FW_READY);
     return 0;
