@@ -128,6 +128,12 @@ class StatusUnit : public Serializable
     void setFatal(bool f);
 
     /**
+     * HDI 影子寄存器中 HDI_FATAL ≠ 0 或 HDI_CTX_ERR ≠ 0 的电平：
+     * INT_STATUS.ERROR 的硬件源之一（spec-pcie §8.4），由 HdiCtrl 保持
+     */
+    void setHdiErr(bool e);
+
+    /**
      * 把全部寄存器恢复为复位值；DEV_FATAL 的电平不变，仍成立时
      * INT_STATUS.ERROR 随即重新置位
      */
@@ -143,7 +149,10 @@ class StatusUnit : public Serializable
     /** 硬件错误条件成立而 ERROR 为 0 时置位 ERROR（一次事件） */
     void updateIntStatus();
 
-    /** 硬件对各位源条件的贡献：ERROR 由 ERR_STATUS、DEV_FATAL 决定 */
+    /**
+     * 硬件对各位源条件的贡献：ERROR 由 ERR_STATUS、DEV_FATAL 和 HDI 的
+     * 错误寄存器决定
+     */
     uint32_t hwSource() const;
 
     /** 通知 onIntEvent */
@@ -159,6 +168,8 @@ class StatusUnit : public Serializable
     uint32_t _intLevel = 0;
     /** DEV_STATUS.DEV_FATAL 的电平 */
     bool _fatal = false;
+    /** HDI_FATAL ≠ 0 或 HDI_CTX_ERR ≠ 0 的电平 */
+    bool _hdiErr = false;
     /** ERR_STATUS */
     uint32_t _errStatus = 0;
     /** ERR_ADDR：第一次错误的 BAR 偏移 */

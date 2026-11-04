@@ -108,6 +108,9 @@ PcieParts::PcieParts(const Gw100PciDeviceParams &p, const std::string &name,
 void
 PcieParts::resetRegisters()
 {
+    // 先复位 HDI，撤销 HDI_FATAL、HDI_CTX_ERR 对 ERROR 的贡献，否则
+    // INT_STATUS 复位后 ERROR 会随即重新置位
+    hdi.reset();
     status.reset();
     global.reset();
     windowRegs.reset();
@@ -115,7 +118,6 @@ PcieParts::resetRegisters()
     windows.reset();
     hdma.reset();
     intCtrl.reset();
-    hdi.reset();
 }
 
 /**
@@ -211,6 +213,7 @@ Gw100PcieFactory::build(const Gw100PciDeviceParams &p, ClockedObject &owner)
     pp->hif.bindInt(&pp->intCtrl);
     pp->hif.bindHdi(&pp->hdi, &pp->status);
     pp->hdi.onHdiWr = [pp] { pp->bootCtrl.hostEvent(1u << 2); };  // HDI_WR
+    pp->hdi.onErrLevel = [pp](bool e) { pp->status.setHdiErr(e); };
 
     parts->bars[0] = &parts->bar0;
     parts->bars[2] = &parts->bar2;

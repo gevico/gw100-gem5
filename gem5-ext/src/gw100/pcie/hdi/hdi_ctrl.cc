@@ -49,6 +49,15 @@ HdiCtrl::reset()
     busyFw = false;
     slotValid.fill(false);
     order.clear();
+    updateErrLevel();
+}
+
+/** 把 HDI_FATAL、HDI_CTX_ERR 的当前电平交给 onErrLevel */
+void
+HdiCtrl::updateErrLevel()
+{
+    if (onErrLevel)
+        onErrLevel(reg[Fatal / 4] != 0 || reg[CtxErr / 4] != 0);
 }
 
 /** host 视角：偏移 off 是否是已定义的寄存器（spec-hdi §4） */
@@ -149,7 +158,10 @@ HdiCtrl::trySendDoorbells()
     }
 }
 
-/** 固件经 HIF 区读偏移 off（0x000 – 0x0FF 与 HDI_WR_MAP）；其余返回 false */
+/**
+ * 固件经 HIF 区读偏移 off（0x000 – 0x0FF 与 HDI_WR_MAP）；其余返回
+ * false
+ */
 bool
 HdiCtrl::fwRead(Addr off, uint32_t &v) const
 {
@@ -186,6 +198,8 @@ HdiCtrl::fwWrite(Addr off, uint32_t v)
         v &= ~CstsBusy;
     }
     reg[off / 4] = v;
+    if (off == Fatal || off == CtxErr)
+        updateErrLevel();
     return true;
 }
 

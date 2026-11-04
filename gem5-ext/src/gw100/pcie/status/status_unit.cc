@@ -96,11 +96,14 @@ StatusUnit::setIntMask(uint32_t v)
     notify(0, 0);
 }
 
-/** 硬件对各位源条件的贡献：ERROR 由 ERR_STATUS、DEV_FATAL 决定 */
+/**
+ * 硬件对各位源条件的贡献：ERROR 由 ERR_STATUS、DEV_FATAL 和 HDI 的
+ * 错误寄存器决定
+ */
 uint32_t
 StatusUnit::hwSource() const
 {
-    return (_errStatus || _fatal) ? IntError : 0;
+    return (_errStatus || _fatal || _hdiErr) ? IntError : 0;
 }
 
 /** 硬件错误条件成立而 ERROR 为 0 时置位 ERROR（一次事件） */
@@ -133,6 +136,17 @@ StatusUnit::setFatal(bool f)
 }
 
 /**
+ * HDI 影子寄存器中 HDI_FATAL ≠ 0 或 HDI_CTX_ERR ≠ 0 的电平：
+ * INT_STATUS.ERROR 的硬件源之一（spec-pcie §8.4），由 HdiCtrl 保持
+ */
+void
+StatusUnit::setHdiErr(bool e)
+{
+    _hdiErr = e;
+    updateIntStatus();
+}
+
+/**
  * 把全部寄存器恢复为复位值；DEV_FATAL 的电平不变，仍成立时
  * INT_STATUS.ERROR 随即重新置位
  */
@@ -159,6 +173,7 @@ StatusUnit::serialize(CheckpointOut &cp) const
     SERIALIZE_SCALAR(_errAddr);
     SERIALIZE_SCALAR(_errInfo);
     SERIALIZE_SCALAR(_fatal);
+    SERIALIZE_SCALAR(_hdiErr);
     SERIALIZE_SCALAR(_intLevel);
 }
 
@@ -172,6 +187,7 @@ StatusUnit::unserialize(CheckpointIn &cp)
     UNSERIALIZE_SCALAR(_errAddr);
     UNSERIALIZE_SCALAR(_errInfo);
     UNSERIALIZE_SCALAR(_fatal);
+    UNSERIALIZE_SCALAR(_hdiErr);
     UNSERIALIZE_SCALAR(_intLevel);
 }
 
