@@ -44,6 +44,10 @@ Gw100PciDevice::Gw100PciDevice(const Params &p)
       devResetReqPin(name() + ".dev_reset_req", 0, this),
       funcResetPin(name() + ".func_reset")
 {
+    // TLP 携带的 Requester ID；gem5 的配置访问不带总线号，由参数给出
+    parts->hostDma.requesterId = (uint32_t(p.pci_bus) << 8) |
+                                 (uint32_t(devAddr().dev) << 3) |
+                                 devAddr().func;
     parts->hif.pciState = [this] { return pciState(); };
     parts->bootCtrl.onDevReset = [this] { devResetRequest(); };
     parts->bootCtrl.onFlrDone = [this] {

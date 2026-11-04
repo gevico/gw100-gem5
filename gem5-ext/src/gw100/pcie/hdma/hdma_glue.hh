@@ -19,6 +19,7 @@
 #include <deque>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -69,6 +70,13 @@ class HostDmaPort : public RequestPort, public HdmaHostIf
 
     /** 总线地址到 host 物理地址的转换；不设置时不转换 */
     std::function<Addr(Addr)> toPhys;
+
+    /**
+     * PCIe 的 Requester ID（[15:8] 总线号、[7:3] 设备号、[2:0] 功能号）：
+     * 作为每个请求的 stream ID 发出，host 的 ITS 据此得到 DeviceID；
+     * 不设置时请求不携带 stream ID
+     */
+    std::optional<uint32_t> requesterId;
 
     /** 在途写请求减少、可以再写时调用 */
     std::function<void()> onTxFree;
