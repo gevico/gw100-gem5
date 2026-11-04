@@ -20,8 +20,8 @@ LDFLAGS := $(ARCH) -nostdlib -nostartfiles -mno-relax -Wl,--gc-sections
 
 ROM_SRCS := rom/crt0.S rom/rom.c common/sha256.c common/string.c \
 	common/gw100_flr.c
-FW_SRCS := fw/crt0.S fw/fw.c common/string.c common/gw100_flr.c \
-	common/gw100_hdma.c
+FW_SRCS := fw/crt0.S fw/fw.c fw/trap.S fw/irq.c common/string.c \
+	common/gw100_flr.c common/gw100_hdma.c
 
 .PHONY: all clean
 all: $(BUILD_DIR)/rom.elf $(BUILD_DIR)/fw.img $(BUILD_DIR)/fw_wdt.img \
