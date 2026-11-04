@@ -30,7 +30,7 @@ baremetal/
 
 - 程序在 EL3 启动，单核运行，**MMU 和 cache 都关闭**。内存按 Device 类型访问，所有访问必须自然对齐，因此编译时加了 `-mstrict-align`，也不使用浮点和 SIMD（`-mgeneral-regs-only`）。
 - 控制台输出走 semihosting，进入 gem5 进程的 stdout，测试运行器把它存进日志。不使用 UART。
-- 设备上电后由管理 Tile 的启动 ROM 推进 STAGE，固件要由 host 加载（`spec-pcie` §6.4）。需要固件在运行的 test（例如访问 BAR2 调试窗口）先调用 `gw100_boot()`：它把嵌入的固件镜像（`firmware/` 生成的 `fw.img`，见 `lib/fw_image.S`）经启动窗口写入设备并等待 `FW_READY`。一次加载约需 170 ms 仿真时间（`fw.img` 约 10 KB），主要花在 25 MHz 下的镜像校验（SHA-256）和 SRAM、运行区的清零上；`make test` 的 tick 上限为 500 ms。
+- 设备上电后由管理 Tile 的启动 ROM 推进 STAGE，固件要由 host 加载（`spec-pcie` §6.4）。需要固件在运行的 test（例如访问 BAR2 调试窗口）先调用 `gw100_boot()`：它把嵌入的固件镜像（`firmware/` 生成的 `fw.img`，见 `lib/fw_image.S`）经启动窗口写入设备并等待 `FW_READY`。一次加载约需 170 ms 仿真时间（`fw.img` 约 10 KB），主要花在 25 MHz 下的镜像校验（SHA-256）和 SRAM、运行区的清零上，校验时间随固件大小增长（约 14 ms/KB）；`make test` 的 tick 上限为 3 s。
 
 ## test 的约定
 
@@ -86,7 +86,7 @@ make run TEST=pcie_regs                    # 只运行一个 test，输出直接
 
 - 每次运行的输出在 `gem5/m5out/tests/<host>/<test>/`，其中 `test.log` 是完整日志。
 - 失败时，运行器打印日志路径和测试程序的输出。
-- 其他变量：`TEST_JOBS`（并行数）、`TEST_TIMEOUT`（墙钟超时，秒，默认 900；长时间的轮询不调用 `bm_relax()` 时，atomic host 的墙钟时间会大幅增加）、`TEST_MAX_TICKS`（仿真 tick 上限，默认 5×10¹¹，即仿真 500 ms）、`BOARD`、`DEVICE`。见 `make help`。
+- 其他变量：`TEST_JOBS`（并行数）、`TEST_TIMEOUT`（墙钟超时，秒，默认 900；长时间的轮询不调用 `bm_relax()` 时，atomic host 的墙钟时间会大幅增加）、`TEST_MAX_TICKS`（仿真 tick 上限，默认 3×10¹²，即仿真 3 s）、`BOARD`、`DEVICE`。见 `make help`。
 
 只编译不运行：
 
