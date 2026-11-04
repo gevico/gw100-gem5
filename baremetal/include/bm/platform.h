@@ -23,6 +23,13 @@
 #define BM_DMA_BUF_BASE         0x90000000UL
 
 /*
+ * GIC 与 ITS 的内存表（LPI 配置表与 pending 表、ITS 的设备表、集合表、
+ * 命令队列和 ITT）：DMA 缓冲之后的 1 MiB，由 bm_its_init 按需清零
+ */
+#define BM_GIC_MEM_BASE         0x91000000UL
+#define BM_GIC_MEM_SIZE         0x00100000UL
+
+/*
  * PCIe 配置空间（ECAM）：bus/dev/fn 编码为
  * (bus << 20) | (dev << 15) | (fn << 12)
  */
