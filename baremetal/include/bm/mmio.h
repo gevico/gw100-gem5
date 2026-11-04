@@ -18,6 +18,13 @@ static inline void bm_dsb(void) { __asm__ volatile("dsb sy" ::: "memory"); }
 /** 数据内存屏障：保证屏障前后访存的先后顺序 */
 static inline void bm_dmb(void) { __asm__ volatile("dmb sy" ::: "memory"); }
 
+/**
+ * 轮询之间让出：wfe 等到下一个事件（start.S 打开的事件流约每 10 us 发
+ * 一次），CPU 不再空转。atomic 模式的 CPU 不计访存延迟，空转的轮询会
+ * 执行大量指令、拖慢仿真；等待时间长的轮询应调用它
+ */
+static inline void bm_relax(void) { __asm__ volatile("wfe" ::: "memory"); }
+
 /** 读 addr 处的 8 位寄存器，读后加屏障 */
 static inline uint8_t
 bm_read8(uintptr_t addr)

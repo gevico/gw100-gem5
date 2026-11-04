@@ -15,11 +15,11 @@ baremetal/
 
 | 公共库 | 内容 |
 |---|---|
-| `start.S`、`vectors.S`、`exception.c` | 启动：设栈、设异常向量、清零 .bss、调用 `test_main`；任何异常都打印 ESR/ELR/FAR 后以 CRASH 退出 |
+| `start.S`、`vectors.S`、`exception.c` | 启动：设栈、设异常向量、清零 .bss、打开通用定时器的事件流（约每 10 us 一个事件）、调用 `test_main`；任何异常都打印 ESR/ELR/FAR 后以 CRASH 退出 |
 | `semihost.h` | 经 Arm semihosting 输出字符串、结束仿真 |
 | `console.h` | `bm_printf`、`bm_snprintf`（printf 子集，见头文件注释） |
 | `test.h` | 入口约定、断言宏 `TEST_ASSERT`、`TEST_EQ`、`TEST_NE`、`TEST_FAIL`、日志宏 `TEST_INFO`、退出码 |
-| `mmio.h` | `bm_read8/16/32/64`、`bm_write8/16/32/64`，自带屏障 |
+| `mmio.h` | `bm_read8/16/32/64`、`bm_write8/16/32/64`，自带屏障；`bm_relax()` 在轮询之间执行 `wfe`，等到下一个事件 |
 | `pci.h` | ECAM 配置读写、按 ID 查找设备、BAR 探测与分配、使能 Command 位、遍历 capability 链 |
 | `gw100.h` | GW100 的寄存器偏移与位定义（照抄 spec-pcie）；`gw100_open()` 找到设备、分配 BAR0/BAR2 并使能内存解码，`gw100_win_set()` 配置 BAR2 窗口 |
 | `platform.h` | 平台地址常量（VExpress_GEM5_Foundation）；换平台只改这里 |
@@ -38,6 +38,7 @@ baremetal/
 3. **互相独立**：每次运行都是一个新的 gem5 进程，test 之间不共享任何状态，也不能依赖运行顺序。
 4. **出错就退出**：断言宏失败时立即打印 `文件:行` 和实际值并退出，不继续执行。
 5. **只用公共库**：设备访问统一走 `mmio.h`、`pci.h`；平台地址只从 `platform.h` 取。公共库缺什么就补进 `lib/`，不在 test 里重复实现。
+6. **长时间的等待让出 CPU**：等待以毫秒计的轮询（固件加载、复位、看门狗、空闲等待）在两次检查之间调用 `bm_relax()`。atomic host 的 CPU 不计访存延迟，空转的轮询在每个仿真微秒里执行大量指令，墙钟时间会增加几十倍；对延迟敏感的短等待（例如测量中断合并的时间）不用它。
 
 **退出码**（semihosting 的退出子码，也是 gem5 的进程退出码）：
 
@@ -82,7 +83,7 @@ make run TEST=pcie_regs                    # 只运行一个 test，输出直接
 
 - 每次运行的输出在 `gem5/m5out/tests/<host>/<test>/`，其中 `test.log` 是完整日志。
 - 失败时，运行器打印日志路径和测试程序的输出。
-- 其他变量：`TEST_JOBS`（并行数）、`TEST_TIMEOUT`（墙钟超时，秒，默认 900：atomic host 下墙钟时间与仿真时间成正比，加载两次固件的测试要几分钟）、`TEST_MAX_TICKS`（仿真 tick 上限，默认 5×10¹¹，即仿真 500 ms）、`BOARD`、`DEVICE`。见 `make help`。
+- 其他变量：`TEST_JOBS`（并行数）、`TEST_TIMEOUT`（墙钟超时，秒，默认 900；长时间的轮询不调用 `bm_relax()` 时，atomic host 的墙钟时间会大幅增加）、`TEST_MAX_TICKS`（仿真 tick 上限，默认 5×10¹¹，即仿真 500 ms）、`BOARD`、`DEVICE`。见 `make help`。
 
 只编译不运行：
 

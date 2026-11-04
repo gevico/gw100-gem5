@@ -37,7 +37,7 @@ wait_ts(const gw100_t *g, uint64_t n)
 {
     uint64_t t0 = gw100_timestamp(g);
     while (gw100_timestamp(g) - t0 < n)
-        ;
+        bm_relax();
 }
 
 /** 测试入口：每个 test 实现它，返回 0 表示通过，非 0 表示失败 */
@@ -60,6 +60,7 @@ test_main(void)
     while (!(bm_read32(r + GW100_DEV_STATUS) & GW100_DEV_STATUS_FATAL)) {
         if (gw100_timestamp(&g) - ready > FATAL_WAIT)
             TEST_FAIL("FW_READY 之后 20 ms 内没有置位 DEV_FATAL");
+        bm_relax();
     }
     TEST_INFO("DEV_FATAL 在 FW_READY 之后 %llu us 置位\n",
               (unsigned long long)((gw100_timestamp(&g) - ready) / 100));
@@ -86,7 +87,7 @@ test_main(void)
     bm_write32(r + GW100_BOOT_CTRL, BOOT_CTRL_DEV_RESET);
     /* STAGE 变为 2 之前只读 BOOT_STATUS（见 dev_reset.c） */
     while (GW100_BOOT_STAGE(bm_read32(r + GW100_BOOT_STATUS)) != 2)
-        ;
+        bm_relax();
     TEST_ASSERT(gw100_timestamp(&g) - t0 <= 100 * MS);
     TEST_EQ(bm_read32(r + GW100_DEV_STATUS) & GW100_DEV_STATUS_FATAL, 0);
     TEST_EQ(bm_read32(r + GW100_INT_STATUS), 0);
