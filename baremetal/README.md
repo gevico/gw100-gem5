@@ -64,6 +64,8 @@ baremetal/
 | `boot_flr` | 启动期间和固件运行期间的 FLR：门控、回到 STAGE 2 或重新就绪（F11） |
 | `wdt_fatal` | 加载看门狗测试固件：第二级超时后 `DEV_FATAL`、`INT_STATUS.ERROR` 置位，心跳停止，FLR 不清除；设备完全复位后恢复（`spec-mgmt-tile` F8） |
 | `hdma_basic` | 加载 HDMA 测试固件：H2D、D2H（连续缓冲与 SGL）数据正确，DEV_ADDR 错误停止后 RESUME，BAR0 镜像的计数与 `CH_ERR`（`spec-host-dma` F1、F4、F7、F9）。固件按约定的 host 地址 `BM_DMA_BUF_BASE` 访问 host 内存 |
+| `msix_intx` | 不加载固件：MSI-X capability、INT_SET 与错误产生的消息、表项 Mask 与 PBA（含屏蔽期间事件被处理）、Function Mask、BME、INTx 与 Interrupt Disable（`spec-pcie` §8、F8） |
+| `int_fw` | 加载中断请求的测试固件：CTX_VECTOR 映射、INT_REQ 的消息、INT_LEVEL 使清零的位重新置位（`spec-pcie` §6.5、§8.4） |
 | `dev_reset` | 设备完全复位：BAR 保留、寄存器恢复复位值，100 ms 内回到 STAGE 2，可以重新加载固件（`spec-pcie` §13.1，`spec-clock-reset-power` T3） |
 
 **已知限制**：gem5 的 Simple CPU（timing、atomic）在访存收到错误响应时直接 panic，不会产生 data abort。因此测试无法验证"访问未解码地址会出错"这类行为，例如关闭 Memory Space 后再访问 BAR；这类检查只能验证配置寄存器本身。

@@ -12,6 +12,7 @@
 #define __GW100_PCIE_STATUS_STATUS_UNIT_HH__
 
 #include <cstdint>
+#include <functional>
 #include <string>
 
 #include "base/types.hh"
@@ -95,14 +96,30 @@ class StatusUnit : public Serializable
     /** 写 1 清零 INT_STATUS 中 bits 指定的位；错误仍在时 ERROR 重新置位 */
     void clearInt(uint32_t bits);
 
-    /** 置位 INT_STATUS 中 bits 指定的位（INT_SET） */
-    void setInt(uint32_t bits) { _intStatus |= bits; }
+    /** host 写 INT_SET：置位 bits，每个 1 位算一次中断事件（§8.4） */
+    void setInt(uint32_t bits);
+
+    /** 固件写 INT_REQ：置位 bits，每个 1 位算一次中断事件（§6.5） */
+    void request(uint32_t bits);
+
+    /** INT_LEVEL：固件对各位源条件的贡献 */
+    uint32_t intLevel() const { return _intLevel; }
+
+    /** 固件写 INT_LEVEL；写入本身不置位 INT_STATUS */
+    void setLevel(uint32_t v) { _intLevel = v; }
 
     /** INT_MASK 的当前值 */
     uint32_t intMask() const { return _intMask; }
 
     /** 写 INT_MASK */
-    void setIntMask(uint32_t v) { _intMask = v; }
+    void setIntMask(uint32_t v);
+
+    /**
+     * INT_STATUS 或 INT_MASK 变化时调用：events 是这次的中断事件（硬件
+     * 0→1 置位、清零后同周期重新置位、INT_SET 与 INT_REQ 的 1 位），
+     * cleared 是这次实际由 1 变 0 的位（spec-pcie §8.4）
+     */
+    std::function<void(uint32_t events, uint32_t cleared)> onIntEvent;
 
     /**
      * DEV_STATUS.DEV_FATAL 的电平：INT_STATUS.ERROR 的硬件源之一
@@ -123,8 +140,14 @@ class StatusUnit : public Serializable
     void unserialize(CheckpointIn &cp) override;
 
   private:
-    /** 错误条件仍然成立时置 INT_STATUS.ERROR */
+    /** 硬件错误条件成立而 ERROR 为 0 时置位 ERROR（一次事件） */
     void updateIntStatus();
+
+    /** 硬件对各位源条件的贡献：ERROR 由 ERR_STATUS、DEV_FATAL 决定 */
+    uint32_t hwSource() const;
+
+    /** 通知 onIntEvent */
+    void notify(uint32_t events, uint32_t cleared);
 
     /** 调试输出使用的名字 */
     std::string _name;
@@ -132,6 +155,8 @@ class StatusUnit : public Serializable
     uint32_t _intStatus = 0;
     /** INT_MASK */
     uint32_t _intMask = 0xFFFFFFFF;
+    /** INT_LEVEL */
+    uint32_t _intLevel = 0;
     /** DEV_STATUS.DEV_FATAL 的电平 */
     bool _fatal = false;
     /** ERR_STATUS */

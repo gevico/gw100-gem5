@@ -10,7 +10,9 @@
  *
  * 以 GW_FW_HDMA_TEST 编译时是 HDMA 的测试固件：初始化之后运行
  * hdma_test.c 中的传输，把结果写入 FW_VERSION_FW（0xD0A0_0000 | 步骤号，
- * 0 为通过），再置位 FW_READY。
+ * 0 为通过），再置位 FW_READY。以 GW_FW_INT_TEST 编译时是中断请求的
+ * 测试固件：运行 int_test.c，结果写入 FW_VERSION_FW（0x1A70_0000 | 步骤
+ * 号）。
  *
  * 以 GW_FW_WDT_TEST 编译时是看门狗的测试固件：初始化中自检第一级
  * 超时、PLIC 源 7 和合法喂狗，置位 FW_READY 后不再喂狗，只每 10 us
@@ -65,6 +67,9 @@ static struct gw_hdma_chan chans[2];
 
 #ifdef GW_FW_HDMA_TEST
 int hdma_selftest(struct gw_hdma_chan *c);
+#endif
+#ifdef GW_FW_INT_TEST
+int int_selftest(void);
 #endif
 #endif
 
@@ -232,10 +237,13 @@ fw_main(uint64_t hartid, const struct gw_boot_info *info)
     wdt_init(WDT_LOAD);
     acl_init();
     hdma_init();
-#ifdef GW_FW_HDMA_TEST
+#if defined(GW_FW_HDMA_TEST)
     (void)h;
     gw_write32(GW_FW_VERSION_FW,
                0xD0A00000u | (uint32_t)hdma_selftest(&chans[1]));
+#elif defined(GW_FW_INT_TEST)
+    (void)h;
+    gw_write32(GW_FW_VERSION_FW, 0x1A700000u | (uint32_t)int_selftest());
 #else
     gw_write32(GW_FW_VERSION_FW, h->fw_version);
 #endif

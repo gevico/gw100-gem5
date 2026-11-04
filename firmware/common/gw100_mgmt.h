@@ -112,6 +112,18 @@
 #define GW_BOOT_LOAD_STATUS (GW_HIF_BASE + 0x10014)
 /** FLR_CTRL：[0] TAKE，[1] DONE（W1S） */
 #define GW_FLR_CTRL         (GW_HIF_BASE + 0x12010)
+/** INT_REQ（W1S）：请求 host 中断（spec-pcie §6.5） */
+#define GW_INT_REQ          (GW_HIF_BASE + 0x12000)
+/** INT_LEVEL：固件对中断源条件的贡献 */
+#define GW_INT_LEVEL        (GW_HIF_BASE + 0x12004)
+/** CTX_VECTOR[n]：上下文 n 的 MSI-X 向量 */
+#define GW_CTX_VECTOR(n)    (GW_HIF_BASE + 0x12100 + 4 * (n))
+/** INT_STATUS 的位：ADMIN、FW_EVENT、CTX[n] */
+#define GW_INT_ADMIN        (1u << 0)
+/** INT_STATUS 的位：FW_EVENT */
+#define GW_INT_FW_EVENT     (1u << 2)
+/** INT_STATUS 的位：CTX[n] */
+#define GW_INT_CTX(n)       (1u << (16 + (n)))
 /** FLR_STATUS：[0] IN_PROGRESS，[1] DELIVERED，[2] FAIL */
 #define GW_FLR_STATUS       (GW_HIF_BASE + 0x12014)
 

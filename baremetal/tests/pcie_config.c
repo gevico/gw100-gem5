@@ -117,10 +117,15 @@ check_pcie(bm_pci_bdf_t d)
 
     TEST_EQ(bm_pci_cfg_read32(d, x + 0x2C) & 0xFE, 0x1E);  /* 2.5–16 GT/s */
 
-    /* 链表到此结束；本阶段没有 MSI、MSI-X */
-    TEST_EQ(bm_pci_cfg_read8(d, x + 1), 0);
+    /* 下一个是 MSI-X，链表到它结束；不支持 MSI（spec-pcie §4.2） */
+    unsigned m = bm_pci_cfg_read8(d, x + 1);
+    TEST_EQ(m, bm_pci_find_cap(d, BM_PCI_CAP_ID_MSIX));
+    TEST_ASSERT(m != 0);
+    TEST_EQ(bm_pci_cfg_read8(d, m + 1), 0);
     TEST_EQ(bm_pci_find_cap(d, BM_PCI_CAP_ID_MSI), 0);
-    TEST_EQ(bm_pci_find_cap(d, BM_PCI_CAP_ID_MSIX), 0);
+    uint16_t mc = bm_pci_cfg_read16(d, m + 2);
+    TEST_EQ(mc & 0x7FF, 31);                    /* 32 个表项 */
+    TEST_EQ(mc & 0xC000, 0);                    /* 复位时未使能 */
 
     /* 扩展配置空间：没有扩展 capability */
     TEST_EQ(bm_pci_cfg_read32(d, 0x100), 0);
