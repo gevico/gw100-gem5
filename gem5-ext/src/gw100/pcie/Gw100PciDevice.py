@@ -47,6 +47,9 @@ class Gw100PciDevice(PciEndpoint):
     BAR2 = Gw100PrefetchMemBar(size="64MiB")
     BAR3 = PciMemUpperBar()
 
+    # 真实的 endpoint 从配置写请求中捕获自己的总线号；gem5 的配置访问
+    # 不携带总线号，由板卡按挂载位置给出（VExpress 的设备都在根总线 0）
+    pci_bus = Param.UInt8(0, "设备所在的 PCI 总线号，用于 Requester ID")
     version = Param.UInt32(0x00000100, "DEV_VERSION：[23:16] 主、[15:8] 次、[7:0] 步进")
     hdi_max_contexts = Param.UInt8(16, "DEV_CAPS 中报告的上下文个数")
     hdma_channels = Param.UInt8(8, "DEV_CAPS 中报告的 DMA 通道个数")

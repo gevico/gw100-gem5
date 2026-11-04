@@ -17,7 +17,9 @@ bare-metal 时 host 的 MMU 关闭，CPU 以非 cache 方式访问内存；gem5 
 cache 访问不会探查 IO cache，设备 DMA 写入、仍留在 IO cache 中的数据
 对 CPU 不可见。因此 bare-metal 时不建 IO cache，I/O 总线经一个只转发
 内存地址范围的 bridge 接一致性内存总线（与 gem5 无 cache 时的 DMA
-bridge 相同，延迟 50 ns），DMA 写入直接进入内存系统。
+bridge 相同，延迟 50 ns），DMA 写入直接进入内存系统。这个 bridge 还转发 ITS
+的翻译页（GITS_TRANSLATER 所在的 64 KiB），PCI 设备的 MSI/MSI-X 写才能
+到达挂在内存总线上的 ITS；ITS 的控制页不对设备开放。
 Linux 模式保留 IO cache，此时 CPU 的 cache 访问会探查它。
 
 @see spec-arch, spec-pcie
@@ -26,6 +28,7 @@ Linux 模式保留 IO cache，此时 CPU 的 cache 访问会探查它。
 from pathlib import Path
 
 from m5.objects import (
+    AddrRange,
     ArmDefaultRelease,
     ArmSemihosting,
     Bridge,
@@ -50,8 +53,12 @@ class _BaremetalCacheHierarchy(PrivateL1PrivateL2CacheHierarchy):
     """bare-metal 用的 cache 层次：不建 IO cache（见文件头）。"""
 
     def _setup_io_cache(self, board: AbstractBoard) -> None:
-        """I/O 总线经 DMA bridge 接一致性内存总线。"""
-        self.dmabridge = Bridge(delay="50ns", ranges=board.mem_ranges)
+        """I/O 总线经 DMA bridge 接一致性内存总线（内存与 ITS 翻译页）。"""
+        its = board.realview.gic.its
+        translate = AddrRange(its.pio_addr + 0x10000, size=0x10000)
+        self.dmabridge = Bridge(
+            delay="50ns", ranges=list(board.mem_ranges) + [translate]
+        )
         self.dmabridge.cpu_side_port = board.get_mem_side_coherent_io_port()
         self.dmabridge.mem_side_port = self.membus.cpu_side_ports
 

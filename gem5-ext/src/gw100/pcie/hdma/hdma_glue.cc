@@ -57,6 +57,8 @@ HostDmaPort::split(const std::shared_ptr<Op> &op, MemCmd cmd, Addr addr,
         unsigned n = std::min<unsigned>(len - off,
                                         line - (pa + off) % line);
         auto req = std::make_shared<Request>(pa + off, n, 0, requestorId);
+        if (requesterId)
+            req->setStreamId(*requesterId);
         PacketPtr pkt = new Packet(req, cmd);
         pkt->allocate();
         if (data)
