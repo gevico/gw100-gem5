@@ -59,3 +59,16 @@ TEST(StatusUnitTest, IntRegistersAndReset)
     EXPECT_EQ(s.intMask(), 0xFFFFFFFFu);
     EXPECT_EQ(s.errStatus(), 0u);
 }
+
+/** DEV_FATAL 是 INT_STATUS.ERROR 的硬件源；功能级复位后仍然成立 */
+TEST(StatusUnitTest, FatalIsErrorSource)
+{
+    StatusUnit s("test");
+    s.setFatal(true);
+    EXPECT_TRUE(s.intStatus() & StatusUnit::IntError);
+    EXPECT_EQ(s.errStatus(), 0u);
+    s.clearInt(StatusUnit::IntError);
+    EXPECT_TRUE(s.intStatus() & StatusUnit::IntError);
+    s.reset();
+    EXPECT_TRUE(s.intStatus() & StatusUnit::IntError);
+}

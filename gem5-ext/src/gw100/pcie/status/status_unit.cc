@@ -57,11 +57,25 @@ void
 StatusUnit::updateIntStatus()
 {
     // 错误条件仍然成立时，ERROR 位清零后立即重新置位（spec-pcie §8.4）
-    if (_errStatus)
+    if (_errStatus || _fatal)
         _intStatus |= IntError;
 }
 
-/** 把全部状态恢复为复位值 */
+/**
+ * DEV_STATUS.DEV_FATAL 的电平：INT_STATUS.ERROR 的硬件源之一
+ * （spec-pcie §8.4）。它由 BootCtrl 保持，不属于本类的寄存器
+ */
+void
+StatusUnit::setFatal(bool f)
+{
+    _fatal = f;
+    updateIntStatus();
+}
+
+/**
+ * 把全部寄存器恢复为复位值；DEV_FATAL 的电平不变，仍成立时
+ * INT_STATUS.ERROR 随即重新置位
+ */
 void
 StatusUnit::reset()
 {
@@ -70,6 +84,7 @@ StatusUnit::reset()
     _errStatus = 0;
     _errAddr = 0;
     _errInfo = 0;
+    updateIntStatus();
 }
 
 /** 保存全部状态 */
@@ -81,6 +96,7 @@ StatusUnit::serialize(CheckpointOut &cp) const
     SERIALIZE_SCALAR(_errStatus);
     SERIALIZE_SCALAR(_errAddr);
     SERIALIZE_SCALAR(_errInfo);
+    SERIALIZE_SCALAR(_fatal);
 }
 
 /** 恢复 serialize() 保存的状态 */
@@ -92,6 +108,7 @@ StatusUnit::unserialize(CheckpointIn &cp)
     UNSERIALIZE_SCALAR(_errStatus);
     UNSERIALIZE_SCALAR(_errAddr);
     UNSERIALIZE_SCALAR(_errInfo);
+    UNSERIALIZE_SCALAR(_fatal);
 }
 
 } // namespace gw100

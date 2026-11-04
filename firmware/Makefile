@@ -23,7 +23,7 @@ ROM_SRCS := rom/crt0.S rom/rom.c common/sha256.c common/string.c \
 FW_SRCS := fw/crt0.S fw/fw.c common/string.c common/gw100_flr.c
 
 .PHONY: all clean
-all: $(BUILD_DIR)/rom.elf $(BUILD_DIR)/fw.img
+all: $(BUILD_DIR)/rom.elf $(BUILD_DIR)/fw.img $(BUILD_DIR)/fw_wdt.img
 
 $(BUILD_DIR)/rom.elf: $(ROM_SRCS) rom/rom.ld $(wildcard common/*.h)
 	@mkdir -p $(@D)
@@ -37,7 +37,14 @@ $(BUILD_DIR)/fw.elf: $(FW_SRCS) fw/fw.ld $(wildcard common/*.h)
 		-T fw/fw.ld $(FW_SRCS) -o $@
 	$(OBJDUMP) -d $@ > $(@:.elf=.dis)
 
-$(BUILD_DIR)/fw.img: $(BUILD_DIR)/fw.elf ../tools/fwpack.py
+# 看门狗的测试固件：置位 FW_READY 后不再喂狗（见 fw/fw.c）
+$(BUILD_DIR)/fw_wdt.elf: $(FW_SRCS) fw/fw.ld $(wildcard common/*.h)
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) -DGW_FW_WDT_TEST $(LDFLAGS) -Wl,--no-warn-rwx-segments \
+		-T fw/fw.ld $(FW_SRCS) -o $@
+	$(OBJDUMP) -d $@ > $(@:.elf=.dis)
+
+$(BUILD_DIR)/%.img: $(BUILD_DIR)/%.elf ../tools/fwpack.py
 	$(OBJCOPY) -O binary $< $(@:.img=.bin)
 	$(PYTHON) ../tools/fwpack.py --elf $< --bin $(@:.img=.bin) --out $@ \
 		--version $(FW_VERSION)

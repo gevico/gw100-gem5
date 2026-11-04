@@ -96,7 +96,13 @@ class BootCtrl
     bool debugWin = false;
 
     /** DEV_STATUS.DEV_FATAL：只能由完全复位、热复位、冷复位清除 */
-    bool devFatal = false;
+    bool devFatal() const { return fatal; }
+
+    /**
+     * 置位 DEV_FATAL：硬件故障、固件经 DEV_CTRL_FW 请求，或看门狗第二级
+     * 超时的专用信号（spec-mgmt-tile §7.4）
+     */
+    void setDevFatal();
 
     /** 调试输出用的名字（DPRINTF 需要） */
     const std::string &name() const { return _name; }
@@ -128,6 +134,8 @@ class BootCtrl
 
     /** BAR2 错误的记录 */
     StatusUnit &status;
+    /** DEV_STATUS.DEV_FATAL */
+    bool fatal = false;
     /** 装载区大小 */
     const uint32_t fwLoadMax;
     /** pcie.flr_proc_timeout */

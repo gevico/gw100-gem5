@@ -5,7 +5,9 @@
  * 本类负责与 gem5 的对接：pio 端口的时序、功能访问（加载 ROM 镜像），
  * 以及 PLIC 中断源的电平。各项行为由组件实现：
  * - ROM 与 SRAM：MgmtSram；
- * - 看门狗、ML、SRAM 控制、访问控制寄存器：MgmtLocalRegs；
+ * - 看门狗的状态机：MgmtWdt；本类按 mtime 安排到期事件，第二级超时时
+ *   停住管理 CPU 并置位 wdt_fatal 信号；
+ * - ML、SRAM 控制、访问控制寄存器：MgmtLocalRegs；
  * - doorbell 信箱与事件寄存器：MgmtMailbox；
  * - 时钟复位控制器的寄存器：MgmtCrc；
  * - 管理 CPU 对 HIF 寄存器区的访问：经 ML 的 REG_RD、REG_WR。
@@ -17,7 +19,11 @@
 #define __GW100_MGMT_MGMT_TILE_HH__
 
 #include <array>
+#include <map>
+#include <vector>
 
+#include "cpu/base.hh"
+#include "dev/intpin.hh"
 #include "dev/riscv/plic.hh"
 #include "mem/qport.hh"
 #include "params/Gw100MgmtTile.hh"
@@ -27,6 +33,7 @@
 #include "src/gw100/mgmt/mailbox/mgmt_mailbox.hh"
 #include "src/gw100/mgmt/regs/mgmt_local_regs.hh"
 #include "src/gw100/mgmt/sram/mgmt_sram.hh"
+#include "src/gw100/mgmt/wdt/mgmt_wdt.hh"
 #include "src/gw100/ml/mgmt_link.hh"
 
 namespace gem5
@@ -43,7 +50,7 @@ class Gw100MgmtTile : public ClockedObject, public MlTargetIf
     /** 按参数构造各组件 */
     explicit Gw100MgmtTile(const Params &p);
 
-    /** 返回名为 if_name 的端口：pio */
+    /** 返回名为 if_name 的端口：pio、wdt_fatal */
     Port &getPort(const std::string &if_name,
                   PortID idx = InvalidPortID) override;
 
@@ -99,8 +106,10 @@ class Gw100MgmtTile : public ClockedObject, public MlTargetIf
         IrqUe = 5,
         /** SRAM 访问控制违例 */
         IrqAcl = 6,
+        /** 看门狗第一级超时 */
+        IrqWdt = 7,
         /** 中断源个数（含未用的源 0） */
-        IrqCount = 7,
+        IrqCount = 8,
     };
 
     /** 处理一次时序访问，在完成时刻经端口返回响应 */
@@ -117,6 +126,27 @@ class Gw100MgmtTile : public ClockedObject, public MlTargetIf
 
     /** 在 when 时刻返回 pkt 的响应 */
     void respond(PacketPtr pkt, Tick when);
+
+    /**
+     * 把已经 makeResponse() 的 pkt 安排在 when 时刻发出；取指的响应
+     * 先放进 fetchResps，到时由 deliverFetches() 交给端口
+     */
+    void sendResp(PacketPtr pkt, Tick when);
+
+    /** 把到时的取指响应交给端口；CPU 停住后扣下，不再交付 */
+    void deliverFetches();
+
+    /** 时刻 t 的时钟沿上，看门狗看到的同步后的 mtime 样本 */
+    uint64_t mtimeSample(Tick t) const;
+
+    /** 看门狗状态变化后：更新中断，进入第二级，重新安排到期事件 */
+    void wdtUpdate();
+
+    /** 到期事件：在当前时钟沿判定一次自然到期 */
+    void wdtExpire();
+
+    /** 看门狗第二级超时：置位 wdt_fatal 信号，停住管理 CPU */
+    void haltCpu();
 
     /** 把 pkt 标记为访问错误并在下一个时钟沿返回 */
     void respondError(PacketPtr pkt);
@@ -154,6 +184,26 @@ class Gw100MgmtTile : public ClockedObject, public MlTargetIf
      * 应答，使 CPU 收到 CLK_SEL 的写应答时已按新频率计时
      */
     EventFunctionWrapper clkSwitchEvent;
+    /** 看门狗 */
+    MgmtWdt wdt;
+    /** mtime 一个计数对应的 tick 数（dev.timestamp_hz） */
+    const Tick tsPeriod;
+    /** mtime 经同步器进入 clk_mgmt 域的延迟 */
+    const Cycles tsSync;
+    /** 管理 CPU；看门狗第二级超时时停住它 */
+    BaseCPU *cpu;
+    /** 看门狗第二级超时的专用信号，接 HIF */
+    IntSourcePin<Gw100MgmtTile> wdtFatal;
+    /** 看门狗第二级超时后，管理 CPU 已停住 */
+    bool halted = false;
+    /** 尚未交给端口的取指响应，按交付时刻排序 */
+    std::multimap<Tick, PacketPtr> fetchResps;
+    /** CPU 停住后扣下的取指，不再响应 */
+    std::vector<PacketPtr> heldFetches;
+    /** 在下一个取指响应的交付时刻调用 deliverFetches() 的事件 */
+    EventFunctionWrapper fetchEvent;
+    /** 在看门狗下一次可能到期的时钟沿调用 wdtExpire() 的事件 */
+    EventFunctionWrapper wdtEvent;
     /** 各中断源当前已送给 PLIC 的电平 */
     std::array<bool, IrqCount> irqLevel{};
     /** 本地总线端口 */

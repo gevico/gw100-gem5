@@ -76,7 +76,10 @@ check_timestamp(void)
     uint64_t t2 = bm_read64(r + GW100_TIMESTAMP_LO);
     TEST_ASSERT(t2 > t1);
 
-    /* 两次 32 位读：读 LO 锁存 HI */
+    /* 两次 32 位读：读 LO 锁存 HI。先等一会儿：atomic 模式下 MMIO 的
+     * 延迟不计入 host 的时间，紧接着读可能还在同一个 10 ns 周期内 */
+    for (volatile int i = 0; i < 100; i++)
+        ;
     uint32_t lo = bm_read32(r + GW100_TIMESTAMP_LO);
     uint32_t hi = bm_read32(r + GW100_TIMESTAMP_HI);
     uint64_t t3 = ((uint64_t)hi << 32) | lo;

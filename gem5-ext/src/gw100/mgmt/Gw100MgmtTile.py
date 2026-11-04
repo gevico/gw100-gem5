@@ -23,6 +23,10 @@ class Gw100MgmtTile(ClockedObject):
     cxx_class = "gem5::gw100::Gw100MgmtTile"
 
     pio = ResponsePort("接管理系统的本地总线")
+    wdt_fatal = IntSourcePin(
+        "看门狗第二级超时的专用信号，接 PCIe 设备的 wdt_fatal"
+        "（spec-mgmt-tile §7.4）"
+    )
 
     rom_size = Param.MemorySize("64KiB", "启动 ROM（mgmt.rom_size）")
     sram_size = Param.MemorySize("2MiB", "SRAM（mgmt.sram_size）")
@@ -45,6 +49,14 @@ class Gw100MgmtTile(ClockedObject):
     pll_perf_level = Param.Unsigned(
         0, "clk_mgmt 切换到 PLL_CORE 后，管理系统时钟域所用的频率档"
     )
+
+    timestamp_freq = Param.Frequency(
+        "100MHz", "mtime 的频率（dev.timestamp_hz），看门狗以它计时"
+    )
+    ts_sync = Param.Cycles(
+        2, "mtime 经同步器进入 clk_mgmt 域的延迟（两级同步器，推算）"
+    )
+    cpu = Param.BaseCPU(NULL, "管理 CPU；看门狗第二级超时时停住它")
 
     mgmt_link = Param.Gw100MgmtLink("管理链路 ML")
     plic = Param.PlicBase("接收本 Tile 中断的 PLIC")

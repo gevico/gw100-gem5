@@ -15,8 +15,6 @@ namespace gw100
 namespace
 {
 
-/** 本地地址：看门狗 */
-constexpr Addr WdtBase = 0x2000'C000;
 /** 本地地址：ML 寄存器（ML_BASE） */
 constexpr Addr MlBase = 0x2000'D000;
 /** 本地地址：SRAM 控制 */
@@ -41,9 +39,6 @@ MgmtLocalRegs::read(Addr a, unsigned size, uint64_t &v, Tick now) const
     // 32 位寄存器
     if (size == 4) {
         switch (a) {
-          case WdtBase + 0x00: v = wdtCtrlReg; return true;
-          case WdtBase + 0x10: v = 0; return true;  // WDT_KICK 只写
-          case WdtBase + 0x14: v = wdtStatus; return true;
           case MlBase + 0x00: v = ml ? ml->statusReg() : 0; return true;
           case MlBase + 0x04: v = ml ? ml->errReg() : 0; return true;
           case MlBase + 0x08: v = ml ? ml->errInfoReg() : 0; return true;
@@ -67,7 +62,6 @@ MgmtLocalRegs::read(Addr a, unsigned size, uint64_t &v, Tick now) const
     // 64 位寄存器
     if (size == 8) {
         switch (a) {
-          case WdtBase + 0x08: v = wdtLoad; return true;
           case SramCtlBase + 0x10: v = ueAddr; return true;
           case AclBase + 0x08: v = descBase; return true;
           case AclBase + 0x10: v = descLimit; return true;
@@ -96,17 +90,6 @@ MgmtLocalRegs::write(Addr a, unsigned size, uint64_t v)
         return false;
     uint32_t v32 = static_cast<uint32_t>(v);
     switch (a) {
-      case WdtBase + 0x00:
-        if (wdtCtrlReg & 2) {
-            // 锁定后 EN 不能再修改，LOCK 保持
-            break;
-        }
-        wdtCtrlReg = v32 & 3;
-        break;
-      case WdtBase + 0x08:
-        if (!(wdtCtrlReg & 2))
-            wdtLoad = v;
-        break;
       case MlBase + 0x04:
         if (ml)
             ml->clearErr(v32);

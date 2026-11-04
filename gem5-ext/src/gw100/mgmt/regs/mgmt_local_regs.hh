@@ -1,9 +1,10 @@
 /**
  * @file  mgmt_local_regs.hh
- * @brief 管理 Tile 本地寄存器：看门狗、ML、SRAM 控制、访问控制
+ * @brief 管理 Tile 本地寄存器：ML、SRAM 控制、访问控制
  *
- * 位于本地地址 0x2000_C000 – 0x2000_FFFF（spec-mgmt-tile §3.5）；同一个
- * 64 KiB 区的 0x0000 – 0xBFFF 是 CLINT，由单独的设备实现。32 位寄存器
+ * 位于本地地址 0x2000_D000 – 0x2000_FFFF（spec-mgmt-tile §3.5）；同一个
+ * 64 KiB 区的 0x0000 – 0xBFFF 是 CLINT，由单独的设备实现，0xC000 起的
+ * 看门狗是 MgmtWdt。32 位寄存器
  * 只接受 32 位访问，64 位寄存器只接受 64 位访问。
  *
  * @see spec-mgmt-tile, spec-mgmt-link
@@ -29,10 +30,10 @@ namespace gw100
 class MgmtLocalRegs
 {
   public:
-    /** 本地地址：本对象负责的范围起始（看门狗） */
-    static constexpr Addr Base = 0x2000'C000;
+    /** 本地地址：本对象负责的范围起始（ML 寄存器） */
+    static constexpr Addr Base = 0x2000'D000;
     /** 本对象负责的范围大小 */
-    static constexpr Addr Size = 0x4000;
+    static constexpr Addr Size = 0x3000;
     /** NoC 目标端口的窗口数（mgmt.noc_windows） */
     static constexpr unsigned NocWindows = 4;
     /** ACL_VIOL_STATUS 的位：启动写入越出装载区 */
@@ -73,9 +74,6 @@ class MgmtLocalRegs
     /** PLIC 源 6 的电平：ACL_VIOL_STATUS ≠ 0 */
     bool aclIrq() const { return aclViol != 0; }
 
-    /** 看门狗寄存器 WDT_CTRL 的值，供看门狗逻辑使用 */
-    uint32_t wdtCtrl() const { return wdtCtrlReg; }
-
     /** 中断电平可能变化时调用 */
     std::function<void()> onChange;
 
@@ -95,13 +93,6 @@ class MgmtLocalRegs
     MgmtSram &sram;
     /** ML 管理侧适配器 */
     MlEndpoint *ml = nullptr;
-
-    /** WDT_CTRL：[0] EN，[1] LOCK */
-    uint32_t wdtCtrlReg = 0;
-    /** WDT_LOAD */
-    uint64_t wdtLoad = 0;
-    /** WDT_STATUS：[0] STAGE1，[1] STAGE2 */
-    uint32_t wdtStatus = 0;
 
     /** SRAM_ECC_STATUS：[0] CE，[1] UE */
     uint32_t eccStatus = 0;

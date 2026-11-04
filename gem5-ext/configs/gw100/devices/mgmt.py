@@ -78,7 +78,9 @@ def make_mgmt_system(link, rom_elf: str) -> RiscvSystem:
     s.clint.int_pin = s.rtc.int_pin
     s.clint.pio = s.membus.mem_side_ports
 
-    s.tile = Gw100MgmtTile(mgmt_link=link, plic=s.plic, pll_perf_level=0)
+    s.tile = Gw100MgmtTile(
+        mgmt_link=link, plic=s.plic, cpu=s.cpu, pll_perf_level=0
+    )
     s.tile.pio = s.membus.mem_side_ports
 
     s.workload = RiscvBareMetal(

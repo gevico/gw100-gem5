@@ -110,7 +110,10 @@ class Gw100Config:
 
     def make_mgmt(self, dev: Gw100PciDevice, rom_elf: str):
         """创建与 dev 相连的管理系统（RiscvSystem），挂到 Root 下。"""
-        return make_mgmt_system(dev.mgmt_link, rom_elf)
+        s = make_mgmt_system(dev.mgmt_link, rom_elf)
+        # 看门狗第二级超时的专用信号，不经过 ML（spec-mgmt-tile §7.4）
+        s.tile.wdt_fatal = dev.wdt_fatal
+        return s
 
 
 GW100 = Gw100Config()

@@ -75,6 +75,11 @@ class Gw100PciDevice(PciEndpoint):
         "10ms", "一个 FLR 处于处理中的上限（pcie.flr_proc_timeout）"
     )
 
+    wdt_fatal = IntSinkPin(
+        "看门狗第二级超时的专用信号，接管理 Tile 的 wdt_fatal"
+        "（spec-mgmt-tile §7.4）"
+    )
+
     mgmt_link = Param.Gw100MgmtLink(
         NULL, "管理链路 ML；为空时设备不接管理 Tile（只用于寄存器层的测试）"
     )
