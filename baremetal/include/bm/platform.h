@@ -15,9 +15,9 @@
 /* host DRAM：程序从这里加载运行，见 linker.ld */
 #define BM_DRAM_BASE            0x80000000UL
 /*
- * 设备 DMA 测试用的 host 缓冲：程序之后的一块固定区域，1 MiB。命令协议
- * 实现之前，测试固件按这个约定的地址访问 host 内存（firmware/fw/
- * hdma_test.c 的 HOST_BUF）
+ * 设备 DMA 测试用的 host 缓冲：程序之后的一块固定区域，16 MiB，放队列、
+ * SGL 和数据缓冲。HDMA 的测试固件按这个约定的地址访问 host 内存
+ * （firmware/fw/hdma_test.c 的 HOST_BUF）
  */
 #define BM_DMA_BUF_BASE         0x90000000UL
 

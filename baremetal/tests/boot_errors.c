@@ -14,8 +14,8 @@
 #include "bm/mmio.h"
 #include "bm/test.h"
 
-/** 镜像的副本，用于制造错误 */
-static uint8_t buf[4096] __attribute__((aligned(8)));
+/** 镜像的副本，用于制造错误；留出固件增长的余量 */
+static uint8_t buf[64 * 1024] __attribute__((aligned(8)));
 
 /** BOOT_STATUS 的 ERROR 编码：FW_SIZE 非法 */
 #define ERR_SIZE        1
