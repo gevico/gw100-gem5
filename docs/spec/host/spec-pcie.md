@@ -294,7 +294,7 @@ MSI-X 表和 PBA 的访问规则以 PCIe 规范为准（DWORD 和 QWORD 访问�
 
 需要固件处理的写经 ML 转给管理 Tile：doorbell 的写入以 `DB_WR` 发出，需要通知固件的寄存器写入以 `EVENT` 发出（`spec-mgmt-link` §4.1）。
 
-- **待发槽**：每个 doorbell 有一个待发槽（值和有效位），每个事件有一个待发位。host 写 doorbell 时覆盖槽中的值并置有效位；事件发生时置待发位。PCIe 子系统从待发槽中取当时的值发出 `DB_WR`、清有效位；发出与新的写入在同一周期时，新的写入优先，有效位保持为 1。事件同理，多次发生合并为一个 `EVENT`。因此每个 doorbell 只保证固件最终收到最后一次写入的值，这正是命令协议所需的（`spec-mgmt-tile` §6.2）。
+- **待发槽**：每个 doorbell 有一个待发槽（值和有效位），每个事件有一个待发位。host 写 doorbell 时覆盖槽中的值并置有效位；事件发生时置待发位。PCIe 子系统从待发槽中取当时的值发出 `DB_WR`、清有效位；发出与新的写入在同一周期时，新的写入优先，有效位保持为 1。事件同理，多次发生合并为一个 `EVENT`。因此每个 doorbell 只保证固件最终收到最后一次写入的值，这正是命令协议所需的（`spec-mgmt-tile` §6.2）。各 doorbell 的 `DB_WR` 按各槽最后一次写入被接受的先后发出：槽被覆盖时，它在发出顺序中移到最后。加上 ML 同方向按顺序处理（`spec-mgmt-link` §5 规则 1），得到以下保证：host 先写 doorbell A、后写 doorbell B，且此后不再写 A 时，A 的最后一次写入的 `DB_WR`，在承载 B 这次写入（或覆盖它的 B 的后续写入）的 `DB_WR` 到达信箱之前到达；被覆盖的值不保证送达。也就是说，固件在信箱中看到 B 的这次值或更新的值时，A 此前仍可能送达的最后值已经到达，被覆盖的值不再送达。命令协议据此保证上下文复用时不会收到旧的 doorbell（`spec-hdi` §6.6）。
 - ML 尚未建立时（`spec-mgmt-link` §7.1），适配器不接受请求，doorbell 和事件留在待发槽中，PCIe 子系统照常接收 host 的写入；链路建立后再发出。
 - ML 处于故障态时，适配器接受并丢弃这些写；此时 `DEV_STATUS.DEV_FATAL` 已置位（`spec-mgmt-link` §7.5），host 应复位设备。
 - 待发槽随 PCIe 子系统的复位清除；FLR 也清除 doorbell 的待发槽，FLR 之前的 doorbell 不再发出，FLR 进行中的 doorbell 被丢弃（§13.2）。
@@ -473,7 +473,7 @@ v0.1 只支持由 host 加载固件（PCIe 启动）。本节定义 host 能观�
 
 - 偏移 0x000 – 0x0FF 与 BAR0 0x5000 起的 HDI 控制器寄存器一一对应（`spec-hdi` §4）。固件可以读写全部字段，包括 host 只读的字段（例如 `HDI_CAP_LO`、`HDI_CSTS`、`HDI_FATAL`、`HDI_CTX_ERR`）；固件的写入就是更新影子寄存器。
 - 0x100 `HDI_WR_MAP`（RW1C）：第 k 位为 1 表示 host 写过偏移为 4k 的 HDI 寄存器（k = 0 … 31）。host 可写的 HDI 寄存器必须位于 0x000 – 0x07C，以便都能被记录。host 写入可写字段时，HIF 置位对应位并发出 `HDI_WR` 事件（`spec-mgmt-tile` §6.3）。
-- 固件的处理顺序：先清零 `EVT_PENDING.HDI_WR`，再读 `HDI_WR_MAP`，对读到的位写 1 清零，再读对应的寄存器。清零之后 host 的新写入会重新置位 map 和事件，不会丢失通知。
+- 固件的处理顺序：先清零 `EVT_PENDING.HDI_WR`，再读 `HDI_WR_MAP`，对读到的位写 1 清零，再读对应的寄存器。清零之后 host 的新写入会重新置位 map 和事件，不会丢失通知。`HDI_CC` 的位例外：固件先置位 `HDI_CSTS` 中固件的 BUSY 位，再清零它（`spec-hdi` §5.5），处理其他位时不得提前清零它。
 
 **中断请求与 FLR（0x1_2000 起）**
 
@@ -481,6 +481,7 @@ v0.1 只支持由 host 加载固件（PCIe 启动）。本节定义 host 能观�
 |---|---|---|---|
 | 0x00 | `INT_REQ` | W1S | 每次写入是一次中断请求：置位 host 可见的 `INT_STATUS` 中写 1 的位（§8.4）；MSI-X 模式下，每个写 1 的位置位其向量的待发位，发出之前同一向量的请求可以合并（§8.4）。[1] ERROR 也可由固件请求（例如 HDI 控制器的致命错误）。HIF 保证这次中断不越过此前已进入发送通路的 DMA 写（§8.5）。FLR 进行中被忽略（§13.2） |
 | 0x04 | `INT_LEVEL` | RW | 固件对中断源条件的贡献，位置与 `INT_STATUS` 相同（例如某个完成队列中还有 host 未消费的记录）；各位的有效源条件见 §8.4。写入本身不置位 `INT_STATUS`。固件发布一个中断时，先置位 `INT_LEVEL` 的对应位，再写 `INT_REQ`；两次都是同方向的 posted 写，按顺序生效（`spec-mgmt-link` §5 规则 1）。源条件消失（例如 host 消费完记录）时，固件清零对应位。FLR 进行中写入被忽略。复位值 0 |
+| 0x08 | `ERR_REQ` | W1S | 固件检测到的 host 可见错误：置位 `ERR_STATUS` 中写 1 的位（§6.3），按 §6.3 的规则锁存（非 BAR 访问引起，`ERR_ADDR`、`ERR_INFO` 记为 0），并按 §8.4 作为 ERROR 的源。只接受 [4] DB_INVALID（doorbell 越界或写入不存在的上下文，`spec-hdi` §6.6），其余位写入无效。与 host 写 1 清零 `ERR_STATUS` 同周期时置位优先。FLR 进行中被忽略。读为 0 |
 | 0x10 | `FLR_CTRL` | W1S | [0] TAKE，[1] DONE，语义见 §13.2。其余 RsvdZ |
 | 0x14 | `FLR_STATUS` | RO | [0] IN_PROGRESS：FLR 进行中。[1] DELIVERED。[2] FAIL。语义见 §13.2。复位值 0，FLR 不清零（由 §13.2 的规则更新）。其余 RsvdZ |
 | 0x100 + 4 × n | `CTX_VECTOR[n]` | RW | 上下文 n 的 MSI-X 向量（n = 0 … `hdi.max_contexts` − 1）：[4:0] 向量号。复位值 2 + n（§8.3 的默认分配）。固件在 CREATE_CONTEXT 成功之前写入驱动指定的向量（`spec-hdi` §9.3），DESTROY_CONTEXT 后可不修改；FLR 时恢复复位值，FLR 进行中写入被忽略。固件必须先写映射，再为该上下文写 `INT_REQ`，两次同方向 posted 写按顺序生效。`INT_REQ.CTX[n]` 的消息发往请求时 `CTX_VECTOR[n]` 指定的向量；多个上下文映射到同一向量时，各自的请求都置位该向量的待发位，发出之前可以合并，屏蔽与 Pending 按向量计（§8.4） |
@@ -851,7 +852,8 @@ host → 设备方向的带宽取决于 host RC 把读完成拆成多大，这�
   - host 读到的 `FW_READY` 为 0；固件对 `FW_READY` 写 1 被忽略，确认之后仍为 0，由固件重新置位；
   - 固件写入的 STAGE 为 1 – 3 时，host 读到 STAGE = 1；为 4 或 0xF 时照实读到；
   - host 写 doorbell 被接收后丢弃，不进入待发槽；
-  - HDMA 保持复位（第 1 步）；设备不发出 MSI-X 和 INTx，固件写中断请求寄存器被忽略。
+  - HDMA 保持复位（第 1 步）；设备不发出 MSI-X 和 INTx，固件写中断请求寄存器被忽略；
+  - HDI 控制器寄存器、`HDI_WR_MAP` 和 `HDI_CSTS.BUSY` 的两个分量在第 2 步恢复复位值；门控期间 host 对 HDI 寄存器的写入被接收后丢弃，固件对 HDI 影子寄存器的写入被忽略。驱动在 `FW_READY` = 1 之后才配置 HDI（`spec-hdi` §5.2 第 2 步）。
 
   因此即使启动 ROM 在看到 FLR 事件之前按普通路径写了 STAGE = 2，或者固件在看到 FLR 事件之前写了 `FW_READY` = 1 或配置了 HDMA，这些都不会在本次 FLR 确认之后生效，host 也不会在确认之前看到窗口打开或固件就绪。
 - **两个完成点**：PCIe 意义上的 FLR 在 100 ms 内完成，不依赖固件：此后 host 可以访问配置空间，设备不访问 host 内存、不发中断。固件的清理在确认时完成：此后 HDMA 退出复位，固件重新初始化 HDMA 和命令协议，再置位 `FW_READY`。
