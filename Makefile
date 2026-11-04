@@ -77,7 +77,9 @@ HOSTS ?= timing atomic
 TESTS ?=
 TEST_JOBS ?= $(JOBS)
 TEST_TIMEOUT ?= 900
-TEST_MAX_TICKS ?= 500000000000
+# 仿真 3 s：启动 ROM 在 25 MHz 下校验镜像，加载时间随固件大小增长
+# （约 14 ms/KB）；固件约 60 KB 时加载两次的测试仍有余量
+TEST_MAX_TICKS ?= 3000000000000
 TEST_OUTDIR ?= gem5/m5out/tests
 BMTEST = $(PYTHON) tools/bmtest.py --gem5 gem5/$(GEM5_TARGET) --config $(GEM5_CONFIG) \
 	--baremetal-dir baremetal --build-dir $(BAREMETAL_DIR) --outdir $(TEST_OUTDIR) \
