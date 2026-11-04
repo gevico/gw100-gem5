@@ -71,6 +71,12 @@ class StatusUnit : public Serializable
     void logError(uint32_t bit, Addr off, bool is_write, unsigned size,
                   unsigned bar);
 
+    /**
+     * 置 ERR_STATUS 的 bit，用于不由 BAR 访问引起的错误（DMA_HOST_ERR
+     * 等）；它是第一次错误时 ERR_ADDR、ERR_INFO 记为 0（spec-pcie §6.3）
+     */
+    void raiseErr(uint32_t bit);
+
     /** ERR_STATUS 的当前值 */
     uint32_t errStatus() const { return _errStatus; }
 

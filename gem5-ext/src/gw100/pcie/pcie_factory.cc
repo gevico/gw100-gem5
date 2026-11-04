@@ -37,6 +37,28 @@ devCaps(const Gw100PciDeviceParams &p)
            (uint32_t(p.hdma_channels) << 24);
 }
 
+/** HDMA 的参数（spec-host-dma §12、spec-pcie §10.3） */
+HdmaEngine::Config
+hdmaConfig(const Gw100PciDeviceParams &p)
+{
+    HdmaEngine::Config c;
+    c.channels = p.hdma_channels;
+    c.maxRingLog2 = p.hdma_max_ring_log2;
+    c.maxDescBytes = p.hdma_max_desc_bytes;
+    c.sglSegMax = p.hdma_sgl_segment_max;
+    c.sglMaxSegments = p.hdma_sgl_max_segments;
+    c.maxReadReq = p.hdma_max_read_request;
+    c.maxOutstandingReads = p.hdma_max_outstanding_reads;
+    c.cplBuffer = p.hdma_completion_buffer;
+    c.d2hBuffer = p.hdma_d2h_buffer;
+    c.devBase = p.devmem_base;
+    c.devSize = p.devmem_size;
+    c.devicePaBits = p.device_pa_bits;
+    c.cplTimeout = p.pcie_cpl_timeout;
+    c.quarantine = p.pcie_stale_tag_quarantine;
+    return c;
+}
+
 } // anonymous namespace
 
 /**
@@ -45,13 +67,14 @@ devCaps(const Gw100PciDeviceParams &p)
  * Gw100PcieFactory 完成
  */
 PcieParts::PcieParts(const Gw100PciDeviceParams &p, const std::string &name,
-                     RequestorID devmem_id, EventManager &em)
+                     RequestorID devmem_id, RequestorID dma_id,
+                     ClockedObject &owner)
     : status(name),
       bootCtrl(name + ".boot", status, p.fw_load_max, p.flr_proc_timeout,
-               em),
+               owner),
       windows(p.bar2_window_count, p.bar2_window_size, p.devmem_base,
               p.devmem_size, p.device_pa_bits),
-      devmem(name + ".mem_port", devmem_id),
+      devmem(name + ".mem_port", devmem_id, p.devmem_max_outstanding),
       global(status, bootCtrl, p.version, devCaps(p), p.link_speed,
              p.link_width, p.timestamp_hz),
       windowRegs(windows),
@@ -61,7 +84,12 @@ PcieParts::PcieParts(const Gw100PciDeviceParams &p, const std::string &name,
       bar2(bootCtrl, windows, status, devmem, p.bar2_latency),
       shim(p.version, devCaps(p),
            (p.link_speed & 0xF) | (uint32_t(p.link_width & 0x1F) << 4),
-           p.pio_latency)
+           p.pio_latency),
+      hdmaClock(owner, [this] { hdma.tick(); }),
+      hostDma(name + ".dma", dma_id, p.system->cacheLineSize(),
+              p.pcie_tx_credits),
+      hdma(hdmaConfig(p), hdmaClock, hostDma, devmem, hdmaMl),
+      hdmaMirror(hdma)
 {}
 
 /**
@@ -75,6 +103,7 @@ PcieParts::resetRegisters()
     windowRegs.reset();
     boot.reset();
     windows.reset();
+    hdma.reset();
 }
 
 /**
@@ -88,6 +117,7 @@ PcieParts::devReset()
     bootCtrl.devReset();
     boot.devReset();
     resetRegisters();
+    hdma.setHold(false);
 }
 
 /** 按组件分节保存全部状态 */
@@ -117,7 +147,7 @@ PcieParts::unserialize(CheckpointIn &cp)
  * owner 是所属设备，用于取名字和注册请求者 ID
  */
 std::unique_ptr<PcieParts>
-Gw100PcieFactory::build(const Gw100PciDeviceParams &p, SimObject &owner)
+Gw100PcieFactory::build(const Gw100PciDeviceParams &p, ClockedObject &owner)
 {
     const std::string &name = owner.name();
     const Addr win_size = p.bar2_window_size;
@@ -130,7 +160,8 @@ Gw100PcieFactory::build(const Gw100PciDeviceParams &p, SimObject &owner)
              "%s: 设备物理地址宽度越界", name);
 
     auto parts = std::make_unique<PcieParts>(
-        p, name, p.system->getRequestorId(&owner, "devmem"), owner);
+        p, name, p.system->getRequestorId(&owner, "devmem"),
+        p.system->getRequestorId(&owner, "hdma"), owner);
 
     // 配置空间：capability 链表 PM → PCI Express（spec-pcie §4.2）
     parts->config.addCapability(PmCapBase, std::make_unique<PmCapability>());
@@ -143,6 +174,16 @@ Gw100PcieFactory::build(const Gw100PciDeviceParams &p, SimObject &owner)
     parts->bar0.addBlock(parts->global);
     parts->bar0.addBlock(parts->windowRegs);
     parts->bar0.addBlock(parts->boot);
+    parts->bar0.addBlock(parts->hdmaMirror);
+
+    // HDMA：寄存器经 HIF 区，DMA 错误记入 ERR_STATUS，端口空闲时唤醒
+    PcieParts *pp = parts.get();
+    pp->hif.bindHdma(&pp->hdma);
+    pp->hdma.onHostError = [pp] {
+        pp->status.raiseErr(StatusUnit::ErrDmaHost);
+    };
+    pp->devmem.onReady = [pp] { pp->hdma.wake(); };
+    pp->hostDma.onTxFree = [pp] { pp->hdma.wake(); };
 
     parts->bars[0] = &parts->bar0;
     parts->bars[2] = &parts->bar2;

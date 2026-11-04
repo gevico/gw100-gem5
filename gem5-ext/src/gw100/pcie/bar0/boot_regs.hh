@@ -2,8 +2,9 @@
  * @file  boot_regs.hh
  * @brief BAR0 的启动与固件寄存器块（0x4000）
  *
- * 暂定的桩：上电即处于 STAGE 4 且 FW_READY；启动窗口、固件加载与校验
- * 不建模（理想化清单 #11）。
+ * host 可见的 BOOT_STATUS、BOOT_CTRL、FW_SIZE 由 BootCtrl 实现，本块是它
+ * 在 BAR0 中的视图；FW_VERSION 由固件经 HIF 写入，FLR 保留、设备完全
+ * 复位清零。
  *
  * @see spec-pcie
  */

@@ -88,12 +88,22 @@
 extern const uint8_t gw100_fw_image[];
 /** 嵌入的固件镜像的结束 */
 extern const uint8_t gw100_fw_image_end[];
+/** 嵌入的 HDMA 测试固件镜像的起始（lib/fw_image.S） */
+extern const uint8_t gw100_fw_hdma_image[];
+/** 嵌入的 HDMA 测试固件镜像的末尾 */
+extern const uint8_t gw100_fw_hdma_image_end[];
 /** 嵌入的看门狗测试固件镜像的起始（lib/fw_image.S） */
 extern const uint8_t gw100_fw_wdt_image[];
 /** 嵌入的看门狗测试固件镜像的末尾 */
 extern const uint8_t gw100_fw_wdt_image_end[];
 
-/* 保留的块：本阶段尚未实现（MSI-X、HDI、DMA 镜像） */
+/* BAR0 中 Host DMA 寄存器的只读镜像（spec-host-dma §7.4） */
+#define GW100_HDMA_MIRROR       0x6000
+/** 镜像中通道 c 的寄存器 off */
+#define GW100_HDMA_CH(c, off) \
+    (GW100_HDMA_MIRROR + 0x100 + 0x40 * (c) + (off))
+
+/* 保留的块：本阶段尚未实现（MSI-X、HDI） */
 #define GW100_RSVD_BLOCK_HDI    0x5000
 
 /** 打开后的 GW100 */

@@ -18,6 +18,7 @@
 #include "src/gw100/ml/ml_endpoint.hh"
 #include "src/gw100/pcie/bar0/boot_regs.hh"
 #include "src/gw100/pcie/boot/boot_ctrl.hh"
+#include "src/gw100/pcie/hdma/hdma_engine.hh"
 
 namespace gem5
 {
@@ -33,6 +34,9 @@ class HifRegs : public MlTargetIf
 
     /** 接入 ML 的 HIF 侧适配器，ML 错误寄存器经它读写 */
     void bindMl(MlEndpoint *ep) { ml = ep; }
+
+    /** 接入 HDMA：HIF 区 0x0000 – 0x0FFF 是它的寄存器（HDMA_BASE） */
+    void bindHdma(HdmaEngine *h) { hdma = h; }
 
     /** 读取配置空间中固件需要的状态（PCI_STATE）的回调 */
     std::function<uint32_t()> pciState;
@@ -53,6 +57,8 @@ class HifRegs : public MlTargetIf
     BootCtrl &ctrl;
     /** ML 的 HIF 侧适配器 */
     MlEndpoint *ml = nullptr;
+    /** HDMA */
+    HdmaEngine *hdma = nullptr;
 };
 
 } // namespace gw100

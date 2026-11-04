@@ -132,6 +132,9 @@ class HdmaEngine
     /** 固件写偏移 off 的 32 位寄存器；未实现的偏移返回 false */
     bool write(Addr off, uint32_t v);
 
+    /** 偏移 off 处是否是已实现的 32 位寄存器 */
+    bool implemented(Addr off) const;
+
     /** 时钟沿：推进全部通道（由所属设备在 wakeAt 请求的时刻调用） */
     void tick();
 

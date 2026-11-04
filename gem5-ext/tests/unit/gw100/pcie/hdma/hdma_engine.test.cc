@@ -6,7 +6,7 @@
  * 验收标准检查：连续缓冲与 SGL 两种方式的数据、请求长度与 4 KiB 边界、
  * 未完成读请求数、完成的顺序与通知、各种错误码与错误停止、RESUME、
  * ABORT（含回写失败后的不回写中止）、完成超时与 tag 隔离、复位、
- * Bus Master Enable 清零、仲裁和 BAR0 镜像。
+ * Bus Master Enable 清零、仲裁、BAR0 镜像，以及发送通路满时的停顿。
  *
  * @see spec-host-dma
  */
@@ -123,6 +123,14 @@ class TestHost : public HdmaHostIf
     unsigned mps = 128;
     /** 发送通路能否接受写 */
     bool txOk = true;
+    /** 在途写请求的上限；0 表示不限 */
+    unsigned txCredits = 0;
+    /** 在途写请求数 */
+    unsigned txInFlight = 0;
+    /** 写请求完成的延迟 */
+    Tick writeLatency = 300 * ns;
+    /** 在途写请求减少时唤醒 HDMA */
+    HdmaEngine *eng = nullptr;
     /** 读请求的个数 */
     unsigned reads = 0;
     /** 写请求的个数 */
@@ -167,7 +175,11 @@ class TestHost : public HdmaHostIf
     }
 
     /** 发送通路能否再接受一个写请求 */
-    bool canWrite() const override { return txOk; }
+    bool
+    canWrite() const override
+    {
+        return txOk && (txCredits == 0 || txInFlight < txCredits);
+    }
 
     /** 发出一个 MWr */
     void
@@ -175,7 +187,17 @@ class TestHost : public HdmaHostIf
     {
         check(a, len, mps);
         writes++;
-        std::memcpy(mem.data() + a, data, len);
+        if (txCredits == 0) {
+            std::memcpy(mem.data() + a, data, len);
+            return;
+        }
+        txInFlight++;
+        std::vector<uint8_t> copy(data, data + len);
+        sim.at(sim.now + writeLatency, [this, a, copy] {
+            std::memcpy(mem.data() + a, copy.data(), copy.size());
+            txInFlight--;
+            eng->wake();
+        });
     }
 
   private:
@@ -345,6 +367,7 @@ class Rig
         cfg.quarantine = 250 * 1000 * ns;
         eng = std::make_unique<HdmaEngine>(cfg, clk, host, dev, ml);
         clk.eng = eng.get();
+        host.eng = eng.get();
         eng->onHostError = [this] { hostErrors++; };
         HdmaEngine::PcieParams pp;
         pp.mps = host.mps;
@@ -865,4 +888,28 @@ TEST(HdmaEngine, MirrorLatchIsIndependent)
     EXPECT_EQ(r.rd(0x010), 8192u);              // 固件读低位
     ASSERT_TRUE(r.eng->read(0x014, v, true));
     EXPECT_EQ(v, 0u);
+}
+
+TEST(HdmaEngine, D2hWithTxCredits)
+{
+    Rig r;
+    r.host.txCredits = 16;
+    r.host.writeLatency = 2000 * ns;    // 写确认很慢：发送通路会满
+    r.setup(1);
+    r.putSgl(0x80000, 0x33000, 4096, 0);
+    r.putSgl(0x80010, 0x31000, 4096, 0);
+    r.putSgl(0x80020, 0x35000, 4096, 0);
+    fill(r.dev.mem, 0x100000 - 0x10000, 12288, 5);
+    r.putDesc(1, 0, {2, false, false, false, 0, 12288, 0x10004,
+                     0xF0000});
+    r.putDesc(1, 1, {2, true, false, true, 0, 12288, 0x80000, 0xF0000,
+                     48});
+    r.submit(1, 2);
+    EXPECT_EQ(r.dw7(1, 0), 1u);
+    EXPECT_EQ(r.dw7(1, 1), 1u);
+    EXPECT_TRUE(same(r.host.mem, 0x10004, r.dev.mem, 0xF0000, 12288));
+    EXPECT_TRUE(same(r.host.mem, 0x33000, r.dev.mem, 0xF0000, 4096));
+    EXPECT_TRUE(same(r.host.mem, 0x31000, r.dev.mem, 0xF1000, 4096));
+    EXPECT_TRUE(same(r.host.mem, 0x35000, r.dev.mem, 0xF2000, 4096));
+    EXPECT_GT(r.rd(0x02C), 0u);    // HDMA_STALL_TX
 }

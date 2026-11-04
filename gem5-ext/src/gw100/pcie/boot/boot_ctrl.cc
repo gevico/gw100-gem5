@@ -211,6 +211,8 @@ BootCtrl::flrCtrl(uint32_t v)
         DPRINTF(Gw100Boot, "FLR 确认，解除门控\n");
         flrInProgress = false;
         refreshWindow();
+        if (onFlrDone)
+            onFlrDone();
     }
 }
 
@@ -226,6 +228,7 @@ BootCtrl::flr()
     flrInProgress = true;
     // FW_START 已被接受、事件尚未被 ML 接受：取消
     fwStartPending = false;
+    pendingEvt = 0;
     // 上一次的屏障尚未被 ML 接受时与本次合并
     flrNeedSend = true;
     if (!flrFailed) {
@@ -264,10 +267,22 @@ BootCtrl::devReset()
     barriersOut = 0;
     delivered = false;
     flrFailed = false;
+    pendingEvt = 0;
     if (flrTimer.scheduled())
         em.deschedule(flrTimer);
     flrRemaining = flrTimeoutTicks;
     flrTimerStart = 0;
+}
+
+/**
+ * 向管理 Tile 发出 HIF 的事件（BME_OFF 等，spec-mgmt-tile §6.3）；
+ * 链路未建立时保留，建立后发出
+ */
+void
+BootCtrl::hostEvent(uint32_t bits)
+{
+    pendingEvt |= bits;
+    trySend();
 }
 
 /** 尝试发出待发的 FW_START 事件和 FLR 屏障 */
@@ -298,6 +313,11 @@ BootCtrl::trySend()
             flrNeedSend = false;
             barriersOut++;
         }
+    }
+    if (pendingEvt && !flrNeedSend &&
+        ml->submit(evtClient, eventTxn(MlType::Event, pendingEvt))) {
+        DPRINTF(Gw100Boot, "发出 HIF 事件 %#x\n", pendingEvt);
+        pendingEvt = 0;
     }
 }
 

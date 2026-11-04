@@ -36,6 +36,22 @@ StatusUnit::logError(uint32_t bit, Addr off, bool is_write, unsigned size,
             off, is_write ? "写" : "读", size);
 }
 
+/**
+ * 置 ERR_STATUS 的 bit，用于不由 BAR 访问引起的错误（DMA_HOST_ERR
+ * 等）；它是第一次错误时 ERR_ADDR、ERR_INFO 记为 0（spec-pcie §6.3）
+ */
+void
+StatusUnit::raiseErr(uint32_t bit)
+{
+    if (_errStatus == 0) {
+        _errAddr = 0;
+        _errInfo = 0;
+    }
+    _errStatus |= bit;
+    updateIntStatus();
+    DPRINTF(Gw100Pcie, "错误 %#x（非 BAR 访问）\n", bit);
+}
+
 /** 写 1 清零 ERR_STATUS 中 bits 指定的位 */
 void
 StatusUnit::clearErr(uint32_t bits)
