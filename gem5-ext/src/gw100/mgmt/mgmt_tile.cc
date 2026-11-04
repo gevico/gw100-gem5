@@ -28,6 +28,8 @@ namespace
 constexpr Addr HifBase = 0x3000'0000;
 /** HIF 寄存器区的大小 */
 constexpr Addr HifSize = 0x1000'0000;
+/** 本地地址：DPA 空间的起始（本地地址 = NiBase + DPA） */
+constexpr Addr NiBase = 0x100'0000'0000;
 
 /** 按小端序读取 data 起的 4 字节 */
 uint32_t
@@ -99,6 +101,8 @@ Gw100MgmtTile::PioPort::getAddrRanges() const
     r.push_back(RangeSize(MgmtMailbox::Base, MgmtMailbox::Size));
     r.push_back(RangeSize(MgmtCrc::Base, MgmtCrc::Size));
     r.push_back(RangeSize(HifBase, HifSize));
+    if (tile.ni.isConnected())
+        r.push_back(RangeSize(NiBase, tile.dpaSize));
     return r;
 }
 
@@ -135,6 +139,8 @@ Gw100MgmtTile::Gw100MgmtTile(const Params &p)
                            name() + ".devResetRelease"),
       wdtEvent([this] { wdtExpire(); }, name() + ".wdt"),
       pio(name() + ".pio", *this),
+      ni(name() + ".ni", *this),
+      dpaSize(1ULL << p.device_pa_bits),
       mlEvent([this] { mlFinish(); }, name() + ".mlFinish")
 {
     fatal_if(!mgmtClk || !mgmtClk->validPerfLevel(pllPerfLevel) ||
@@ -158,12 +164,14 @@ Gw100MgmtTile::Gw100MgmtTile(const Params &p)
     regs.onChange = [this] { updateIrqs(); };
 }
 
-/** 返回名为 if_name 的端口：pio、wdt_fatal、dev_reset_req、pcie_reset */
+/** 返回名为 if_name 的端口：pio、ni、wdt_fatal、dev_reset_req、pcie_reset */
 Port &
 Gw100MgmtTile::getPort(const std::string &if_name, PortID idx)
 {
     if (if_name == "pio")
         return pio;
+    if (if_name == "ni")
+        return ni;
     if (if_name == "wdt_fatal") {
         fatal_if(idx > 0, "%s: wdt_fatal 只有一个", name());
         return wdtFatal;
@@ -501,6 +509,70 @@ Gw100MgmtTile::accessHif(PacketPtr pkt)
     }
 }
 
+/** 管理 CPU 经 NI 访问 DPA 空间（spec-mgmt-tile §3.3） */
+void
+Gw100MgmtTile::accessNi(PacketPtr pkt)
+{
+    if (!ni.isConnected()) {
+        respondError(pkt);
+        return;
+    }
+    auto req = std::make_shared<Request>(pkt->getAddr() - NiBase,
+                                         pkt->getSize(), 0,
+                                         pkt->req->requestorId());
+    PacketPtr np = new Packet(req, pkt->cmd);
+    np->allocate();
+    if (pkt->isWrite())
+        np->setData(pkt->getConstPtr<uint8_t>());
+    auto *st = new NiState;
+    st->orig = pkt;
+    np->pushSenderState(st);
+    ni.send(np);
+}
+
+/** NI 请求的响应到达 */
+void
+Gw100MgmtTile::niResponse(PacketPtr np)
+{
+    auto *st = dynamic_cast<NiState *>(np->popSenderState());
+    panic_if(!st, "%s: NI 响应没有发送状态", name());
+    PacketPtr pkt = st->orig;
+    delete st;
+    if (np->isError()) {
+        respondError(pkt);
+    } else {
+        if (pkt->isRead())
+            pkt->setData(np->getConstPtr<uint8_t>());
+        respond(pkt, clockEdge());
+    }
+    delete np;
+}
+
+/** 发出一个请求；被反压时留待重试 */
+void
+Gw100MgmtTile::NiPort::send(PacketPtr pkt)
+{
+    if (waiting.empty() && sendTimingReq(pkt))
+        return;
+    waiting.push_back(pkt);
+}
+
+/** 请求的响应：交回管理 Tile */
+bool
+Gw100MgmtTile::NiPort::recvTimingResp(PacketPtr pkt)
+{
+    tile.niResponse(pkt);
+    return true;
+}
+
+/** 可以重试被反压的请求 */
+void
+Gw100MgmtTile::NiPort::recvReqRetry()
+{
+    while (!waiting.empty() && sendTimingReq(waiting.front()))
+        waiting.pop_front();
+}
+
 /** 处理一次时序访问，在完成时刻经端口返回响应 */
 void
 Gw100MgmtTile::handleTiming(PacketPtr pkt)
@@ -516,6 +588,10 @@ Gw100MgmtTile::handleTiming(PacketPtr pkt)
     Addr a = pkt->getAddr();
     if (a >= HifBase && a < HifBase + HifSize) {
         accessHif(pkt);
+        return;
+    }
+    if (a >= NiBase && a - NiBase < dpaSize) {
+        accessNi(pkt);
         return;
     }
     Tick done = accessLocal(pkt, clockEdge());

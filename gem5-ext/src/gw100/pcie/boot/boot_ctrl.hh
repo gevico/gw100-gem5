@@ -99,6 +99,9 @@ class BootCtrl
      */
     void devReset();
 
+    /** FLR 进行中（门控有效） */
+    bool flrGated() const { return flrInProgress; }
+
     /** host 写 BOOT_CTRL.DEV_RESET 时调用：由外壳发起设备完全复位 */
     std::function<void()> onDevReset;
 

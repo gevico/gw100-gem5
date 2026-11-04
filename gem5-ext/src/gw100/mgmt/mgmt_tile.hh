@@ -15,7 +15,9 @@
  * - ML、SRAM 控制、访问控制寄存器：MgmtLocalRegs；
  * - doorbell 信箱与事件寄存器：MgmtMailbox；
  * - 时钟复位控制器的寄存器：MgmtCrc；
- * - 管理 CPU 对 HIF 寄存器区的访问：经 ML 的 REG_RD、REG_WR。
+ * - 管理 CPU 对 HIF 寄存器区的访问：经 ML 的 REG_RD、REG_WR；
+ * - 管理 CPU 对 DPA 空间的访问（本地地址 0x100_0000_0000 + DPA）：经
+ *   NI 发起端口 ni（spec-mgmt-tile §3.3、§3.4）。
  *
  * @see spec-mgmt-tile, spec-mgmt-link
  */
@@ -24,6 +26,7 @@
 #define __GW100_MGMT_MGMT_TILE_HH__
 
 #include <array>
+#include <deque>
 #include <set>
 
 #include "cpu/base.hh"
@@ -56,7 +59,7 @@ class Gw100MgmtTile : public ClockedObject, public MlTargetIf
     /** 按参数构造各组件 */
     explicit Gw100MgmtTile(const Params &p);
 
-    /** 返回名为 if_name 的端口：pio、wdt_fatal、dev_reset_req、pcie_reset */
+    /** 返回名为 if_name 的端口：pio、ni、wdt_fatal、dev_reset_req、pcie_reset */
     Port &getPort(const std::string &if_name,
                   PortID idx = InvalidPortID) override;
 
@@ -76,6 +79,38 @@ class Gw100MgmtTile : public ClockedObject, public MlTargetIf
     void lowerInterruptPin(int num);
 
   private:
+    /** NI 发起端口：管理 CPU 经它访问 DPA 空间 */
+    class NiPort : public RequestPort
+    {
+      public:
+        /** 构造：tile 为所属的管理 Tile */
+        NiPort(const std::string &name, Gw100MgmtTile &tile)
+            : RequestPort(name), tile(tile) {}
+
+        /** 发出一个请求；被反压时留待重试 */
+        void send(PacketPtr pkt);
+
+      protected:
+        /** 请求的响应：交回管理 Tile */
+        bool recvTimingResp(PacketPtr pkt) override;
+
+        /** 可以重试被反压的请求 */
+        void recvReqRetry() override;
+
+      private:
+        /** 所属的管理 Tile */
+        Gw100MgmtTile &tile;
+        /** 等待重试的请求 */
+        std::deque<PacketPtr> waiting;
+    };
+
+    /** NI 请求携带的状态：CPU 的原始请求 */
+    struct NiState : public Packet::SenderState
+    {
+        /** CPU 的原始请求 */
+        PacketPtr orig = nullptr;
+    };
+
     /** 本地总线上的响应端口 */
     class PioPort : public QueuedResponsePort
     {
@@ -135,6 +170,12 @@ class Gw100MgmtTile : public ClockedObject, public MlTargetIf
 
     /** 管理 CPU 经 ML 访问 HIF 寄存器区（spec-mgmt-tile §5.2） */
     void accessHif(PacketPtr pkt);
+
+    /** 管理 CPU 经 NI 访问 DPA 空间（spec-mgmt-tile §3.3） */
+    void accessNi(PacketPtr pkt);
+
+    /** NI 请求的响应到达 */
+    void niResponse(PacketPtr pkt);
 
     /** 在 when 时刻返回 pkt 的响应 */
     void respond(PacketPtr pkt, Tick when);
@@ -249,6 +290,10 @@ class Gw100MgmtTile : public ClockedObject, public MlTargetIf
     std::array<bool, IrqCount> irqLevel{};
     /** 本地总线端口 */
     PioPort pio;
+    /** NI 发起端口 */
+    NiPort ni;
+    /** DPA 空间的大小：2^addr.device_pa_bits */
+    const uint64_t dpaSize;
 
     /** 正在处理的 ML 请求的结果回调 */
     MlRespond mlRespond;

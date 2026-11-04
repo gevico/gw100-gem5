@@ -95,8 +95,12 @@ PcieParts::PcieParts(const Gw100PciDeviceParams &p, const std::string &name,
       hdmaMirror(hdma),
       intCtrl(status, hostDma, p.msix_table_size, p.hdi_max_contexts),
       msixTable(intCtrl),
-      msixPba(intCtrl)
-{}
+      msixPba(intCtrl),
+      hdiRegs(hdi)
+{
+    for (unsigned p = 0; p < HdiCtrl::Pages; p++)
+        doorbells.push_back(std::make_unique<DoorbellPage>(hdi, p));
+}
 
 /**
  * 功能级复位：把寄存器和窗口恢复为复位值；配置空间由外壳另行复位
@@ -111,6 +115,7 @@ PcieParts::resetRegisters()
     windows.reset();
     hdma.reset();
     intCtrl.reset();
+    hdi.reset();
 }
 
 /**
@@ -188,6 +193,9 @@ Gw100PcieFactory::build(const Gw100PciDeviceParams &p, ClockedObject &owner)
     parts->bar0.addBlock(parts->hdmaMirror);
     parts->bar0.addBlock(parts->msixTable);
     parts->bar0.addBlock(parts->msixPba);
+    parts->bar0.addBlock(parts->hdiRegs);
+    for (auto &db : parts->doorbells)
+        parts->bar0.addBlock(*db);
 
     // HDMA：寄存器经 HIF 区，DMA 错误记入 ERR_STATUS，端口空闲时唤醒
     PcieParts *pp = parts.get();
@@ -201,6 +209,8 @@ Gw100PcieFactory::build(const Gw100PciDeviceParams &p, ClockedObject &owner)
         pp->intCtrl.trySend();
     };
     pp->hif.bindInt(&pp->intCtrl);
+    pp->hif.bindHdi(&pp->hdi, &pp->status);
+    pp->hdi.onHdiWr = [pp] { pp->bootCtrl.hostEvent(1u << 2); };  // HDI_WR
 
     parts->bars[0] = &parts->bar0;
     parts->bars[2] = &parts->bar2;
