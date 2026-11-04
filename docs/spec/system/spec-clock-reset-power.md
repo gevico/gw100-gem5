@@ -349,7 +349,7 @@ CRC 的寄存器位于管理 CPU 本地地址 0x2002_0000 起，共 4 KiB（`spe
 | 0x024 | `CRC_CT_ISO_FAIL` | RO | 0 | [15:0]：NI 隔离失败（§4.5），保持到设备完全复位 |
 | 0x030 | `CRC_PLL_CORE_CFG` | RW | 0 | [0] EN。其余位为倍频和分频系数，格式由所选 PLL 决定（实现定义） |
 | 0x034 | `CRC_PLL_DDR_CFG` | RW | 0 | 同上 |
-| 0x038 | `CRC_PLL_STATUS` | RO | 0 | [0] CORE_LOCK。[1] DDR_LOCK。[2] TS_LOCK。固件初始化时检查 TS_LOCK，为 0 时按固件初始化失败处理（`spec-mgmt-tile` §8.5） |
+| 0x038 | `CRC_PLL_STATUS` | RO | 0 | [0] CORE_LOCK。[1] DDR_LOCK。[2] TS_LOCK。固件初始化时等待 TS_LOCK，以 `mcycle` 计 `clock.pll_lock_timeout`，超时仍为 0 时按固件初始化失败处理（`spec-mgmt-tile` §8.5） |
 | 0x03C | `CRC_CLK_SEL` | RW | 0 | [0] CORE：0 为 `XTAL`，1 为 `PLL_CORE`。[1] MGMT：同上。读回的是切换完成后的实际选择 |
 | 其余 | — | RsvdZ | 0 | |
 
