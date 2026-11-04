@@ -20,6 +20,7 @@ baremetal/
 | `console.h` | `bm_printf`、`bm_snprintf`（printf 子集，见头文件注释） |
 | `test.h` | 入口约定、断言宏 `TEST_ASSERT`、`TEST_EQ`、`TEST_NE`、`TEST_FAIL`、日志宏 `TEST_INFO`、退出码 |
 | `mmio.h` | `bm_read8/16/32/64`、`bm_write8/16/32/64`，自带屏障；`bm_relax()` 在轮询之间执行 `wfe`，等到下一个事件 |
+| `hdi.h` | host 一侧的 HDI 驱动库：控制器的使能与 BUSY 握手、队列、SQE 与 SGL 的构造、提交、按相位位读取 CQE |
 | `pci.h` | ECAM 配置读写、按 ID 查找设备、BAR 探测与分配、使能 Command 位、遍历 capability 链 |
 | `gw100.h` | GW100 的寄存器偏移与位定义（照抄 spec-pcie）；`gw100_open()` 找到设备、分配 BAR0/BAR2 并使能内存解码，`gw100_win_set()` 配置 BAR2 窗口 |
 | `platform.h` | 平台地址常量（VExpress_GEM5_Foundation）；换平台只改这里 |
@@ -29,7 +30,7 @@ baremetal/
 
 - 程序在 EL3 启动，单核运行，**MMU 和 cache 都关闭**。内存按 Device 类型访问，所有访问必须自然对齐，因此编译时加了 `-mstrict-align`，也不使用浮点和 SIMD（`-mgeneral-regs-only`）。
 - 控制台输出走 semihosting，进入 gem5 进程的 stdout，测试运行器把它存进日志。不使用 UART。
-- 设备上电后由管理 Tile 的启动 ROM 推进 STAGE，固件要由 host 加载（`spec-pcie` §6.4）。需要固件在运行的 test（例如访问 BAR2 调试窗口）先调用 `gw100_boot()`：它把嵌入的固件镜像（`firmware/` 生成的 `fw.img`，见 `lib/fw_image.S`）经启动窗口写入设备并等待 `FW_READY`。一次加载约需 60 ms 仿真时间，主要花在 25 MHz 下的 SRAM 清零和运行区清零上；`make test` 的 tick 上限为 500 ms。
+- 设备上电后由管理 Tile 的启动 ROM 推进 STAGE，固件要由 host 加载（`spec-pcie` §6.4）。需要固件在运行的 test（例如访问 BAR2 调试窗口）先调用 `gw100_boot()`：它把嵌入的固件镜像（`firmware/` 生成的 `fw.img`，见 `lib/fw_image.S`）经启动窗口写入设备并等待 `FW_READY`。一次加载约需 170 ms 仿真时间（`fw.img` 约 10 KB），主要花在 25 MHz 下的镜像校验（SHA-256）和 SRAM、运行区的清零上；`make test` 的 tick 上限为 500 ms。
 
 ## test 的约定
 
@@ -67,6 +68,8 @@ baremetal/
 | `hdma_basic` | 加载 HDMA 测试固件：H2D、D2H（连续缓冲与 SGL）数据正确，DEV_ADDR 错误停止后 RESUME，BAR0 镜像的计数与 `CH_ERR`（`spec-host-dma` F1、F4、F7、F9）。固件按约定的 host 地址 `BM_DMA_BUF_BASE` 访问 host 内存 |
 | `msix_intx` | 不加载固件：MSI-X capability、INT_SET 与错误产生的消息、表项 Mask 与 PBA（含屏蔽期间事件被处理）、Function Mask、BME、INTx 与 Interrupt Disable（`spec-pcie` §8、F8） |
 | `int_fw` | 加载中断请求的测试固件：CTX_VECTOR 映射、INT_REQ 的消息、INT_LEVEL 使清零的位重新置位（`spec-pcie` §6.5、§8.4） |
+| `hdi_copy` | HDI 的基本流程（驱动库 `lib/hdi.c`）：控制器使能，管理队列的 NOP、IDENTIFY，创建上下文、设置区间，COPY_H2D（1 MiB + 4 KiB，固件拆成两个描述符）、COPY_D2H（连续缓冲与 SGL），越权、字段非法、操作码非法、SGL 长度不符的错误完成，CQ 回绕，MSI-X 完成中断，销毁上下文（`spec-hdi` F1、F3、F6、F7、F10、F12 的一部分） |
+| `hdi_errors` | HDI 的其余路径：FILL、TIMESTAMP，跨上下文的 SIGNAL_EVENT 与 WAIT_EVENT（满足、超时、无权限），ABORT，中断合并的 THR、TIME 与错误完成，doorbell 写入不存在的上下文与越界、上下文的错误状态、GET_LOG，管理队列 doorbell 越界的致命错误与控制器复位，正常关闭（`spec-hdi` F2、F5、F11 – F14 的一部分） |
 | `dev_reset` | 设备完全复位：BAR 保留、寄存器恢复复位值，100 ms 内回到 STAGE 2，可以重新加载固件（`spec-pcie` §13.1，`spec-clock-reset-power` T3） |
 
 **已知限制**：gem5 的 Simple CPU（timing、atomic）在访存收到错误响应时直接 panic，不会产生 data abort。因此测试无法验证"访问未解码地址会出错"这类行为，例如关闭 Memory Space 后再访问 BAR；这类检查只能验证配置寄存器本身。
