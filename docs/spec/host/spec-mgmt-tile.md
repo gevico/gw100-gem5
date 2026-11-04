@@ -429,7 +429,7 @@ ML 本身（事务、顺序、流控、链路状态与故障、ML 的寄存器�
 | [2] | `HDI_WR` | HIF：host 写了命令协议控制器的可写寄存器 |
 | [3] | `BME_OFF` | HIF：host 清除了 Bus Master Enable |
 | [4] | `PM` | HIF：电源状态改变（D0 ↔ D3hot） |
-| [5] | `HDMA_NOTIFY` | HDMA：带通知标志的描述符完成；通知携带的信息怎样保存和读取见 `spec-host-dma` §11（待决） |
+| [5] | `HDMA_NOTIFY` | HDMA：带通知标志的描述符完成；固件按环的顺序检查描述符的 DW7 得知哪些已完成（`spec-host-dma` §5.3） |
 | [6] | `HDMA_ERR` | HDMA：通道进入错误停止 |
 | [7] | `HOST_ERR` | HIF：其他 host 侧错误 |
 | [15:8] | — | RsvdZ |
