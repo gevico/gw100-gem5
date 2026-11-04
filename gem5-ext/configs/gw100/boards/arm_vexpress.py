@@ -1,13 +1,17 @@
 """
 @file  arm_vexpress.py
-@brief AArch64 host 板卡（VExpress_GEM5_Foundation）
+@brief AArch64 host 板卡（VExpress_GEM5_V2）
 
 默认走 bare-metal：直接加载一个裸机 ELF，不启动 Linux，
 也不生成 DTB 或使用 bootloader。Linux 模式保留，供后续对比。
 CPU、内存和 cache 由 host 预设提供；板卡不认识具体设备，
 只把传进来的 PCI 设备依次挂到 PCIe 总线上。
 
-Foundation 平台没有接 GICv3 ITS，不提供 MSI/MSI-X。
+平台带 GICv3（GICv4）和 ITS（0x2E01_0000），可以把设备的 MSI/MSI-X
+翻译成 LPI 交给 CPU。PCI 的配置空间（ECAM）在 0x3000_0000，内存窗口只有
+一个：总线地址 0 – 0x3FFF_FFFF 对应 CPU 地址 0x4000_0000 – 0x7FFF_FFFF；
+INTx 经 GIC 的 SPI（int_base 100 加设备号模 4）。地址见
+gem5/src/dev/arm/RealView.py 的 VExpress_GEM5_Base、VExpress_GEM5_V2_Base。
 
 bare-metal 时 host 的 MMU 关闭，CPU 以非 cache 方式访问内存；gem5 的非
 cache 访问不会探查 IO cache，设备 DMA 写入、仍留在 IO cache 中的数据
@@ -25,7 +29,7 @@ from m5.objects import (
     ArmDefaultRelease,
     ArmSemihosting,
     Bridge,
-    VExpress_GEM5_Foundation,
+    VExpress_GEM5_V2,
 )
 
 from gem5.components.boards.abstract_board import AbstractBoard
@@ -90,7 +94,7 @@ class ArmVExpressBoard(ArmBoard):
                 l1i_size=host.l1i_size,
                 l2_size=host.l2_size,
             ),
-            platform=VExpress_GEM5_Foundation(),
+            platform=VExpress_GEM5_V2(),
             release=ArmDefaultRelease(),
         )
 

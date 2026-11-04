@@ -5,7 +5,7 @@
 
 第一步验证：
 
-1. ARM 裸机程序能在 `VExpress_GEM5_Foundation` 上执行；
+1. ARM 裸机程序能在 `VExpress_GEM5_V2` 上执行；
 2. PCIe 总线上挂着 `Gw100PciDevice`，它的寄存器层按 `docs/spec/host/spec-pcie.md`
    实现，由裸机测试 `pcie_*` 验证。裸机测试的架构见 `baremetal/README.md`。
 
@@ -84,14 +84,14 @@ gem5-ext/configs/
 
 | 目录 | 决定什么 | 现有 | Makefile 变量 |
 |---|---|---|---|
-| `boards/` | 平台、PCIe、中断、启动方式；用 `features()` 声明提供的能力 | `arm_vexpress`（VExpress_GEM5_Foundation，提供 `pcie`） | `BOARD` |
+| `boards/` | 平台、PCIe、中断、启动方式；用 `features()` 声明提供的能力 | `arm_vexpress`（VExpress_GEM5_V2，GICv3 带 ITS，提供 `pcie`） | `BOARD` |
 | `hosts/` | CPU 模型、核数、频率、内存、cache | `timing`（默认）、`o3`、`atomic` | `HOST` |
 | `devices/` | 设备参数和 SimObject 的创建；用 `requires` 声明需要的能力 | `gw100` | `DEVICE` |
 
 - 板卡不认识具体设备，只把入口脚本传进来的 PCI 设备挂到总线上；设备号由
   VExpress 平台从 1 起分配。
-- 设备 `requires` 的能力板卡不提供时，仿真开始前就报错。例如以后设备需要
-  MSI-X，而 Foundation 平台没有 ITS。
+- 设备 `requires` 的能力板卡不提供时，仿真开始前就报错。例如以后接入
+  一块没有 ITS 的平台，而设备需要把 MSI-X 交给 CPU。
 - 加新的 host 或设备变体，只在 `hosts/` 或 `devices/` 里登记一项。
 
 `o3` 比 `timing` 慢一个数量级，只在测 host 侧软件开销或检查驱动内存序时用。

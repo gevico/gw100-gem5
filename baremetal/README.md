@@ -23,7 +23,7 @@ baremetal/
 | `hdi.h` | host 一侧的 HDI 驱动库：控制器的使能与 BUSY 握手、队列、SQE 与 SGL 的构造、提交、按相位位读取 CQE |
 | `pci.h` | ECAM 配置读写、按 ID 查找设备、BAR 探测与分配、使能 Command 位、遍历 capability 链 |
 | `gw100.h` | GW100 的寄存器偏移与位定义（照抄 spec-pcie）；`gw100_open()` 找到设备、分配 BAR0/BAR2 并使能内存解码，`gw100_win_set()` 配置 BAR2 窗口 |
-| `platform.h` | 平台地址常量（VExpress_GEM5_Foundation）；换平台只改这里 |
+| `platform.h` | 平台地址常量（VExpress_GEM5_V2：ECAM、PCI 内存窗口、GICv3 与 ITS）；换平台只改这里 |
 | `string.h` | `memcpy`、`memmove`、`memset`、`memcmp`、`strlen`、`strcmp`（编译器也会生成对它们的调用） |
 
 ## 运行环境

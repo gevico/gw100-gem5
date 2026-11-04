@@ -4,8 +4,9 @@
  *
  * 不加载固件，用 host 的 INT_SET 和 BAR0 的错误制造中断源。MSI-X 消息
  * 是设备发出的内存写，表项的地址指向 host 内存 BM_DMA_BUF_BASE 起的一块
- * 区域，测试从那里读回消息（Foundation 平台没有 ITS）。INTx 从 GIC
- * distributor 的 ISPENDR 观察（spec-pcie §8，F8）。
+ * 区域，测试从那里读回消息，检查设备一侧的语义（裸机库还没有配置
+ * ITS，CPU 不接收这些消息）。INTx 从 GIC distributor 的 ISPENDR 观察
+ * （spec-pcie §8，F8）。
  *
  * @see spec-pcie
  */
@@ -24,8 +25,6 @@
 #define TABLE           0x2000
 /** PBA */
 #define PBA             0x3000
-/** GICv3 distributor */
-#define GICD            0x2F000000UL
 /** PCI INTx 的 SPI 基号（GenericArmPciHost int_base，按设备号取模 4） */
 #define PCI_SPI_BASE    100
 /** 等待消息的上限：100 us */
@@ -97,7 +96,7 @@ static int
 inta_pending(void)
 {
     unsigned spi = PCI_SPI_BASE + g.bdf.dev % 4;
-    uint32_t v = bm_read32(GICD + 0x200 + 4 * (spi / 32));
+    uint32_t v = bm_read32(BM_GICD_BASE + 0x200 + 4 * (spi / 32));
     return (v >> (spi % 32)) & 1;
 }
 
