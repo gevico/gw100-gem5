@@ -18,8 +18,9 @@ READELF ?= $(CROSS_COMPILE)readelf
 BUILD_DIR ?= ../build/gw100-baremetal
 # 嵌入裸机程序的管理 Tile 固件镜像（make firmware-build 的输出）
 FW_IMAGE ?= ../build/gw100-firmware/fw.img
-# 看门狗的测试固件镜像
+# 看门狗、HDMA 的测试固件镜像
 FW_WDT_IMAGE ?= $(dir $(FW_IMAGE))fw_wdt.img
+FW_HDMA_IMAGE ?= $(dir $(FW_IMAGE))fw_hdma.img
 LDSCRIPT := linker.ld
 
 # 一个 test 是 tests/<名字>.c，或者多文件的 tests/<名字>/ 目录
@@ -34,7 +35,8 @@ CFLAGS := -std=c11 -O2 -g -Wall -Wextra -Werror \
           -ffreestanding -fno-tree-loop-distribute-patterns \
           -mgeneral-regs-only -mstrict-align -Iinclude -MMD -MP
 ASFLAGS := -g -Iinclude -DGW100_FW_IMAGE='"$(abspath $(FW_IMAGE))"' \
-           -DGW100_FW_WDT_IMAGE='"$(abspath $(FW_WDT_IMAGE))"'
+           -DGW100_FW_WDT_IMAGE='"$(abspath $(FW_WDT_IMAGE))"' \
+           -DGW100_FW_HDMA_IMAGE='"$(abspath $(FW_HDMA_IMAGE))"'
 LDFLAGS := -nostdlib -nostartfiles -static -Wl,-T,$(LDSCRIPT) -Wl,--no-warn-rwx-segments
 
 LIB_SRCS := $(wildcard lib/*.c lib/*.S)
@@ -58,7 +60,7 @@ $(BUILD_DIR)/%.S.o: %.S
 	$(CC) $(ASFLAGS) -c -o $@ $<
 
 # 固件镜像变化时重新嵌入
-$(BUILD_DIR)/lib/fw_image.S.o: $(FW_IMAGE) $(FW_WDT_IMAGE)
+$(BUILD_DIR)/lib/fw_image.S.o: $(FW_IMAGE) $(FW_WDT_IMAGE) $(FW_HDMA_IMAGE)
 
 # 每个 test 的源文件、目标文件和链接规则
 define TEST_RULES

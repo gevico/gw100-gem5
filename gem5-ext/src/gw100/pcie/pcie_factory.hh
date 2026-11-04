@@ -18,15 +18,19 @@
 
 #include "params/Gw100PciDevice.hh"
 #include "sim/serialize.hh"
+#include "sim/clocked_object.hh"
 #include "sim/sim_object.hh"
 #include "src/gw100/pcie/bar0/bar0_handler.hh"
 #include "src/gw100/pcie/bar0/boot_regs.hh"
 #include "src/gw100/pcie/bar0/global_regs.hh"
+#include "src/gw100/pcie/bar0/hdma_mirror.hh"
 #include "src/gw100/pcie/bar0/window_regs.hh"
 #include "src/gw100/pcie/bar2/bar2_handler.hh"
 #include "src/gw100/pcie/bar2/devmem_backend.hh"
 #include "src/gw100/pcie/boot/boot_ctrl.hh"
 #include "src/gw100/pcie/config/config_space.hh"
+#include "src/gw100/pcie/hdma/hdma_engine.hh"
+#include "src/gw100/pcie/hdma/hdma_glue.hh"
 #include "src/gw100/pcie/hif/hif_regs.hh"
 #include "src/gw100/pcie/shim/reset_shim.hh"
 #include "src/gw100/pcie/status/status_unit.hh"
@@ -46,7 +50,8 @@ struct PcieParts
      * Gw100PcieFactory 完成
      */
     PcieParts(const Gw100PciDeviceParams &p, const std::string &name,
-              RequestorID devmem_id, EventManager &em);
+              RequestorID devmem_id, RequestorID dma_id,
+              ClockedObject &owner);
 
     /**
      * 功能级复位：把寄存器和窗口恢复为复位值；配置空间由外壳另行复位
@@ -89,6 +94,16 @@ struct PcieParts
     Bar2Handler bar2;
     /** 设备完全复位期间响应 BAR 访问的 reset shim */
     ResetShim shim;
+    /** HDMA 的时钟（clk_pcie） */
+    HdmaClock hdmaClock;
+    /** HDMA 访问 host 内存的 dma 端口 */
+    HostDmaPort hostDma;
+    /** HDMA 在 ML HIF 侧的客户端 */
+    MlHdmaClient hdmaMl;
+    /** Host DMA 引擎 */
+    HdmaEngine hdma;
+    /** BAR0 的 HDMA 寄存器只读镜像 */
+    HdmaMirror hdmaMirror;
     /** 按 BAR 号索引的处理者；没有处理者的 BAR 为 nullptr */
     std::array<BarHandler *, 6> bars{};
 };
@@ -102,7 +117,7 @@ class Gw100PcieFactory
      * owner 是所属设备，用于取名字和注册请求者 ID
      */
     static std::unique_ptr<PcieParts> build(const Gw100PciDeviceParams &p,
-                                            SimObject &owner);
+                                            ClockedObject &owner);
 };
 
 } // namespace gw100

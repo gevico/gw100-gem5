@@ -9,6 +9,13 @@ CPU、内存和 cache 由 host 预设提供；板卡不认识具体设备，
 
 Foundation 平台没有接 GICv3 ITS，不提供 MSI/MSI-X。
 
+bare-metal 时 host 的 MMU 关闭，CPU 以非 cache 方式访问内存；gem5 的非
+cache 访问不会探查 IO cache，设备 DMA 写入、仍留在 IO cache 中的数据
+对 CPU 不可见。因此 bare-metal 时不建 IO cache，I/O 总线经一个只转发
+内存地址范围的 bridge 接一致性内存总线（与 gem5 无 cache 时的 DMA
+bridge 相同，延迟 50 ns），DMA 写入直接进入内存系统。
+Linux 模式保留 IO cache，此时 CPU 的 cache 访问会探查它。
+
 @see spec-arch, spec-pcie
 """
 
@@ -17,6 +24,7 @@ from pathlib import Path
 from m5.objects import (
     ArmDefaultRelease,
     ArmSemihosting,
+    Bridge,
     VExpress_GEM5_Foundation,
 )
 
@@ -32,6 +40,16 @@ from gem5.isas import ISA
 
 from ..hosts import HostConfig
 from ..workload import ArmBaremetal
+
+
+class _BaremetalCacheHierarchy(PrivateL1PrivateL2CacheHierarchy):
+    """bare-metal 用的 cache 层次：不建 IO cache（见文件头）。"""
+
+    def _setup_io_cache(self, board: AbstractBoard) -> None:
+        """I/O 总线经 DMA bridge 接一致性内存总线。"""
+        self.dmabridge = Bridge(delay="50ns", ranges=board.mem_ranges)
+        self.dmabridge.cpu_side_port = board.get_mem_side_coherent_io_port()
+        self.dmabridge.mem_side_port = self.membus.cpu_side_ports
 
 
 class ArmVExpressBoard(ArmBoard):
@@ -64,7 +82,10 @@ class ArmVExpressBoard(ArmBoard):
                 num_cores=num_cores,
             ),
             memory=DualChannelDDR4_2400(size=host.mem_size),
-            cache_hierarchy=PrivateL1PrivateL2CacheHierarchy(
+            cache_hierarchy=(
+                _BaremetalCacheHierarchy if bare_metal
+                else PrivateL1PrivateL2CacheHierarchy
+            )(
                 l1d_size=host.l1d_size,
                 l1i_size=host.l1i_size,
                 l2_size=host.l2_size,

@@ -66,7 +66,41 @@ class Gw100PciDevice(PciEndpoint):
     link_speed = Param.UInt8(4, "当前链路速率：1 = Gen1 … 4 = Gen4")
     link_width = Param.UInt8(4, "当前链路宽度")
 
-    mem_port = RequestPort("接设备内存，BAR2 窗口经它访问")
+    mem_port = RequestPort("接设备内存，BAR2 窗口和 HDMA 经它访问")
+    devmem_max_outstanding = Param.Unsigned(
+        32,
+        "HDMA 对设备内存的在途请求上限：NoC 端口的缓冲，待 spec-noc 确定"
+        "（推算）",
+    )
+
+    # Host DMA（spec-host-dma §12）
+    hdma_max_ring_log2 = Param.Unsigned(8, "log2(hdma.max_ring_entries)")
+    hdma_max_desc_bytes = Param.MemorySize("256MiB", "hdma.max_desc_bytes")
+    hdma_sgl_segment_max = Param.Unsigned(
+        4096, "hdma.sgl_segment_max_bytes"
+    )
+    hdma_sgl_max_segments = Param.Unsigned(512, "hdma.sgl_max_segments")
+    hdma_max_read_request = Param.Unsigned(
+        512, "hdma.max_read_request（pcie.dma_max_read_request）"
+    )
+    hdma_max_outstanding_reads = Param.Unsigned(
+        64, "hdma.max_outstanding_reads"
+    )
+    hdma_completion_buffer = Param.MemorySize(
+        "32KiB", "hdma.completion_buffer"
+    )
+    hdma_d2h_buffer = Param.MemorySize("16KiB", "hdma.d2h_buffer")
+    pcie_cpl_timeout = Param.Latency(
+        "50ms", "host 读请求的完成超时：PCIe 默认范围 50 us – 50 ms 的上限"
+    )
+    pcie_stale_tag_quarantine = Param.Latency(
+        "250ms", "pcie.stale_tag_quarantine"
+    )
+    pcie_tx_credits = Param.Unsigned(
+        16,
+        "在途写请求（TLP）的上限：replay buffer 4 KiB ÷ 256 B（推算，"
+        "spec-pcie §10.4）",
+    )
 
     fw_load_max = Param.MemorySize(
         "1MiB", "启动窗口与装载区的大小（mgmt.fw_load_max）"

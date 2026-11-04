@@ -20,10 +20,12 @@ LDFLAGS := $(ARCH) -nostdlib -nostartfiles -mno-relax -Wl,--gc-sections
 
 ROM_SRCS := rom/crt0.S rom/rom.c common/sha256.c common/string.c \
 	common/gw100_flr.c
-FW_SRCS := fw/crt0.S fw/fw.c common/string.c common/gw100_flr.c
+FW_SRCS := fw/crt0.S fw/fw.c common/string.c common/gw100_flr.c \
+	common/gw100_hdma.c
 
 .PHONY: all clean
-all: $(BUILD_DIR)/rom.elf $(BUILD_DIR)/fw.img $(BUILD_DIR)/fw_wdt.img
+all: $(BUILD_DIR)/rom.elf $(BUILD_DIR)/fw.img $(BUILD_DIR)/fw_wdt.img \
+	$(BUILD_DIR)/fw_hdma.img
 
 $(BUILD_DIR)/rom.elf: $(ROM_SRCS) rom/rom.ld $(wildcard common/*.h)
 	@mkdir -p $(@D)
@@ -42,6 +44,15 @@ $(BUILD_DIR)/fw_wdt.elf: $(FW_SRCS) fw/fw.ld $(wildcard common/*.h)
 	@mkdir -p $(@D)
 	$(CC) $(CFLAGS) -DGW_FW_WDT_TEST $(LDFLAGS) -Wl,--no-warn-rwx-segments \
 		-T fw/fw.ld $(FW_SRCS) -o $@
+	$(OBJDUMP) -d $@ > $(@:.elf=.dis)
+
+# HDMA 的测试固件：按约定的 host 地址做传输（见 fw/hdma_test.c）
+$(BUILD_DIR)/fw_hdma.elf: $(FW_SRCS) fw/hdma_test.c fw/fw.ld \
+		$(wildcard common/*.h)
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) -DGW_FW_HDMA_TEST $(LDFLAGS) \
+		-Wl,--no-warn-rwx-segments -T fw/fw.ld $(FW_SRCS) fw/hdma_test.c \
+		-o $@
 	$(OBJDUMP) -d $@ > $(@:.elf=.dis)
 
 $(BUILD_DIR)/%.img: $(BUILD_DIR)/%.elf ../tools/fwpack.py
