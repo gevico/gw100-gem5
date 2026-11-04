@@ -88,6 +88,10 @@
 extern const uint8_t gw100_fw_image[];
 /** 嵌入的固件镜像的结束 */
 extern const uint8_t gw100_fw_image_end[];
+/** 嵌入的看门狗测试固件镜像的起始（lib/fw_image.S） */
+extern const uint8_t gw100_fw_wdt_image[];
+/** 嵌入的看门狗测试固件镜像的末尾 */
+extern const uint8_t gw100_fw_wdt_image_end[];
 
 /* 保留的块：本阶段尚未实现（MSI-X、HDI、DMA 镜像） */
 #define GW100_RSVD_BLOCK_HDI    0x5000

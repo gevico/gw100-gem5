@@ -9,6 +9,8 @@
  * - BAR0：Bar0Handler 与 GlobalRegs、WindowRegs、BootRegs；
  * - BAR2：Bar2Handler、WindowTable、DevmemBackend；
  * - ERR/INT 状态：StatusUnit。
+ * 外壳还接收看门狗第二级超时的专用信号 wdt_fatal（spec-mgmt-tile
+ * §7.4），经两级同步器后置位 DEV_FATAL。
  *
  * @see spec-pcie
  */
@@ -19,6 +21,7 @@
 #include <cstdint>
 #include <memory>
 
+#include "dev/intpin.hh"
 #include "dev/pci/device.hh"
 #include "params/Gw100PciDevice.hh"
 #include "src/gw100/ml/mgmt_link.hh"
@@ -39,8 +42,8 @@ class Gw100PciDevice : public PciEndpoint
     explicit Gw100PciDevice(const Params &p);
 
     /**
-     * 返回名为 if_name 的端口：mem_port 是设备内存端口，其余交给
-     * PciEndpoint
+     * 返回名为 if_name 的端口：mem_port 是设备内存端口，wdt_fatal 是
+     * 看门狗第二级超时的信号，其余交给 PciEndpoint
      */
     Port &getPort(const std::string &if_name,
                   PortID idx = InvalidPortID) override;
@@ -56,6 +59,12 @@ class Gw100PciDevice : public PciEndpoint
 
     /** 从 checkpoint 恢复 serialize() 保存的状态 */
     void unserialize(CheckpointIn &cp) override;
+
+    /** wdt_fatal 信号置位：经两级同步器后置位 DEV_FATAL */
+    void raiseInterruptPin(int num);
+
+    /** wdt_fatal 信号撤销：它保持到复位，不会撤销 */
+    void lowerInterruptPin(int num);
 
   protected:
     /** BAR 读访问的入口：交给该 BAR 的处理者 */
@@ -98,6 +107,10 @@ class Gw100PciDevice : public PciEndpoint
     Gw100MgmtLink *link;
     /** ML 的 HIF 侧适配器 */
     MlEndpoint *ml = nullptr;
+    /** 看门狗第二级超时的专用信号（来自管理 Tile） */
+    IntSinkPin<Gw100PciDevice> wdtFatalPin;
+    /** 信号经两级同步器到达 clk_pcie 域时置位 DEV_FATAL 的事件 */
+    EventFunctionWrapper wdtFatalEvent;
 };
 
 } // namespace gw100

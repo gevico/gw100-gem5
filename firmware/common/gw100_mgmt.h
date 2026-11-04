@@ -29,6 +29,30 @@
 
 /** CLINT：mtime（64 位，只读） */
 #define GW_CLINT_MTIME      0x2000BFF8UL
+/** 看门狗寄存器的起始 */
+#define GW_WDT_BASE         0x2000C000UL
+/** WDT_CTRL：[0] EN，[1] LOCK */
+#define GW_WDT_CTRL         (GW_WDT_BASE + 0x00)
+/** WDT_LOAD（64 位）：超时周期，以 mtime 计 */
+#define GW_WDT_LOAD         (GW_WDT_BASE + 0x08)
+/** WDT_KICK（只写） */
+#define GW_WDT_KICK         (GW_WDT_BASE + 0x10)
+/** WDT_STATUS：[0] STAGE1，[1] STAGE2 */
+#define GW_WDT_STATUS       (GW_WDT_BASE + 0x14)
+/** WDT_CTRL.EN */
+#define GW_WDT_EN           (1u << 0)
+/** WDT_CTRL.LOCK */
+#define GW_WDT_LOCK         (1u << 1)
+/** WDT_STATUS.STAGE1 */
+#define GW_WDT_STAGE1       (1u << 0)
+/** 合法喂狗写入 WDT_KICK 的值 */
+#define GW_WDT_KICK_MAGIC   0x5A5AA5A5u
+
+/** PLIC 的中断挂起位（源 0 – 31） */
+#define GW_PLIC_PENDING     0x2C001000UL
+/** PLIC 源：看门狗第一级超时（spec-mgmt-tile §7.2） */
+#define GW_IRQ_WDT          7
+
 /** ML 寄存器的起始 ML_BASE */
 #define GW_ML_BASE          0x2000D000UL
 /** ML_STATUS：[0] UP，[1] FAILED */
@@ -68,6 +92,11 @@
 #define GW_PLL_TS_LOCK      (1u << 2)
 /** clock.pll_lock_timeout = 1 ms，以 mtime（100 MHz）计 */
 #define GW_PLL_LOCK_TIMEOUT 100000UL
+/**
+ * clock.pll_lock_timeout = 1 ms，以 XTAL（25 MHz）下的 mcycle 计；用于
+ * 等待 PLL_TS，此时 mtime 还不一定在走（spec-mgmt-tile §8.5）
+ */
+#define GW_TS_LOCK_CYCLES   25000UL
 
 /** HIF 寄存器区的起始（经 ML 访问，只支持 32 位） */
 #define GW_HIF_BASE         0x30000000UL
@@ -139,6 +168,22 @@ static inline uint64_t
 gw_read64(uintptr_t a)
 {
     return *(volatile uint64_t *)a;
+}
+
+/** 写本地地址 a 处的 64 位寄存器 */
+static inline void
+gw_write64(uintptr_t a, uint64_t v)
+{
+    *(volatile uint64_t *)a = v;
+}
+
+/** 读 mcycle：clk_mgmt 的周期数 */
+static inline uint64_t
+gw_mcycle(void)
+{
+    uint64_t v;
+    __asm__ volatile("csrr %0, mcycle" : "=r"(v));
+    return v;
 }
 
 #endif /* GW100_MGMT_H */

@@ -98,7 +98,16 @@ class StatusUnit : public Serializable
     /** 写 INT_MASK */
     void setIntMask(uint32_t v) { _intMask = v; }
 
-    /** 把全部状态恢复为复位值 */
+    /**
+     * DEV_STATUS.DEV_FATAL 的电平：INT_STATUS.ERROR 的硬件源之一
+     * （spec-pcie §8.4）。它由 BootCtrl 保持，不属于本类的寄存器
+     */
+    void setFatal(bool f);
+
+    /**
+     * 把全部寄存器恢复为复位值；DEV_FATAL 的电平不变，仍成立时
+     * INT_STATUS.ERROR 随即重新置位
+     */
     void reset();
 
     /** 保存全部状态 */
@@ -117,6 +126,8 @@ class StatusUnit : public Serializable
     uint32_t _intStatus = 0;
     /** INT_MASK */
     uint32_t _intMask = 0xFFFFFFFF;
+    /** DEV_STATUS.DEV_FATAL 的电平 */
+    bool _fatal = false;
     /** ERR_STATUS */
     uint32_t _errStatus = 0;
     /** ERR_ADDR：第一次错误的 BAR 偏移 */

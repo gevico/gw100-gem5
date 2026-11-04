@@ -52,7 +52,7 @@ GlobalRegs::GlobalRegs(StatusUnit &status, const BootCtrl &boot,
     regDevCaps.reader([this](Reg &) { return devCaps; }).readonly();
     regDevStatus.reader([this](Reg &) -> uint32_t {
         return (linkSpeed & 0xF) | (uint32_t(linkWidth & 0x1F) << 4) |
-               (this->boot.devFatal ? DevStatusFatal : 0) |
+               (this->boot.devFatal() ? DevStatusFatal : 0) |
                (this->boot.debugWin ? DevStatusDebugWin : 0);
     }).readonly();
     regScratch.reader([this](Reg &) { return scratch; })

@@ -20,7 +20,10 @@ namespace gw100
 /** 按参数构造；全部组件由 Gw100PcieFactory 组装 */
 Gw100PciDevice::Gw100PciDevice(const Params &p)
     : PciEndpoint(p), parts(Gw100PcieFactory::build(p, *this)),
-      link(p.mgmt_link)
+      link(p.mgmt_link),
+      wdtFatalPin(name() + ".wdt_fatal", 0, this),
+      wdtFatalEvent([this] { parts->bootCtrl.setDevFatal(); },
+                    name() + ".wdtFatal")
 {
     parts->hif.pciState = [this] { return pciState(); };
 }
@@ -68,15 +71,33 @@ Gw100PciDevice::pciState()
 }
 
 /**
- * 返回名为 if_name 的端口：mem_port 是设备内存端口，其余交给
- * PciEndpoint
+ * 返回名为 if_name 的端口：mem_port 是设备内存端口，wdt_fatal 是
+ * 看门狗第二级超时的信号，其余交给 PciEndpoint
  */
 Port &
 Gw100PciDevice::getPort(const std::string &if_name, PortID idx)
 {
     if (if_name == "mem_port")
         return parts->devmem.port();
+    if (if_name == "wdt_fatal")
+        return wdtFatalPin;
     return PciEndpoint::getPort(if_name, idx);
+}
+
+/** wdt_fatal 信号置位：经两级同步器后置位 DEV_FATAL */
+void
+Gw100PciDevice::raiseInterruptPin(int num)
+{
+    (void)num;
+    if (!wdtFatalEvent.scheduled())
+        schedule(wdtFatalEvent, clockEdge(Cycles(2)));
+}
+
+/** wdt_fatal 信号撤销：它保持到复位，不会撤销 */
+void
+Gw100PciDevice::lowerInterruptPin(int num)
+{
+    (void)num;
 }
 
 /** 把一次 BAR 访问交给对应 BAR 的处理者，并完成响应 */
