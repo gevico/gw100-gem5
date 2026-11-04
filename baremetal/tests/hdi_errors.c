@@ -11,7 +11,8 @@
  *   上下文进入错误状态、HDI_CTX_ERR 使 ERROR 中断保持，销毁后恢复；
  *   GET_LOG 记录了错误（§6.6、§11.2）；
  * - 管理队列的 doorbell 越界：CFS = 1、HDI_FATAL = 1，控制器复位后
- *   重新使能（§5.4）；
+ *   重新使能（§5.4）；HDI_AQA 非法时初始化失败（HDI_FATAL = 5），复位、
+ *   改正参数后重新使能（§5.2）；
  * - 正常关闭：等待中的 WAIT_EVENT 以 ABORTED_SHUTDOWN 完成，SHST = 10
  *   （§5.3）。
  *
@@ -345,6 +346,18 @@ test_main(void)
     bm_write32(r + GW100_INT_STATUS, GW100_INT_ERROR | GW100_INT_ADMIN |
                                      (1u << 16));
     TEST_EQ(bm_read32(r + GW100_INT_STATUS) & 0x10003u, 0);
+    TEST_INFO("HDI_AQA 非法：初始化失败，复位后改正参数\n");
+    hdi_write(&h, HDI_AQA, 0x00070000u);        /* ASQS = 0 */
+    int64_t st = hdi_cc_write(&h, HDI_CC_EN);
+    TEST_EQ(st, HDI_CSTS_CFS);                  /* RDY = 0，BUSY 已清零 */
+    TEST_EQ(hdi_read(&h, HDI_FATAL), 5);
+    TEST_ASSERT(bm_read32(r + GW100_INT_STATUS) & GW100_INT_ERROR);
+    hdi_write(&h, HDI_AQA, 0x00070007u);        /* EN = 1 时写入被忽略 */
+    TEST_EQ(hdi_read(&h, HDI_AQA), 0x00070000u);
+    TEST_EQ(hdi_cc_write(&h, 0), 0);
+    TEST_EQ(hdi_read(&h, HDI_FATAL), 0);
+    bm_write32(r + GW100_INT_STATUS, GW100_INT_ERROR);
+    TEST_EQ(bm_read32(r + GW100_INT_STATUS) & GW100_INT_ERROR, 0);
     TEST_EQ(hdi_enable(&h, &g, ADM, 8, 8), 0);
     hdi_sqe(s, HDI_OP_DESTROY_CTX);             /* 复位销毁了上下文 */
     TEST_EQ(hdi_cmd(&h, &h.admin, s, &e), HDI_SC_INVALID_CONTEXT);
@@ -354,7 +367,7 @@ test_main(void)
     wait_sqe(s, EVT, 1, 0);
     wcid = hdi_submit(&h, &c0, s);
     delay(START);  /* 尚未读取的命令在关闭时不执行，不写完成记录 */
-    int64_t st = hdi_cc_write(&h, HDI_CC_EN | HDI_CC_SHN(1));
+    st = hdi_cc_write(&h, HDI_CC_EN | HDI_CC_SHN(1));
     TEST_ASSERT(st >= 0 && HDI_CSTS_SHST(st) >= 1);
     w0 = gw100_timestamp(&g);
     while (HDI_CSTS_SHST(hdi_read(&h, HDI_CSTS)) != 2) {

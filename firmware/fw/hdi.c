@@ -162,6 +162,8 @@ enum {
     FATAL_FW = 3,
     /** 设备内部不可恢复的硬件错误 */
     FATAL_HW = 4,
+    /** 初始化参数非法（HDI_AQA 中 ASQS 或 ACQS 为 0） */
+    FATAL_INIT = 5,
 };
 
 /** 命令状态：SCT << 8 | SC（spec-hdi §7.3） */
@@ -760,7 +762,8 @@ ctrl_reset(void)
 
 /**
  * 控制器初始化（§5.2）：按 HDI_AQA、HDI_ASQ、HDI_ACQ 建立管理队列，
- * 指针置 0，相位从 1 开始。队列大小非法时初始化失败（CFS = 1）
+ * 指针置 0，相位从 1 开始。队列大小非法时初始化失败（HDI_FATAL = 5，
+ * CFS = 1）
  */
 static void
 ctrl_init(void)
@@ -769,9 +772,7 @@ ctrl_init(void)
     unsigned sqs = aqa & 0xFFF;
     unsigned cqs = (aqa >> 16) & 0xFFF;
     if (sqs == 0 || cqs == 0) {
-        ctrl = CTRL_FATAL;
-        csts |= CSTS_CFS;
-        csts_write();
+        ctrl_fatal(FATAL_INIT);
         return;
     }
     drop_all();

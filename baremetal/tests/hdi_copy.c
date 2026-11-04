@@ -9,6 +9,8 @@
  * 缓冲和 SGL 的三个不连续页；检查越权、字段非法、操作码非法、SGL 长度
  * 不符的错误完成；最后销毁上下文。每条完成记录检查 CID、SQHD 和相位，
  * 并检查 MSI-X 消息与 INT_STATUS（F1、F3、F6、F7、F10、F12 的一部分）。
+ * 另外打印上下文 0 上 NOP 的往返时间，作为 spec-hdi §14 中测量的出处，
+ * 不作断言。
  *
  * @see spec-hdi
  */
@@ -186,6 +188,15 @@ test_main(void)
     s[14] = (uint32_t)RGN_SIZE;
     TEST_EQ(hdi_cmd(&h, &h.admin, s, &e), HDI_SC_SUCCESS);
 
+    TEST_INFO("上下文 0 的 NOP 往返（从写 SQ_TAIL 之前到读到 CQE）\n");
+    for (unsigned i = 0; i < 4; i++) {
+        hdi_sqe(s, HDI_OP_CTX_NOP);
+        uint64_t t0 = gw100_timestamp(&g);
+        TEST_EQ(hdi_cmd(&h, &c0, s, &e), HDI_SC_SUCCESS);
+        TEST_INFO("  第 %u 条：%llu ns\n", i + 1,
+                  (unsigned long long)((gw100_timestamp(&g) - t0) * 10));
+    }
+
     TEST_INFO("COPY_H2D：1 MiB + 4 KiB 的连续缓冲\n");
     for (uint32_t i = 0; i < LEN / 4; i += 2)
         *(volatile uint64_t *)(SRC + 4 * i) =
@@ -193,7 +204,7 @@ test_main(void)
     bm_dsb();
     *msg(2) = 0;
     TEST_EQ(copy(HDI_OP_COPY_H2D, SRC, DPA_BUF, LEN, &e), HDI_SC_SUCCESS);
-    TEST_EQ(e.sqhd, 1);
+    TEST_EQ(e.sqhd, 5);
     TEST_ASSERT(wait_msg(2));
     TEST_ASSERT(bm_read32(r + GW100_INT_STATUS) & INT_CTX0);
     /* 窗口 0、1 指向 DPA 0、4 MiB（WIN_BASE 须 4 MiB 对齐）：BAR2 偏移
@@ -260,8 +271,8 @@ test_main(void)
     hdi_sqe(s, HDI_OP_CTX_NOP);
     s[3] = 1;                                   /* RsvdZ 不为 0 */
     TEST_EQ(hdi_cmd(&h, &c0, s, &e), HDI_SC_INVALID_FIELD);
-    /* 上下文 0 的 CQ 有 4 个条目，8 条完成记录使它回绕两次 */
-    TEST_EQ(c0.phase, 1);
+    /* 上下文 0 的 CQ 有 4 个条目，12 条完成记录使它回绕三次 */
+    TEST_EQ(c0.phase, 0);
     TEST_EQ(c0.cq_head, 0);
 
     TEST_INFO("销毁上下文 0\n");
