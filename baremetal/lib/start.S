@@ -2,9 +2,9 @@
  * @file  start.S
  * @brief 裸机测试的启动代码
  *
- * 设置栈和异常向量、清零 .bss，调用 test_main，再把返回值交给
- * bm_test_exit 结束仿真。只让 0 号核运行，其余核停在 wfe。
- * 不打开 MMU 和 cache。
+ * 设置栈和异常向量、清零 .bss，打开通用定时器的事件流（供 bm_relax
+ * 的 wfe 定期醒来），调用 test_main，再把返回值交给 bm_test_exit 结束
+ * 仿真。只让 0 号核运行，其余核停在 wfe。不打开 MMU 和 cache。
  */
 
     .section .text.boot, "ax"
@@ -40,6 +40,12 @@ _start:
     str     xzr, [x0], #8
     b       4b
 5:
+    /* 事件流：虚拟计数器的第 9 位由 0 变 1 时发一次事件，即每 1024 个
+     * 计数周期（100 MHz 下约 10 us）一次（CNTKCTL_EL1.EVNTI = 9，
+     * EVNTEN = 1） */
+    mov     x0, #((9 << 4) | (1 << 2))
+    msr     cntkctl_el1, x0
+    isb
     bl      test_main
     bl      bm_test_exit
 

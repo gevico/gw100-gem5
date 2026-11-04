@@ -75,6 +75,7 @@ gw100_load_firmware(const gw100_t *g, const uint8_t *img, uint32_t size)
             break;
         if (gw100_timestamp(g) - t0 > GW100_TS_HZ)
             return -2;
+        bm_relax();
     }
     /* 第 2、3 步：镜像长度已是 8 的倍数（tools/fwpack.py），64 位写入 */
     if (size > bm_read32(g->bar0 + GW100_FW_LOAD_MAX) || size % 8)
@@ -101,6 +102,7 @@ gw100_load_firmware(const gw100_t *g, const uint8_t *img, uint32_t size)
             return -1;
         if (gw100_timestamp(g) - t0 > 5 * GW100_TS_HZ)
             return -2;
+        bm_relax();
     }
 }
 
