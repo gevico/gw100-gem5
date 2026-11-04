@@ -58,6 +58,9 @@ class MgmtWdt
     /** 第二级是否已经超时 */
     bool stage2() const { return status & Stage2; }
 
+    /** 复位：寄存器和状态恢复复位值 */
+    void reset() { *this = MgmtWdt(); }
+
   private:
     /** WDT_CTRL.EN */
     static constexpr uint32_t CtrlEn = 1u << 0;

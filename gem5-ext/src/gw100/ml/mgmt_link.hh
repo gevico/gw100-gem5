@@ -80,6 +80,12 @@ class Gw100MgmtLink : public SimObject
     /** 所属对象在 startup() 中调用：撤销 side 这一端的复位 */
     void release(Side side);
 
+    /**
+     * 复位 side 这一端（设备完全复位时两端都复位，spec-mgmt-link
+     * §7.6）：在途事务丢弃，不再回调；由 release() 撤销
+     */
+    void reset(Side side);
+
   private:
     /** HIF → 管理 Tile 请求通道 */
     MlEndpoint::ReqFifo h2mReq;

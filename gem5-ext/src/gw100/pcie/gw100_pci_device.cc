@@ -23,9 +23,13 @@ Gw100PciDevice::Gw100PciDevice(const Params &p)
       link(p.mgmt_link),
       wdtFatalPin(name() + ".wdt_fatal", 0, this),
       wdtFatalEvent([this] { parts->bootCtrl.setDevFatal(); },
-                    name() + ".wdtFatal")
+                    name() + ".wdtFatal"),
+      devResetReqPin(name() + ".dev_reset_req", 0, this),
+      funcResetPin(name() + ".func_reset")
 {
     parts->hif.pciState = [this] { return pciState(); };
+    parts->bootCtrl.onDevReset = [this] { devResetRequest(); };
+    funcResetPin.onChange([this](const bool &v) { funcReset(v); });
 }
 
 /** 接入 ML 的 HIF 侧（接了管理链路时） */
@@ -72,7 +76,8 @@ Gw100PciDevice::pciState()
 
 /**
  * 返回名为 if_name 的端口：mem_port 是设备内存端口，wdt_fatal 是
- * 看门狗第二级超时的信号，其余交给 PciEndpoint
+ * 看门狗第二级超时的信号，dev_reset_req、func_reset 是设备完全复位
+ * 的请求与复位信号，其余交给 PciEndpoint
  */
 Port &
 Gw100PciDevice::getPort(const std::string &if_name, PortID idx)
@@ -81,6 +86,12 @@ Gw100PciDevice::getPort(const std::string &if_name, PortID idx)
         return parts->devmem.port();
     if (if_name == "wdt_fatal")
         return wdtFatalPin;
+    if (if_name == "dev_reset_req") {
+        fatal_if(idx > 0, "%s: dev_reset_req 只有一个", name());
+        return devResetReqPin;
+    }
+    if (if_name == "func_reset")
+        return funcResetPin;
     return PciEndpoint::getPort(if_name, idx);
 }
 
@@ -100,6 +111,48 @@ Gw100PciDevice::lowerInterruptPin(int num)
     (void)num;
 }
 
+/** host 写 DEV_RESET：进入 reset shim，请求 CRC 复位 */
+void
+Gw100PciDevice::devResetRequest()
+{
+    if (parts->shim.active())
+        return;  // 复位已在进行
+    // 入站完成器的读响应时间固定，接受 DEV_RESET 时没有交给功能逻辑
+    // 而尚未完成的读，复位排空立即结束（spec-clock-reset-power §4.3）
+    parts->shim.enter();
+    if (devResetReqPin.isConnected()) {
+        devResetReqPin.raise();
+        return;
+    }
+    // 不接管理 Tile 的配置：没有 CRC，直接复位功能逻辑
+    funcReset(true);
+    funcReset(false);
+}
+
+/**
+ * CRC 的复位信号变化：asserted 时复位功能逻辑和 ML 的 HIF 侧，
+ * 撤销时释放 ML 并退出 reset shim
+ */
+void
+Gw100PciDevice::funcReset(bool asserted)
+{
+    if (asserted) {
+        DPRINTF(Gw100Pcie, "设备完全复位：复位功能逻辑\n");
+        parts->devReset();
+        if (wdtFatalEvent.scheduled())
+            deschedule(wdtFatalEvent);
+        if (link)
+            link->reset(Gw100MgmtLink::Side::Hif);
+        if (devResetReqPin.isConnected())
+            devResetReqPin.lower();
+        return;
+    }
+    DPRINTF(Gw100Pcie, "设备完全复位：释放功能逻辑，退出 reset shim\n");
+    if (link)
+        link->release(Gw100MgmtLink::Side::Hif);
+    parts->shim.exit();
+}
+
 /** 把一次 BAR 访问交给对应 BAR 的处理者，并完成响应 */
 Tick
 Gw100PciDevice::accessBar(PacketPtr pkt, bool is_write)
@@ -112,7 +165,8 @@ Gw100PciDevice::accessBar(PacketPtr pkt, bool is_write)
     panic_if(!h, "%s: BAR%d 没有处理者", name(), bar);
     BarAccess a{off, unsigned(pkt->getSize()), is_write,
                 pkt->getPtr<uint8_t>()};
-    const Tick lat = h->access(a);
+    const Tick lat =
+        parts->shim.active() ? parts->shim.access(bar, a) : h->access(a);
     pkt->makeAtomicResponse();
     return lat;
 }

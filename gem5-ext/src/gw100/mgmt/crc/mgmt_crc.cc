@@ -18,6 +18,28 @@ MgmtCrc::MgmtCrc(const Config &cfg, Tick now)
 {
 }
 
+/**
+ * 设备完全复位：置位 RESET_CAUSE.DEV_RESET，其余寄存器恢复复位值，
+ * 两个 PLL 关闭、时钟回到 XTAL；PLL_TS 不受影响
+ * （spec-clock-reset-power §4.2、§4.4）
+ */
+void
+MgmtCrc::devReset()
+{
+    resetCause |= 1u << 4;
+    meshRst = 0x1F;
+    ctRst = 0xFFFF;
+    ctClkEn = 0;
+    ctIso = 0xFFFF;
+    pllCoreCfg = 0;
+    pllDdrCfg = 0;
+    coreLockAt = MaxTick;
+    ddrLockAt = MaxTick;
+    clkSel = 0;
+    clkSelNext = 0;
+    switchDoneAt = 0;
+}
+
 /** 读偏移 off 的 32 位寄存器；未实现的偏移返回 false */
 bool
 MgmtCrc::read(Addr off, uint32_t &v, Tick now) const

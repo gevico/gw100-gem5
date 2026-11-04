@@ -125,6 +125,22 @@ MgmtLocalRegs::write(Addr a, unsigned size, uint64_t v)
     return true;
 }
 
+/** 复位：全部寄存器恢复复位值（ML 寄存器反映 ML 的状态） */
+void
+MgmtLocalRegs::reset()
+{
+    eccStatus = 0;
+    ceCount = 0;
+    ceThresh = 0;
+    ueAddr = 0;
+    aclLock = false;
+    descBase = 0;
+    descLimit = 0;
+    nocWin.fill(NocWin{});
+    aclViol = 0;
+    aclViolAddr = 0;
+}
+
 /** HDMA 经 ML 访问 [a, a + len) 是否落在 DESC_BASE – DESC_LIMIT 内 */
 bool
 MgmtLocalRegs::descAllowed(Addr a, unsigned len) const

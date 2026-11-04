@@ -6,8 +6,9 @@
  * PLIC 源 7 和合法喂狗（失败则 STAGE = 0xF），置位 FW_READY 后不再
  * 喂狗，只把递增的心跳写入 FW_VERSION。检查：第二级超时后 DEV_FATAL
  * 与 INT_STATUS.ERROR 置位；心跳停止，即 CPU 已停住；FLR 不清除
- * DEV_FATAL，停住的固件也不再置位 FW_READY（spec-mgmt-tile §7.4、
- * spec-pcie §6.2、§8.4）。
+ * DEV_FATAL，停住的固件也不再置位 FW_READY；设备完全复位清除
+ * DEV_FATAL，停住的 CPU 从启动 ROM 重新开始，可以重新加载固件
+ * （spec-mgmt-tile §7.4、spec-pcie §6.2、§8.4、§13.1）。
  *
  * @see spec-mgmt-tile, spec-pcie
  */
@@ -27,6 +28,8 @@
 #define FATAL_WAIT      2000000ull
 /** 1 ms，以设备时间戳（100 MHz）计 */
 #define MS              100000ull
+/** BOOT_CTRL.DEV_RESET */
+#define BOOT_CTRL_DEV_RESET  (1u << 1)
 
 /** 等待 n 个设备时间戳计数 */
 static void
@@ -77,5 +80,16 @@ test_main(void)
     TEST_ASSERT(bm_read32(r + GW100_INT_STATUS) & GW100_INT_ERROR);
     wait_ts(&g, MS);
     TEST_EQ(bm_read32(r + GW100_BOOT_STATUS) & GW100_BOOT_FW_READY, 0);
+
+    TEST_INFO("设备完全复位后恢复\n");
+    uint64_t t0 = gw100_timestamp(&g);
+    bm_write32(r + GW100_BOOT_CTRL, BOOT_CTRL_DEV_RESET);
+    /* STAGE 变为 2 之前只读 BOOT_STATUS（见 dev_reset.c） */
+    while (GW100_BOOT_STAGE(bm_read32(r + GW100_BOOT_STATUS)) != 2)
+        ;
+    TEST_ASSERT(gw100_timestamp(&g) - t0 <= 100 * MS);
+    TEST_EQ(bm_read32(r + GW100_DEV_STATUS) & GW100_DEV_STATUS_FATAL, 0);
+    TEST_EQ(bm_read32(r + GW100_INT_STATUS), 0);
+    gw100_boot(&g);
     return 0;
 }

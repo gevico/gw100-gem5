@@ -1,0 +1,4 @@
+# ResetShim（src/gw100/pcie/shim/）的单元测试
+Import('*')
+
+GTest('reset_shim.test', 'reset_shim.test.cc', with_tag('gw100 pcie shim'))

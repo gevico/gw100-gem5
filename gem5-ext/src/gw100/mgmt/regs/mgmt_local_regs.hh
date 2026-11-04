@@ -77,6 +77,9 @@ class MgmtLocalRegs
     /** 中断电平可能变化时调用 */
     std::function<void()> onChange;
 
+    /** 复位：全部寄存器恢复复位值（ML 寄存器反映 ML 的状态） */
+    void reset();
+
   private:
     /** 一个 NoC 目标端口窗口 */
     struct NocWin

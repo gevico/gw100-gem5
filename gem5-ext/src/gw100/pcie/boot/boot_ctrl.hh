@@ -19,6 +19,7 @@
 #define __GW100_PCIE_BOOT_BOOT_CTRL_HH__
 
 #include <cstdint>
+#include <functional>
 #include <string>
 
 #include "sim/eventq.hh"
@@ -91,6 +92,15 @@ class BootCtrl
 
     /** 发生 FLR（含 D3hot→D0）：在 host 可见状态复位之后调用 */
     void flr();
+
+    /**
+     * 设备完全复位：全部状态恢复复位值，包括 DEV_FATAL 和启动通路故障
+     * 的锁存（spec-pcie §13.1）；ML 由外壳另行复位
+     */
+    void devReset();
+
+    /** host 写 BOOT_CTRL.DEV_RESET 时调用：由外壳发起设备完全复位 */
+    std::function<void()> onDevReset;
 
     /** DEV_STATUS.DEBUG_WIN：固件经 DEV_CTRL_FW 开启 */
     bool debugWin = false;

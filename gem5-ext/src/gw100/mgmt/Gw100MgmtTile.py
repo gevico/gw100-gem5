@@ -27,6 +27,12 @@ class Gw100MgmtTile(ClockedObject):
         "看门狗第二级超时的专用信号，接 PCIe 设备的 wdt_fatal"
         "（spec-mgmt-tile §7.4）"
     )
+    dev_reset_req = IntSinkPin(
+        "设备完全复位的请求，接 PCIe 设备的 dev_reset_req"
+    )
+    pcie_reset = ResetRequestPort(
+        "送给 PCIe 设备的功能逻辑复位信号，接它的 func_reset"
+    )
 
     rom_size = Param.MemorySize("64KiB", "启动 ROM（mgmt.rom_size）")
     sram_size = Param.MemorySize("2MiB", "SRAM（mgmt.sram_size）")
@@ -56,7 +62,20 @@ class Gw100MgmtTile(ClockedObject):
     ts_sync = Param.Cycles(
         2, "mtime 经同步器进入 clk_mgmt 域的延迟（两级同步器，推算）"
     )
-    cpu = Param.BaseCPU(NULL, "管理 CPU；看门狗第二级超时时停住它")
+    cpu = Param.BaseCPU(
+        NULL,
+        "管理 CPU；看门狗第二级超时和设备完全复位时停住它，中断控制器"
+        "必须是 Gw100MgmtInterrupts",
+    )
+    dev_reset_sync = Param.Latency(
+        "80ns", "DEV_RESET 请求经同步器进入 clk_ao 域：2 个 XTAL 周期（推算）"
+    )
+    dev_reset_hold = Param.Latency(
+        "640ns", "设备完全复位的复位保持时间：16 个 XTAL 周期（推算）"
+    )
+    xtal_perf_level = Param.Unsigned(
+        1, "clk_mgmt 选择 XTAL 时，管理系统时钟域所用的频率档"
+    )
 
     mgmt_link = Param.Gw100MgmtLink("管理链路 ML")
     plic = Param.PlicBase("接收本 Tile 中断的 PLIC")

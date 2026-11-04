@@ -10,7 +10,9 @@
  * - BAR2：Bar2Handler、WindowTable、DevmemBackend；
  * - ERR/INT 状态：StatusUnit。
  * 外壳还接收看门狗第二级超时的专用信号 wdt_fatal（spec-mgmt-tile
- * §7.4），经两级同步器后置位 DEV_FATAL。
+ * §7.4），经两级同步器后置位 DEV_FATAL；host 写 DEV_RESET 时进入
+ * reset shim 并经 dev_reset_req 请求 CRC 复位，由 CRC 经 func_reset
+ * 复位功能逻辑（spec-clock-reset-power §4.3）。
  *
  * @see spec-pcie
  */
@@ -23,6 +25,7 @@
 
 #include "dev/intpin.hh"
 #include "dev/pci/device.hh"
+#include "sim/signal.hh"
 #include "params/Gw100PciDevice.hh"
 #include "src/gw100/ml/mgmt_link.hh"
 #include "src/gw100/pcie/pcie_factory.hh"
@@ -43,7 +46,8 @@ class Gw100PciDevice : public PciEndpoint
 
     /**
      * 返回名为 if_name 的端口：mem_port 是设备内存端口，wdt_fatal 是
-     * 看门狗第二级超时的信号，其余交给 PciEndpoint
+     * 看门狗第二级超时的信号，dev_reset_req、func_reset 是设备完全复位
+     * 的请求与复位信号，其余交给 PciEndpoint
      */
     Port &getPort(const std::string &if_name,
                   PortID idx = InvalidPortID) override;
@@ -101,6 +105,15 @@ class Gw100PciDevice : public PciEndpoint
     /** PCI_STATE（spec-pcie §6.5）：配置空间中固件需要的状态 */
     uint32_t pciState();
 
+    /** host 写 DEV_RESET：进入 reset shim，请求 CRC 复位 */
+    void devResetRequest();
+
+    /**
+     * CRC 的复位信号变化：asserted 时复位功能逻辑和 ML 的 HIF 侧，
+     * 撤销时释放 ML 并退出 reset shim
+     */
+    void funcReset(bool asserted);
+
     /** 全部组件 */
     std::unique_ptr<PcieParts> parts;
     /** 管理链路；为空时不接管理 Tile */
@@ -111,6 +124,10 @@ class Gw100PciDevice : public PciEndpoint
     IntSinkPin<Gw100PciDevice> wdtFatalPin;
     /** 信号经两级同步器到达 clk_pcie 域时置位 DEV_FATAL 的事件 */
     EventFunctionWrapper wdtFatalEvent;
+    /** 设备完全复位的请求，送给 CRC（管理 Tile） */
+    IntSourcePin<Gw100PciDevice> devResetReqPin;
+    /** CRC 送来的功能逻辑复位信号：true 为复位中 */
+    SignalSinkPort<bool> funcResetPin;
 };
 
 } // namespace gw100
