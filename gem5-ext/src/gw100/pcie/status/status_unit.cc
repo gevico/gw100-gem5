@@ -64,17 +64,61 @@ StatusUnit::clearErr(uint32_t bits)
 void
 StatusUnit::clearInt(uint32_t bits)
 {
+    uint32_t old = _intStatus;
     _intStatus &= ~bits;
-    updateIntStatus();
+    // 源条件仍成立的位在同一周期重新置位，算一次事件（spec-pcie §8.4）
+    uint32_t reassert = bits & old & (_intLevel | hwSource());
+    _intStatus |= reassert;
+    notify(reassert, old & ~_intStatus);
 }
 
-/** 错误条件仍然成立时置 INT_STATUS.ERROR */
+/** host 写 INT_SET：置位 bits，每个 1 位算一次中断事件（§8.4） */
+void
+StatusUnit::setInt(uint32_t bits)
+{
+    _intStatus |= bits;
+    notify(bits, 0);
+}
+
+/** 固件写 INT_REQ：置位 bits，每个 1 位算一次中断事件（§6.5） */
+void
+StatusUnit::request(uint32_t bits)
+{
+    _intStatus |= bits;
+    notify(bits, 0);
+}
+
+/** 写 INT_MASK */
+void
+StatusUnit::setIntMask(uint32_t v)
+{
+    _intMask = v;
+    notify(0, 0);
+}
+
+/** 硬件对各位源条件的贡献：ERROR 由 ERR_STATUS、DEV_FATAL 决定 */
+uint32_t
+StatusUnit::hwSource() const
+{
+    return (_errStatus || _fatal) ? IntError : 0;
+}
+
+/** 硬件错误条件成立而 ERROR 为 0 时置位 ERROR（一次事件） */
 void
 StatusUnit::updateIntStatus()
 {
-    // 错误条件仍然成立时，ERROR 位清零后立即重新置位（spec-pcie §8.4）
-    if (_errStatus || _fatal)
-        _intStatus |= IntError;
+    uint32_t set = hwSource() & ~_intStatus;
+    _intStatus |= set;
+    if (set)
+        notify(set, 0);
+}
+
+/** 通知 onIntEvent */
+void
+StatusUnit::notify(uint32_t events, uint32_t cleared)
+{
+    if (onIntEvent)
+        onIntEvent(events, cleared);
 }
 
 /**
@@ -100,7 +144,9 @@ StatusUnit::reset()
     _errStatus = 0;
     _errAddr = 0;
     _errInfo = 0;
+    _intLevel = 0;
     updateIntStatus();
+    notify(0, 0);
 }
 
 /** 保存全部状态 */
@@ -113,6 +159,7 @@ StatusUnit::serialize(CheckpointOut &cp) const
     SERIALIZE_SCALAR(_errAddr);
     SERIALIZE_SCALAR(_errInfo);
     SERIALIZE_SCALAR(_fatal);
+    SERIALIZE_SCALAR(_intLevel);
 }
 
 /** 恢复 serialize() 保存的状态 */
@@ -125,6 +172,7 @@ StatusUnit::unserialize(CheckpointIn &cp)
     UNSERIALIZE_SCALAR(_errAddr);
     UNSERIALIZE_SCALAR(_errInfo);
     UNSERIALIZE_SCALAR(_fatal);
+    UNSERIALIZE_SCALAR(_intLevel);
 }
 
 } // namespace gw100

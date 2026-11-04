@@ -10,7 +10,9 @@
  * - BAR2：Bar2Handler、WindowTable、DevmemBackend；
  * - ERR/INT 状态：StatusUnit；
  * - Host DMA：HdmaEngine，经 dma 端口访问 host 内存，经 mem_port 访问
- *   设备内存，寄存器经 HIF 区，BAR0 0x6000 是它的只读镜像。
+ *   设备内存，寄存器经 HIF 区，BAR0 0x6000 是它的只读镜像；
+ * - 中断：IntCtrl，MSI-X 消息与 DMA 写共用 dma 端口，INTA 经
+ *   PciEndpoint 的 intrPost/intrClear。
  * 外壳还接收看门狗第二级超时的专用信号 wdt_fatal（spec-mgmt-tile
  * §7.4），经两级同步器后置位 DEV_FATAL；host 写 DEV_RESET 时进入
  * reset shim 并经 dev_reset_req 请求 CRC 复位，由 CRC 经 func_reset
@@ -114,8 +116,14 @@ class Gw100PciDevice : public PciEndpoint
     /** 按 Device Control 的 MPS、MRRS、Extended Tag 更新 HDMA */
     void updateHdmaPcie();
 
-    /** Bus Master Enable 变化：通知 HDMA；由 1 变 0 时发出 BME_OFF 事件 */
+    /**
+     * Command 寄存器变化：Bus Master Enable 通知 HDMA 与中断控制器，由 1
+     * 变 0 时发出 BME_OFF 事件；Interrupt Disable 通知中断控制器
+     */
     void updateBusMaster();
+
+    /** MSI-X capability 的 Enable、Function Mask 变化：通知中断控制器 */
+    void updateMsix();
 
     /**
      * CRC 的复位信号变化：asserted 时复位功能逻辑和 ML 的 HIF 侧，

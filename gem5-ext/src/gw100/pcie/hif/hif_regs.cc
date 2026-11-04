@@ -23,6 +23,8 @@ constexpr Addr HdmaSize = 0x1000;
 constexpr Addr BootBlk = 0x1'0000;
 /** 中断请求与 FLR 块的起始 */
 constexpr Addr IntBlk = 0x1'2000;
+/** CTX_VECTOR[0] 的偏移 */
+constexpr Addr CtxVecBase = IntBlk + 0x100;
 /** ML 的 HIF 侧错误寄存器块的起始 */
 constexpr Addr MlBlk = 0x1'3000;
 
@@ -39,6 +41,11 @@ HifRegs::read(Addr off, uint32_t &v) const
 {
     if (off < HdmaSize)
         return hdma && hdma->read(off, v, false);
+    if (intCtrl && off >= CtxVecBase &&
+        off < CtxVecBase + 4 * intCtrl->contexts() && off % 4 == 0) {
+        v = intCtrl->ctxVector((off - CtxVecBase) / 4);
+        return true;
+    }
     switch (off) {
       case BootBlk + 0x00: v = ctrl.fwBootStatus(); return true;
       case BootBlk + 0x04: v = ctrl.fwSize(); return true;
@@ -48,6 +55,10 @@ HifRegs::read(Addr off, uint32_t &v) const
         return true;
       case BootBlk + 0x10: v = pciState ? pciState() : 0; return true;
       case BootBlk + 0x14: v = ctrl.bootLoadStatus(); return true;
+      case IntBlk + 0x00: v = 0; return true;  // INT_REQ 是 W1S
+      case IntBlk + 0x04:
+        v = intCtrl ? intCtrl->levelReg() : 0;
+        return true;
       case IntBlk + 0x10: v = 0; return true;  // FLR_CTRL 是 W1S
       case IntBlk + 0x14: v = ctrl.flrStatus(); return true;
       case MlBlk + 0x00: v = ml ? ml->errReg() : 0; return true;
@@ -63,6 +74,11 @@ HifRegs::write(Addr off, uint32_t v)
 {
     if (off < HdmaSize)
         return hdma && hdma->write(off, v);
+    if (intCtrl && off >= CtxVecBase &&
+        off < CtxVecBase + 4 * intCtrl->contexts() && off % 4 == 0) {
+        intCtrl->setCtxVector((off - CtxVecBase) / 4, v);
+        return true;
+    }
     switch (off) {
       case BootBlk + 0x00: ctrl.fwWriteBootStatus(v); return true;
       case BootBlk + 0x04: ctrl.fwWriteFwSize(v); return true;
@@ -77,6 +93,14 @@ HifRegs::write(Addr off, uint32_t v)
       case BootBlk + 0x10:
       case BootBlk + 0x14:
         return true;  // 只读
+      case IntBlk + 0x00:
+        if (intCtrl)
+            intCtrl->request(v);
+        return true;
+      case IntBlk + 0x04:
+        if (intCtrl)
+            intCtrl->setLevel(v);
+        return true;
       case IntBlk + 0x10: ctrl.flrCtrl(v); return true;
       case IntBlk + 0x14: return true;  // 只读
       case MlBlk + 0x00:

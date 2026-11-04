@@ -13,6 +13,7 @@
 #include "debug/Gw100Pcie.hh"
 #include "dev/pci/pcireg.h"
 #include "mem/packet_access.hh"
+#include "src/gw100/pcie/config/capability/msix_capability.hh"
 
 namespace gem5
 {
@@ -24,6 +25,10 @@ namespace
 
 /** Device Control 在配置空间中的偏移：PCI Express capability（0x50）+ 8 */
 constexpr Addr DevCtl = 0x58;
+/** MSI-X 的 Message Control：MSI-X capability（0x90）+ 2 */
+constexpr Addr MsixCtl = 0x92;
+/** Command 的 Interrupt Disable */
+constexpr uint16_t CmdIntxDisable = 0x0400;
 /** HIF 事件位：BME_OFF（spec-mgmt-tile §6.3） */
 constexpr uint32_t EvtBmeOff = 1u << 3;
 
@@ -41,7 +46,16 @@ Gw100PciDevice::Gw100PciDevice(const Params &p)
 {
     parts->hif.pciState = [this] { return pciState(); };
     parts->bootCtrl.onDevReset = [this] { devResetRequest(); };
-    parts->bootCtrl.onFlrDone = [this] { parts->hdma.setHold(false); };
+    parts->bootCtrl.onFlrDone = [this] {
+        parts->hdma.setHold(false);
+        parts->intCtrl.setFlrGate(false);
+    };
+    parts->intCtrl.onIntx = [this](bool level) {
+        if (level)
+            intrPost();
+        else
+            intrClear();
+    };
     funcResetPin.onChange([this](const bool &v) { funcReset(v); });
 }
 
@@ -237,6 +251,15 @@ Tick
 Gw100PciDevice::writeConfig(PacketPtr pkt)
 {
     const Addr off = pkt->getAddr() & (CfgSpaceSize - 1);
+    if (off == PCI_COMMAND && pkt->getSize() == 2) {
+        // gem5 的 PciDevice 对 16 位的 Command 写只取低 8 位，Interrupt
+        // Disable（第 10 位）会丢失；按 32 位写转交（该路径只更新
+        // Command，忽略 Status）
+        cfgWriteCommon(PCI_COMMAND, 4, pkt->getLE<uint16_t>());
+        pkt->makeAtomicResponse();
+        updateBusMaster();
+        return configDelay;
+    }
     if (off < ConfigSpace::OwnBase) {
         Tick t = PciEndpoint::writeConfig(pkt);
         updateBusMaster();
@@ -256,6 +279,7 @@ Gw100PciDevice::writeConfig(PacketPtr pkt)
     const CfgEvent ev = parts->config.write(off, size, val);
     pkt->makeAtomicResponse();
     updateHdmaPcie();
+    updateMsix();
     if (ev == CfgEvent::Flr)
         functionReset("FLR");
     else if (ev == CfgEvent::D3hotToD0)
@@ -299,9 +323,13 @@ Gw100PciDevice::functionReset(const char *why)
     // FLR 的门控、排空与通知固件（spec-pcie §13.2）；HDMA 已随寄存器
     // 复位，保持复位直到固件确认（spec-host-dma §8.4）
     parts->hdma.setHold(true);
+    parts->intCtrl.setFlrGate(true);
     lastBme = false;
     parts->hdma.setBusMaster(false);
+    parts->intCtrl.setBusMaster(false);
+    parts->intCtrl.setIntxDisable(false);
     updateHdmaPcie();
+    updateMsix();
     parts->bootCtrl.flr();
 }
 
@@ -318,17 +346,32 @@ Gw100PciDevice::updateHdmaPcie()
     parts->hdma.setPcie(pp);
 }
 
-/** Bus Master Enable 变化：通知 HDMA；由 1 变 0 时发出 BME_OFF 事件 */
+/**
+ * Command 寄存器变化：Bus Master Enable 通知 HDMA 与中断控制器，由 1
+ * 变 0 时发出 BME_OFF 事件；Interrupt Disable 通知中断控制器
+ */
 void
 Gw100PciDevice::updateBusMaster()
 {
-    bool bme = letoh(config().command) & PCI_CMD_BME;
+    uint16_t cmd = letoh(config().command);
+    parts->intCtrl.setIntxDisable(cmd & CmdIntxDisable);
+    bool bme = cmd & PCI_CMD_BME;
     if (bme == lastBme)
         return;
+    parts->intCtrl.setBusMaster(bme);
     lastBme = bme;
     parts->hdma.setBusMaster(bme);
     if (!bme)
         parts->bootCtrl.hostEvent(EvtBmeOff);
+}
+
+/** MSI-X capability 的 Enable、Function Mask 变化：通知中断控制器 */
+void
+Gw100PciDevice::updateMsix()
+{
+    uint32_t mc = parts->config.read(MsixCtl, 2);
+    parts->intCtrl.setMsix(mc & MsixCapability::Enable,
+                           mc & MsixCapability::FuncMask);
 }
 
 /** 保存配置空间头部（基类）和各组件的状态 */

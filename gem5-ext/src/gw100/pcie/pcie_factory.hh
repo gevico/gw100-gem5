@@ -32,6 +32,8 @@
 #include "src/gw100/pcie/hdma/hdma_engine.hh"
 #include "src/gw100/pcie/hdma/hdma_glue.hh"
 #include "src/gw100/pcie/hif/hif_regs.hh"
+#include "src/gw100/pcie/intr/int_ctrl.hh"
+#include "src/gw100/pcie/intr/msix_regs.hh"
 #include "src/gw100/pcie/shim/reset_shim.hh"
 #include "src/gw100/pcie/status/status_unit.hh"
 #include "src/gw100/pcie/window/window_table.hh"
@@ -104,6 +106,12 @@ struct PcieParts
     HdmaEngine hdma;
     /** BAR0 的 HDMA 寄存器只读镜像 */
     HdmaMirror hdmaMirror;
+    /** 中断控制器：MSI-X 与 INTx */
+    IntCtrl intCtrl;
+    /** BAR0 的 MSI-X 表 */
+    MsixTable msixTable;
+    /** BAR0 的 MSI-X PBA */
+    MsixPba msixPba;
     /** 按 BAR 号索引的处理者；没有处理者的 BAR 为 nullptr */
     std::array<BarHandler *, 6> bars{};
 };

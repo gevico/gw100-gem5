@@ -25,7 +25,7 @@ FW_SRCS := fw/crt0.S fw/fw.c common/string.c common/gw100_flr.c \
 
 .PHONY: all clean
 all: $(BUILD_DIR)/rom.elf $(BUILD_DIR)/fw.img $(BUILD_DIR)/fw_wdt.img \
-	$(BUILD_DIR)/fw_hdma.img
+	$(BUILD_DIR)/fw_hdma.img $(BUILD_DIR)/fw_int.img
 
 $(BUILD_DIR)/rom.elf: $(ROM_SRCS) rom/rom.ld $(wildcard common/*.h)
 	@mkdir -p $(@D)
@@ -52,6 +52,15 @@ $(BUILD_DIR)/fw_hdma.elf: $(FW_SRCS) fw/hdma_test.c fw/fw.ld \
 	@mkdir -p $(@D)
 	$(CC) $(CFLAGS) -DGW_FW_HDMA_TEST $(LDFLAGS) \
 		-Wl,--no-warn-rwx-segments -T fw/fw.ld $(FW_SRCS) fw/hdma_test.c \
+		-o $@
+	$(OBJDUMP) -d $@ > $(@:.elf=.dis)
+
+# 中断请求的测试固件（见 fw/int_test.c）
+$(BUILD_DIR)/fw_int.elf: $(FW_SRCS) fw/int_test.c fw/fw.ld \
+		$(wildcard common/*.h)
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) -DGW_FW_INT_TEST $(LDFLAGS) \
+		-Wl,--no-warn-rwx-segments -T fw/fw.ld $(FW_SRCS) fw/int_test.c \
 		-o $@
 	$(OBJDUMP) -d $@ > $(@:.elf=.dis)
 

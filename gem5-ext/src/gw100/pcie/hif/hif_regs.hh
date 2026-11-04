@@ -19,6 +19,7 @@
 #include "src/gw100/pcie/bar0/boot_regs.hh"
 #include "src/gw100/pcie/boot/boot_ctrl.hh"
 #include "src/gw100/pcie/hdma/hdma_engine.hh"
+#include "src/gw100/pcie/intr/int_ctrl.hh"
 
 namespace gem5
 {
@@ -37,6 +38,9 @@ class HifRegs : public MlTargetIf
 
     /** 接入 HDMA：HIF 区 0x0000 – 0x0FFF 是它的寄存器（HDMA_BASE） */
     void bindHdma(HdmaEngine *h) { hdma = h; }
+
+    /** 接入中断控制器：INT_REQ、INT_LEVEL、CTX_VECTOR（spec-pcie §6.5） */
+    void bindInt(IntCtrl *ic) { intCtrl = ic; }
 
     /** 读取配置空间中固件需要的状态（PCI_STATE）的回调 */
     std::function<uint32_t()> pciState;
@@ -59,6 +63,8 @@ class HifRegs : public MlTargetIf
     MlEndpoint *ml = nullptr;
     /** HDMA */
     HdmaEngine *hdma = nullptr;
+    /** 中断控制器 */
+    IntCtrl *intCtrl = nullptr;
 };
 
 } // namespace gw100
