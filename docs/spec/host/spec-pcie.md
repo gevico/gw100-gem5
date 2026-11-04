@@ -377,7 +377,7 @@ HIF 的寄存器（包括影子寄存器和 HDMA 的寄存器）是 ML 的目标
 | [7] | BOOT_WIN | 启动窗口收到非法写入（§7.2） |
 | [31:8] | — | RsvdZ |
 
-- `ERR_ADDR` 和 `ERR_INFO` 只记录 `ERR_STATUS` 从全 0 变为非 0 时的那一次错误；`ERR_STATUS` 清零后重新开始记录。
+- `ERR_ADDR` 和 `ERR_INFO` 只记录 `ERR_STATUS` 从全 0 变为非 0 时的那一次错误；`ERR_STATUS` 清零后重新开始记录。这一次错误不是由 BAR 访问引起时（例如 `DMA_HOST_ERR`），两者记为 0；DMA 错误的地址由 HDMA 的 `CH_ERR_ADDR` 给出（`spec-host-dma` §7.3）。
 - `ERR_INFO` 的格式：[1:0] 访问类型（0 读、1 写），[5:2] 访问字节数，[7:6] BAR（0 = BAR0，2 = BAR2），其余 RsvdZ。
 - `ERR_STATUS` 任一位置位时，设备置 `INT_STATUS.ERROR` 并按 §8 发中断。
 
