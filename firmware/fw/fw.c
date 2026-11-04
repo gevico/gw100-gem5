@@ -5,8 +5,8 @@
  * 本阶段的最小固件：等待 PLL_TS 锁定、切换到工作时钟、使能并锁定
  * 看门狗，设置并锁定 HDMA 描述符区间的访问控制，初始化 HDMA 的通道
  * 0、1，写入固件版本，置 STAGE = 4 与 FW_READY（spec-mgmt-tile §8.5
- * 中尚未建模的步骤留待后续阶段），然后在主循环中喂狗并按 §9 处理
- * FLR（确认之后重新初始化 HDMA）。
+ * 中尚未建模的步骤留待后续阶段），然后在主循环中等中断（irq.c）、
+ * 喂狗，并按 §9 处理 FLR（确认之后重新初始化 HDMA）。
  *
  * 以 GW_FW_HDMA_TEST 编译时是 HDMA 的测试固件：初始化之后运行
  * hdma_test.c 中的传输，把结果写入 FW_VERSION_FW（0xD0A0_0000 | 步骤号，
@@ -31,6 +31,7 @@
 #include "gw100_hdma.h"
 #include "gw100_image.h"
 #include "gw100_mgmt.h"
+#include "irq.h"
 
 /** 镜像头：由 tools/fwpack.py 填写，链接时只占位 */
 static const struct gw_image_hdr image_header
@@ -247,11 +248,19 @@ fw_main(uint64_t hartid, const struct gw_boot_info *info)
 #else
     gw_write32(GW_FW_VERSION_FW, h->fw_version);
 #endif
+    irq_init(WDT_LOAD / 4);
     set_ready();
     for (;;) {
+        /* 主循环每次醒来都喂狗；定时器保证空闲时至少每 1/4 周期醒来 */
         wdt_kick();
-        if (gw_read32(GW_EVT_PENDING) & GW_EVT_FLR)
-            handle_flr();
+        uint32_t ev, flags;
+        irq_wait(&ev, &flags);
+        (void)flags;
+        if (ev & GW_EVT_FLR)
+            handle_flr();  /* 它自己写 1 清零 EVT_PENDING.FLR */
+        /* 其余事件本阶段没有处理程序：清零后解除屏蔽 */
+        gw_write32(GW_EVT_PENDING, ev & ~GW_EVT_FLR);
+        irq_unmask(ev);
     }
 #endif
 }
