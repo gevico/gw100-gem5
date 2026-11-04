@@ -1,0 +1,32 @@
+gem5 补丁：GICD_CTLR.DS = 1 时，EL3 写 ICC_EOIR1_EL1 按 Group 1 非安全组处理
+
+原因：DS = 1 时只有一个安全状态，gem5 把全部 Group 1 中断（包括全部
+LPI）归为 G1NS（Gicv3Distributor/Gicv3Redistributor::getIntGroup），
+应答时把优先级记在 ICC_AP1R0_EL1_NS 上；但写 ICC_EOIR1_EL1 时只按 PE
+是否处于安全态选组，在 EL3（安全态）降的是 G1S 的优先级。结果运行
+优先级降不回来，之后同优先级的中断都无法发出。
+
+修改：选组时考虑 DS：只有 DS = 0 且处于安全态时才用 G1S，其余用
+G1NS。DS = 0 时行为不变。
+
+验证：裸机测试 msix_its 在 EL3、DS = 1 下连续接收多个 LPI。
+
+由仓库根目录的 Makefile 在构建 gem5 之前应用，见 gem5-ext/patches/README.md。
+
+diff --git a/src/dev/arm/gic_v3_cpu_interface.cc b/src/dev/arm/gic_v3_cpu_interface.cc
+index 28a1739..d7ed3d3 100644
+--- a/src/dev/arm/gic_v3_cpu_interface.cc
++++ b/src/dev/arm/gic_v3_cpu_interface.cc
+@@ -881,7 +881,11 @@ Gicv3CPUInterface::setMiscReg(int misc_reg, RegVal val)
+               return;
+           }
+ 
+-          Gicv3::GroupId group = inSecureState() ? Gicv3::G1S : Gicv3::G1NS;
++          // With GICD_CTLR.DS == 1 there is a single Security state and
++          // every Group 1 interrupt is G1NS (see getIntGroup()), also when
++          // it was acknowledged at Secure EL3.
++          Gicv3::GroupId group = (inSecureState() && !distributor->DS) ?
++              Gicv3::G1S : Gicv3::G1NS;
+ 
+           if (highestActiveGroup() == Gicv3::G0S) {
+               return;
