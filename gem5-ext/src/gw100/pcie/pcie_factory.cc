@@ -11,6 +11,7 @@
 #include "base/logging.hh"
 #include "dev/pci/device.hh"
 #include "sim/system.hh"
+#include "src/gw100/pcie/config/capability/msix_capability.hh"
 #include "src/gw100/pcie/config/capability/pcie_capability.hh"
 #include "src/gw100/pcie/config/capability/pm_capability.hh"
 
@@ -26,6 +27,8 @@ namespace
 constexpr Addr PmCapBase = 0x40;
 /** PCI Express capability 在配置空间中的偏移（spec-pcie §4.2） */
 constexpr Addr PcieCapBase = 0x50;
+/** MSI-X capability 的偏移（PCI Express capability 占 0x50 – 0x8B） */
+constexpr Addr MsixCapBase = 0x90;
 
 /** DEV_CAPS 的值：窗口数、MSI-X 表项数、上下文数、DMA 通道数 */
 uint32_t
@@ -89,7 +92,10 @@ PcieParts::PcieParts(const Gw100PciDeviceParams &p, const std::string &name,
       hostDma(name + ".dma", dma_id, p.system->cacheLineSize(),
               p.pcie_tx_credits),
       hdma(hdmaConfig(p), hdmaClock, hostDma, devmem, hdmaMl),
-      hdmaMirror(hdma)
+      hdmaMirror(hdma),
+      intCtrl(status, hostDma, p.msix_table_size, p.hdi_max_contexts),
+      msixTable(intCtrl),
+      msixPba(intCtrl)
 {}
 
 /**
@@ -104,6 +110,7 @@ PcieParts::resetRegisters()
     boot.reset();
     windows.reset();
     hdma.reset();
+    intCtrl.reset();
 }
 
 /**
@@ -168,6 +175,10 @@ Gw100PcieFactory::build(const Gw100PciDeviceParams &p, ClockedObject &owner)
     parts->config.addCapability(
         PcieCapBase,
         std::make_unique<PcieCapability>(p.link_speed, p.link_width));
+    parts->config.addCapability(
+        MsixCapBase,
+        std::make_unique<MsixCapability>(p.msix_table_size, MsixTable::Base,
+                                         MsixPba::Base));
     parts->config.finalize();
 
     // BAR0 的寄存器块（spec-pcie §5.1）；其余块在后续阶段登记
@@ -175,6 +186,8 @@ Gw100PcieFactory::build(const Gw100PciDeviceParams &p, ClockedObject &owner)
     parts->bar0.addBlock(parts->windowRegs);
     parts->bar0.addBlock(parts->boot);
     parts->bar0.addBlock(parts->hdmaMirror);
+    parts->bar0.addBlock(parts->msixTable);
+    parts->bar0.addBlock(parts->msixPba);
 
     // HDMA：寄存器经 HIF 区，DMA 错误记入 ERR_STATUS，端口空闲时唤醒
     PcieParts *pp = parts.get();
@@ -183,7 +196,11 @@ Gw100PcieFactory::build(const Gw100PciDeviceParams &p, ClockedObject &owner)
         pp->status.raiseErr(StatusUnit::ErrDmaHost);
     };
     pp->devmem.onReady = [pp] { pp->hdma.wake(); };
-    pp->hostDma.onTxFree = [pp] { pp->hdma.wake(); };
+    pp->hostDma.onTxFree = [pp] {
+        pp->hdma.wake();
+        pp->intCtrl.trySend();
+    };
+    pp->hif.bindInt(&pp->intCtrl);
 
     parts->bars[0] = &parts->bar0;
     parts->bars[2] = &parts->bar2;
