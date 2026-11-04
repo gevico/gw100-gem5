@@ -3,9 +3,14 @@
  * @brief 管理 Tile 固件：初始化后置位 FW_READY，处理 FLR
  *
  * 本阶段的最小固件：等待 PLL_TS 锁定、切换到工作时钟、使能并锁定
- * 看门狗，写入固件版本，置 STAGE = 4 与 FW_READY（spec-mgmt-tile §8.5
+ * 看门狗，设置并锁定 HDMA 描述符区间的访问控制，初始化 HDMA 的通道
+ * 0、1，写入固件版本，置 STAGE = 4 与 FW_READY（spec-mgmt-tile §8.5
  * 中尚未建模的步骤留待后续阶段），然后在主循环中喂狗并按 §9 处理
- * FLR。
+ * FLR（确认之后重新初始化 HDMA）。
+ *
+ * 以 GW_FW_HDMA_TEST 编译时是 HDMA 的测试固件：初始化之后运行
+ * hdma_test.c 中的传输，把结果写入 FW_VERSION_FW（0xD0A0_0000 | 步骤号，
+ * 0 为通过），再置位 FW_READY。
  *
  * 以 GW_FW_WDT_TEST 编译时是看门狗的测试固件：初始化中自检第一级
  * 超时、PLIC 源 7 和合法喂狗，置位 FW_READY 后不再喂狗，只每 10 us
@@ -21,6 +26,7 @@
 #include <stdint.h>
 
 #include "gw100_flr.h"
+#include "gw100_hdma.h"
 #include "gw100_image.h"
 #include "gw100_mgmt.h"
 
@@ -43,6 +49,24 @@ init_fail(void)
                GW_BOOT_STATUS(GW_STAGE_FAILED, 0, GW_ERR_INIT));
     gw_halt();
 }
+
+#ifndef GW_FW_WDT_TEST
+/** 每个通道的描述符环条目数 */
+#define RING_ENTRIES    16
+
+/** 通道 0、1 的描述符环：一块连续区域，访问控制按它设置 */
+static struct {
+    /** 两个环 */
+    struct gw_hdma_desc r[2][RING_ENTRIES];
+} rings __attribute__((aligned(64)));
+
+/** 通道 0、1 的固件一侧状态 */
+static struct gw_hdma_chan chans[2];
+
+#ifdef GW_FW_HDMA_TEST
+int hdma_selftest(struct gw_hdma_chan *c);
+#endif
+#endif
 
 /** 看门狗的超时周期：10 ms，以 mtime 计 */
 #define WDT_LOAD        1000000UL
@@ -101,6 +125,30 @@ wdt_kick(void)
     gw_write32(GW_WDT_KICK, GW_WDT_KICK_MAGIC);
 }
 
+#ifndef GW_FW_WDT_TEST
+/**
+ * 设置并锁定 SRAM 的访问控制：HDMA 只能读写描述符环所在的区间
+ * （spec-mgmt-tile §4.4、§8.5 第 6 步）
+ */
+static void
+acl_init(void)
+{
+    uintptr_t base = (uintptr_t)&rings;
+    gw_write64(GW_ACL_DESC_BASE, base);
+    gw_write64(GW_ACL_DESC_LIMIT, base + sizeof(rings));
+    gw_write32(GW_ACL_LOCK, 1u);
+}
+
+/** 初始化 HDMA：使能，初始化通道 0、1 的环（§8.5 第 7 步） */
+static void
+hdma_init(void)
+{
+    gw_write32(GW_HDMA_CTRL, 1u);
+    for (unsigned c = 0; c < 2; c++)
+        gw_hdma_chan_init(&chans[c], c, rings.r[c], RING_ENTRIES);
+}
+#endif
+
 #ifdef GW_FW_WDT_TEST
 /**
  * 看门狗自检：锁定后 WDT_LOAD 不可改；不喂狗时第一级超时置 STAGE1 并
@@ -146,9 +194,12 @@ handle_flr(void)
     for (;;) {
         if (!(gw_flr_take() & GW_FLR_IN_PROGRESS))
             return;  /* 已经确认过的 FLR 留下的事件 */
-        /* 本阶段没有命令协议和 HDMA 的状态需要清理 */
+        /* 复位前的 HDMA 事件属于旧的请求（spec-mgmt-tile §9）；本阶段
+         * 没有命令协议的状态需要清理 */
+        gw_write32(GW_EVT_PENDING, GW_EVT_HDMA_NOTIFY | GW_EVT_HDMA_ERR);
         if (gw_flr_confirm() != 0)
             continue;
+        hdma_init();  /* FLR 复位了 HDMA */
         set_ready();
         if (!(gw_read32(GW_EVT_PENDING) & GW_EVT_FLR))
             return;
@@ -179,7 +230,15 @@ fw_main(uint64_t hartid, const struct gw_boot_info *info)
     }
 #else
     wdt_init(WDT_LOAD);
+    acl_init();
+    hdma_init();
+#ifdef GW_FW_HDMA_TEST
+    (void)h;
+    gw_write32(GW_FW_VERSION_FW,
+               0xD0A00000u | (uint32_t)hdma_selftest(&chans[1]));
+#else
     gw_write32(GW_FW_VERSION_FW, h->fw_version);
+#endif
     set_ready();
     for (;;) {
         wdt_kick();

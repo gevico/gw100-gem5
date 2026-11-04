@@ -17,6 +17,8 @@ namespace gw100
 namespace
 {
 
+/** HDMA 寄存器区的大小（HDMA_BASE = 0，spec-host-dma §7.1） */
+constexpr Addr HdmaSize = 0x1000;
 /** 启动与设备状态块的起始（spec-pcie §6.5） */
 constexpr Addr BootBlk = 0x1'0000;
 /** 中断请求与 FLR 块的起始 */
@@ -35,6 +37,8 @@ HifRegs::HifRegs(BootRegs &boot, BootCtrl &ctrl) : boot(boot), ctrl(ctrl)
 bool
 HifRegs::read(Addr off, uint32_t &v) const
 {
+    if (off < HdmaSize)
+        return hdma && hdma->read(off, v, false);
     switch (off) {
       case BootBlk + 0x00: v = ctrl.fwBootStatus(); return true;
       case BootBlk + 0x04: v = ctrl.fwSize(); return true;
@@ -57,6 +61,8 @@ HifRegs::read(Addr off, uint32_t &v) const
 bool
 HifRegs::write(Addr off, uint32_t v)
 {
+    if (off < HdmaSize)
+        return hdma && hdma->write(off, v);
     switch (off) {
       case BootBlk + 0x00: ctrl.fwWriteBootStatus(v); return true;
       case BootBlk + 0x04: ctrl.fwWriteFwSize(v); return true;

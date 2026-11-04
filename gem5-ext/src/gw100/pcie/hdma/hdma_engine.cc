@@ -1332,6 +1332,19 @@ HdmaEngine::writeChannel(unsigned c, Addr off, uint32_t v)
     return false;
 }
 
+/** 偏移 off 处是否是已实现的 32 位寄存器 */
+bool
+HdmaEngine::implemented(Addr off) const
+{
+    if (off % 4 != 0)
+        return false;
+    if (off < ChanBase)
+        return off <= 0x02C;
+    unsigned c = (off - ChanBase) / ChanStride;
+    Addr r = (off - ChanBase) % ChanStride;
+    return c < chans.size() && (r <= 0x28 || r == 0x30 || r == 0x34);
+}
+
 /** 固件写偏移 off 的 32 位寄存器；未实现的偏移返回 false */
 bool
 HdmaEngine::write(Addr off, uint32_t v)

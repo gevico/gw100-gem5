@@ -63,6 +63,7 @@ baremetal/
 | `boot_errors` | 启动失败：镜像校验失败、`FW_SIZE` 非法、启动窗口的非法写入，各自回到 STAGE 2 后可重新加载（F10） |
 | `boot_flr` | 启动期间和固件运行期间的 FLR：门控、回到 STAGE 2 或重新就绪（F11） |
 | `wdt_fatal` | 加载看门狗测试固件：第二级超时后 `DEV_FATAL`、`INT_STATUS.ERROR` 置位，心跳停止，FLR 不清除；设备完全复位后恢复（`spec-mgmt-tile` F8） |
+| `hdma_basic` | 加载 HDMA 测试固件：H2D、D2H（连续缓冲与 SGL）数据正确，DEV_ADDR 错误停止后 RESUME，BAR0 镜像的计数与 `CH_ERR`（`spec-host-dma` F1、F4、F7、F9）。固件按约定的 host 地址 `BM_DMA_BUF_BASE` 访问 host 内存 |
 | `dev_reset` | 设备完全复位：BAR 保留、寄存器恢复复位值，100 ms 内回到 STAGE 2，可以重新加载固件（`spec-pcie` §13.1，`spec-clock-reset-power` T3） |
 
 **已知限制**：gem5 的 Simple CPU（timing、atomic）在访存收到错误响应时直接 panic，不会产生 data abort。因此测试无法验证"访问未解码地址会出错"这类行为，例如关闭 Memory Space 后再访问 BAR；这类检查只能验证配置寄存器本身。

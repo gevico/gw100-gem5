@@ -102,6 +102,15 @@ class BootCtrl
     /** host 写 BOOT_CTRL.DEV_RESET 时调用：由外壳发起设备完全复位 */
     std::function<void()> onDevReset;
 
+    /** 固件确认 FLR、门控解除时调用：HDMA 随之退出复位（§13.2） */
+    std::function<void()> onFlrDone;
+
+    /**
+     * 向管理 Tile 发出 HIF 的事件（BME_OFF 等，spec-mgmt-tile §6.3）；
+     * 链路未建立时保留，建立后发出
+     */
+    void hostEvent(uint32_t bits);
+
     /** DEV_STATUS.DEBUG_WIN：固件经 DEV_CTRL_FW 开启 */
     bool debugWin = false;
 
@@ -189,6 +198,8 @@ class BootCtrl
     bool delivered = false;
     /** FLR_STATUS.FAIL */
     bool flrFailed = false;
+    /** 待发出的 HIF 事件位 */
+    uint32_t pendingEvt = 0;
     /** 处理超时的事件 */
     EventFunctionWrapper flrTimer;
     /** 处理超时剩余的时间（ML 不为 UP 时暂停） */

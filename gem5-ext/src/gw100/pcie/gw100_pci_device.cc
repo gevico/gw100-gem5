@@ -7,6 +7,8 @@
 
 #include "src/gw100/pcie/gw100_pci_device.hh"
 
+#include <algorithm>
+
 #include "base/trace.hh"
 #include "debug/Gw100Pcie.hh"
 #include "dev/pci/pcireg.h"
@@ -16,6 +18,16 @@ namespace gem5
 {
 namespace gw100
 {
+
+namespace
+{
+
+/** Device Control 在配置空间中的偏移：PCI Express capability（0x50）+ 8 */
+constexpr Addr DevCtl = 0x58;
+/** HIF 事件位：BME_OFF（spec-mgmt-tile §6.3） */
+constexpr uint32_t EvtBmeOff = 1u << 3;
+
+} // anonymous namespace
 
 /** 按参数构造；全部组件由 Gw100PcieFactory 组装 */
 Gw100PciDevice::Gw100PciDevice(const Params &p)
@@ -29,24 +41,32 @@ Gw100PciDevice::Gw100PciDevice(const Params &p)
 {
     parts->hif.pciState = [this] { return pciState(); };
     parts->bootCtrl.onDevReset = [this] { devResetRequest(); };
+    parts->bootCtrl.onFlrDone = [this] { parts->hdma.setHold(false); };
     funcResetPin.onChange([this](const bool &v) { funcReset(v); });
 }
 
-/** 接入 ML 的 HIF 侧（接了管理链路时） */
+/** 检查端口，接入 ML 的 HIF 侧（接了管理链路时） */
 void
 Gw100PciDevice::init()
 {
-    PciEndpoint::init();
+    // dma 端口由 HDMA 的 HostDmaPort 提供，DmaDevice 自带的 DmaPort
+    // 不使用，所以跳过 DmaDevice::init() 对它的检查
+    PioDevice::init();
+    fatal_if(!parts->hostDma.isConnected(), "%s: dma 端口没有连接", name());
+    parts->hostDma.toPhys = [this](Addr a) { return pciToDma(a); };
+    updateHdmaPcie();
     if (!link)
         return;
     ml = &link->attach(Gw100MgmtLink::Side::Hif, *this, parts->hif);
     parts->hif.bindMl(ml);
     parts->bootCtrl.bindMl(ml);
+    parts->hdmaMl.bind(ml);
     ml->onChange = [this] {
         // ML_HIF_ERR 非零经电平信号送到管理 Tile 侧（spec-mgmt-link
-        // §8.2）；链路状态的变化交给启动与 FLR 控制
+        // §8.2）；链路状态的变化交给启动与 FLR 控制和 HDMA
         ml->setHifErrLevel(ml->errReg() != 0);
         parts->bootCtrl.mlChanged();
+        parts->hdma.wake();
     };
 }
 
@@ -75,13 +95,16 @@ Gw100PciDevice::pciState()
 }
 
 /**
- * 返回名为 if_name 的端口：mem_port 是设备内存端口，wdt_fatal 是
- * 看门狗第二级超时的信号，dev_reset_req、func_reset 是设备完全复位
- * 的请求与复位信号，其余交给 PciEndpoint
+ * 返回名为 if_name 的端口：dma 是 HDMA 访问 host 内存的端口，
+ * mem_port 是设备内存端口，wdt_fatal 是看门狗第二级超时的信号，
+ * dev_reset_req、func_reset 是设备完全复位的请求与复位信号，其余
+ * 交给 PciEndpoint
  */
 Port &
 Gw100PciDevice::getPort(const std::string &if_name, PortID idx)
 {
+    if (if_name == "dma")
+        return parts->hostDma;
     if (if_name == "mem_port")
         return parts->devmem.port();
     if (if_name == "wdt_fatal")
@@ -214,8 +237,11 @@ Tick
 Gw100PciDevice::writeConfig(PacketPtr pkt)
 {
     const Addr off = pkt->getAddr() & (CfgSpaceSize - 1);
-    if (off < ConfigSpace::OwnBase)
-        return PciEndpoint::writeConfig(pkt);
+    if (off < ConfigSpace::OwnBase) {
+        Tick t = PciEndpoint::writeConfig(pkt);
+        updateBusMaster();
+        return t;
+    }
 
     const unsigned size = pkt->getSize();
     panic_if(off + size > CfgSpaceSize, "%s: 配置空间访问越界", name());
@@ -229,6 +255,7 @@ Gw100PciDevice::writeConfig(PacketPtr pkt)
 
     const CfgEvent ev = parts->config.write(off, size, val);
     pkt->makeAtomicResponse();
+    updateHdmaPcie();
     if (ev == CfgEvent::Flr)
         functionReset("FLR");
     else if (ev == CfgEvent::D3hotToD0)
@@ -269,8 +296,39 @@ Gw100PciDevice::functionReset(const char *why)
     cfgWriteCommon(PCI_COMMAND, 2, 0);
     for (int i = 0; i < 6; i++)
         cfgWriteCommon(PCI0_BASE_ADDR0 + 4 * i, 4, 0);
-    // FLR 的门控、排空与通知固件（spec-pcie §13.2）
+    // FLR 的门控、排空与通知固件（spec-pcie §13.2）；HDMA 已随寄存器
+    // 复位，保持复位直到固件确认（spec-host-dma §8.4）
+    parts->hdma.setHold(true);
+    lastBme = false;
+    parts->hdma.setBusMaster(false);
+    updateHdmaPcie();
     parts->bootCtrl.flr();
+}
+
+/** 按 Device Control 的 MPS、MRRS、Extended Tag 更新 HDMA */
+void
+Gw100PciDevice::updateHdmaPcie()
+{
+    uint32_t dc = parts->config.read(DevCtl, 2);
+    HdmaEngine::PcieParams pp;
+    pp.mps = 128u << ((dc >> 5) & 7);
+    pp.mrrs = std::min(128u << ((dc >> 12) & 7),
+                       unsigned(params().hdma_max_read_request));
+    pp.extTag = (dc >> 8) & 1;
+    parts->hdma.setPcie(pp);
+}
+
+/** Bus Master Enable 变化：通知 HDMA；由 1 变 0 时发出 BME_OFF 事件 */
+void
+Gw100PciDevice::updateBusMaster()
+{
+    bool bme = letoh(config().command) & PCI_CMD_BME;
+    if (bme == lastBme)
+        return;
+    lastBme = bme;
+    parts->hdma.setBusMaster(bme);
+    if (!bme)
+        parts->bootCtrl.hostEvent(EvtBmeOff);
 }
 
 /** 保存配置空间头部（基类）和各组件的状态 */
