@@ -72,3 +72,16 @@ TEST(StatusUnitTest, FatalIsErrorSource)
     s.reset();
     EXPECT_TRUE(s.intStatus() & StatusUnit::IntError);
 }
+
+/** HDI 的错误寄存器是 INT_STATUS.ERROR 的硬件源；撤销后可以清零 */
+TEST(StatusUnitTest, HdiErrIsErrorSource)
+{
+    StatusUnit s("test");
+    s.setHdiErr(true);
+    EXPECT_TRUE(s.intStatus() & StatusUnit::IntError);
+    s.clearInt(StatusUnit::IntError);
+    EXPECT_TRUE(s.intStatus() & StatusUnit::IntError);
+    s.setHdiErr(false);
+    s.clearInt(StatusUnit::IntError);
+    EXPECT_FALSE(s.intStatus() & StatusUnit::IntError);
+}

@@ -33,6 +33,8 @@ struct Rig
     bool up = true;
     /** HDI_WR 事件次数 */
     unsigned events = 0;
+    /** onErrLevel 最近一次给出的电平 */
+    bool errLevel = false;
 
     /** 接上回调 */
     Rig()
@@ -44,6 +46,7 @@ struct Rig
             return true;
         };
         h.onHdiWr = [this] { events++; };
+        h.onErrLevel = [this](bool e) { errLevel = e; };
     }
 
     /** 固件读 */
@@ -138,4 +141,19 @@ TEST(HdiCtrl, DoorbellOrderAndCoalesce)
     EXPECT_EQ(r.sent.back(), std::make_pair(33u, uint16_t(7)));
     r.h.hostDoorbell(0, 8, 9);                       // 保留偏移：忽略
     EXPECT_EQ(r.sent.size(), 4u);
+}
+
+TEST(HdiCtrl, ErrorRegistersDriveErrLevel)
+{
+    Rig r;
+    r.h.fwWrite(HdiCtrl::CtxErr, 1u << 3);
+    EXPECT_TRUE(r.errLevel);
+    r.h.fwWrite(HdiCtrl::Fatal, 2);
+    r.h.fwWrite(HdiCtrl::CtxErr, 0);
+    EXPECT_TRUE(r.errLevel);                         // HDI_FATAL 仍不为 0
+    r.h.fwWrite(HdiCtrl::Fatal, 0);
+    EXPECT_FALSE(r.errLevel);
+    r.h.fwWrite(HdiCtrl::Fatal, 1);
+    r.h.reset();
+    EXPECT_FALSE(r.errLevel);
 }
