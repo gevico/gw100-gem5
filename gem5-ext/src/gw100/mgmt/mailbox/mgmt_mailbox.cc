@@ -7,6 +7,8 @@
 
 #include "src/gw100/mgmt/mailbox/mgmt_mailbox.hh"
 
+#include <algorithm>
+
 #include "base/logging.hh"
 
 namespace gem5
@@ -30,6 +32,17 @@ slotMask(unsigned slots)
 MgmtMailbox::MgmtMailbox(unsigned slots) : slots(slots), slot(slots, 0)
 {
     fatal_if(slots == 0 || slots > 64, "doorbell 槽位数 %d 超出布局", slots);
+}
+
+/** 复位：全部寄存器恢复复位值 */
+void
+MgmtMailbox::reset()
+{
+    std::fill(slot.begin(), slot.end(), 0);
+    dbPending = 0;
+    dbMask = 0;
+    evtPending = 0;
+    evtMask = 0;
 }
 
 /** ML 的 DB_WR：覆盖槽位 slot 并置位 pending；越界返回 false */

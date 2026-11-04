@@ -9,7 +9,11 @@
 
 #include <cstring>
 
+#include "arch/generic/decoder.hh"
 #include "base/logging.hh"
+#include "base/trace.hh"
+#include "cpu/thread_context.hh"
+#include "debug/Gw100Mgmt.hh"
 #include "mem/packet_access.hh"
 
 namespace gem5
@@ -119,13 +123,24 @@ Gw100MgmtTile::Gw100MgmtTile(const Params &p)
       tsSync(p.ts_sync),
       cpu(p.cpu),
       wdtFatal(name() + ".wdt_fatal", 0, this),
-      fetchEvent([this] { deliverFetches(); }, name() + ".fetch"),
+      haltPc(MgmtSram::RomBase + p.rom_size - 4),
+      devResetReq(name() + ".dev_reset_req", 0, this),
+      pcieReset(name() + ".pcie_reset"),
+      devResetSync(p.dev_reset_sync),
+      devResetHold(p.dev_reset_hold),
+      xtalPerfLevel(p.xtal_perf_level),
+      devResetAssertEvent([this] { devResetAssert(); },
+                          name() + ".devResetAssert"),
+      devResetReleaseEvent([this] { devResetRelease(); },
+                           name() + ".devResetRelease"),
       wdtEvent([this] { wdtExpire(); }, name() + ".wdt"),
       pio(name() + ".pio", *this),
       mlEvent([this] { mlFinish(); }, name() + ".mlFinish")
 {
-    fatal_if(!mgmtClk || !mgmtClk->validPerfLevel(pllPerfLevel),
-             "%s: 管理系统的时钟域没有频率档 %u", name(), pllPerfLevel);
+    fatal_if(!mgmtClk || !mgmtClk->validPerfLevel(pllPerfLevel) ||
+             !mgmtClk->validPerfLevel(xtalPerfLevel),
+             "%s: 管理系统的时钟域没有频率档 %u、%u", name(), pllPerfLevel,
+             xtalPerfLevel);
     crc.onMgmtSwitch = [this](Tick when) {
         if (!clkSwitchEvent.scheduled())
             schedule(clkSwitchEvent, when);
@@ -134,11 +149,16 @@ Gw100MgmtTile::Gw100MgmtTile(const Params &p)
     fatal_if(!plic, "%s: 没有接 PLIC", name());
     fatal_if(cpu && cpu->numThreads != 1, "%s: 管理 CPU 只能有一个线程",
              name());
+    if (cpu) {
+        intr = dynamic_cast<MgmtInterrupts *>(cpu->getInterruptController(0));
+        fatal_if(!intr, "%s: 管理 CPU 的中断控制器必须是 "
+                 "Gw100MgmtInterrupts", name());
+    }
     mailbox.onChange = [this] { updateIrqs(); };
     regs.onChange = [this] { updateIrqs(); };
 }
 
-/** 返回名为 if_name 的端口：pio、wdt_fatal */
+/** 返回名为 if_name 的端口：pio、wdt_fatal、dev_reset_req、pcie_reset */
 Port &
 Gw100MgmtTile::getPort(const std::string &if_name, PortID idx)
 {
@@ -148,6 +168,10 @@ Gw100MgmtTile::getPort(const std::string &if_name, PortID idx)
         fatal_if(idx > 0, "%s: wdt_fatal 只有一个", name());
         return wdtFatal;
     }
+    if (if_name == "dev_reset_req")
+        return devResetReq;
+    if (if_name == "pcie_reset")
+        return pcieReset;
     return ClockedObject::getPort(if_name, idx);
 }
 
@@ -178,7 +202,7 @@ void
 Gw100MgmtTile::respond(PacketPtr pkt, Tick when)
 {
     pkt->makeResponse();
-    sendResp(pkt, when);
+    pio.schedTimingResp(pkt, when);
 }
 
 /** 把 pkt 标记为访问错误并在下一个时钟沿返回 */
@@ -187,45 +211,7 @@ Gw100MgmtTile::respondError(PacketPtr pkt)
 {
     pkt->makeResponse();
     pkt->setBadAddress();
-    sendResp(pkt, clockEdge(Cycles(1)));
-}
-
-/**
- * 把已经 makeResponse() 的 pkt 安排在 when 时刻发出；取指的响应
- * 先放进 fetchResps，到时由 deliverFetches() 交给端口
- */
-void
-Gw100MgmtTile::sendResp(PacketPtr pkt, Tick when)
-{
-    if (!pkt->req->isInstFetch()) {
-        pio.schedTimingResp(pkt, when);
-        return;
-    }
-    // 停机时在途的取指照常结束但结果丢弃（spec-mgmt-tile §7.4），所以
-    // 取指的响应到交付时刻才决定是否交给 CPU
-    fetchResps.emplace(when, pkt);
-    Tick first = fetchResps.begin()->first;
-    if (!fetchEvent.scheduled())
-        schedule(fetchEvent, first);
-    else if (fetchEvent.when() > first)
-        reschedule(fetchEvent, first);
-}
-
-/** 把到时的取指响应交给端口；CPU 停住后扣下，不再交付 */
-void
-Gw100MgmtTile::deliverFetches()
-{
-    while (!fetchResps.empty() &&
-           fetchResps.begin()->first <= curTick()) {
-        PacketPtr pkt = fetchResps.begin()->second;
-        fetchResps.erase(fetchResps.begin());
-        if (halted)
-            heldFetches.push_back(pkt);
-        else
-            pio.schedTimingResp(pkt, curTick());
-    }
-    if (!fetchResps.empty())
-        schedule(fetchEvent, fetchResps.begin()->first);
+    pio.schedTimingResp(pkt, clockEdge(Cycles(1)));
 }
 
 /** 时刻 t 的时钟沿上，看门狗看到的同步后的 mtime 样本 */
@@ -276,13 +262,112 @@ Gw100MgmtTile::haltCpu()
     // 专用信号与 CPU 停机互不依赖
     if (wdtFatal.isConnected())
         wdtFatal.raise();
-    // 正在等待中断（wfi）的 CPU 立即停住，不再被中断唤醒；其余情况下
-    // CPU 的下一次取指不再得到响应
-    if (cpu) {
-        ThreadContext *tc = cpu->getContext(0);
-        if (tc->status() == ThreadContext::Suspended)
-            tc->halt();
-    }
+    requestCpuHalt();
+}
+
+/** 请求管理 CPU 在下一个指令边界停住（正在 wfi 的 CPU 先唤醒） */
+void
+Gw100MgmtTile::requestCpuHalt()
+{
+    if (!intr)
+        return;
+    intr->requestHalt(haltPc);
+    cpu->wakeup(0);
+}
+
+/** dev_reset_req 置位：经同步器后开始设备完全复位 */
+void
+Gw100MgmtTile::raiseInterruptPin(int num)
+{
+    (void)num;
+    if (!inDevReset && !devResetAssertEvent.scheduled())
+        schedule(devResetAssertEvent, curTick() + devResetSync);
+}
+
+/** dev_reset_req 撤销：PCIe 的功能逻辑复位时撤销，无动作 */
+void
+Gw100MgmtTile::lowerInterruptPin(int num)
+{
+    (void)num;
+}
+
+/**
+ * 设备完全复位开始（spec-clock-reset-power §4.3）：复位 PCIe 的
+ * 功能逻辑、ML 的两端和本 Tile，CPU 停住，时钟回到 XTAL
+ */
+void
+Gw100MgmtTile::devResetAssert()
+{
+    DPRINTF(Gw100Mgmt, "设备完全复位：开始\n");
+    inDevReset = true;
+    if (pcieReset.isConnected())
+        pcieReset.set(true);  // PCIe 的功能逻辑与 ML 的 HIF 侧
+    link->reset(Gw100MgmtLink::Side::Mgmt);
+    // ML 的复位丢弃了在途的 REG_RD，CPU 等待的读以访问错误结束
+    for (PacketPtr pkt : hifReads)
+        respondError(pkt);
+    hifReads.clear();
+    if (mlEvent.scheduled())
+        deschedule(mlEvent);
+    mlRespond = nullptr;
+    // CPU 在下一个指令边界停住，等待复位释放
+    restartPending = false;
+    requestCpuHalt();
+    // 本地寄存器、信箱、看门狗、CRC 恢复复位值，时钟回到 XTAL
+    if (clkSwitchEvent.scheduled())
+        deschedule(clkSwitchEvent);
+    mgmtClk->perfLevel(xtalPerfLevel);
+    crc.devReset();
+    wdt.reset();
+    if (wdtEvent.scheduled())
+        deschedule(wdtEvent);
+    halted = false;
+    if (wdtFatal.isConnected())
+        wdtFatal.lower();
+    mailbox.reset();
+    regs.reset();
+    updateIrqs();
+    schedule(devResetReleaseEvent, curTick() + devResetHold);
+}
+
+/** 设备完全复位释放：SRAM 开始硬件清零，ML 重新建立，CPU 重新开始 */
+void
+Gw100MgmtTile::devResetRelease()
+{
+    DPRINTF(Gw100Mgmt, "设备完全复位：释放\n");
+    inDevReset = false;
+    sram.startInit(curTick(), clockPeriod());
+    link->release(Gw100MgmtLink::Side::Mgmt);
+    if (pcieReset.isConnected())
+        pcieReset.set(false);
+    restartPending = true;
+    if (heldFetch)
+        restartCpu();
+}
+
+/**
+ * 复位 CPU 的状态，用复位向量处的指令响应扣下的取指，CPU 从启动
+ * ROM 重新开始
+ */
+void
+Gw100MgmtTile::restartCpu()
+{
+    ThreadContext *tc = cpu->getContext(0);
+    intr->clearHalt();
+    tc->getIsaPtr()->clear();
+    tc->getIsaPtr()->resetThread();  // PC 回到复位向量，PMP 复位
+    intr->clearAll();
+    tc->getDecoderPtr()->reset();
+    PacketPtr pkt = heldFetch;
+    heldFetch = nullptr;
+    restartPending = false;
+    Addr pc = tc->pcState().instAddr();
+    unsigned sz = pkt->getSize();
+    panic_if(pc % sz || !sram.inRom(pc, sz),
+             "%s: 复位向量 %#x 不在启动 ROM 中", name(), pc);
+    DPRINTF(Gw100Mgmt, "管理 CPU 从 %#x 重新开始\n", pc);
+    pkt->setData(sram.ptr(pc));
+    respond(pkt, clockEdge(Cycles(1)));
 }
 
 /**
@@ -400,7 +485,9 @@ Gw100MgmtTile::accessHif(PacketPtr pkt)
         return;
     }
     t->type = MlType::RegRd;
+    hifReads.insert(pkt);
     t->done = [this, pkt](MlStatus s, const MlData &d) {
+        hifReads.erase(pkt);
         if (s != MlStatus::Ok) {
             respondError(pkt);
             return;
@@ -408,16 +495,22 @@ Gw100MgmtTile::accessHif(PacketPtr pkt)
         pkt->setUintX(le32(d.data()), ByteOrder::little);
         respond(pkt, clockEdge());
     };
-    if (!ml->submit(cpuClient, t))
+    if (!ml->submit(cpuClient, t)) {
+        hifReads.erase(pkt);
         respondError(pkt);
+    }
 }
 
 /** 处理一次时序访问，在完成时刻经端口返回响应 */
 void
 Gw100MgmtTile::handleTiming(PacketPtr pkt)
 {
-    if (halted && pkt->req->isInstFetch()) {
-        heldFetches.push_back(pkt);  // CPU 已停住：不再取指
+    if (pkt->req->isInstFetch() && intr && intr->haltTaken() &&
+        pkt->getAddr() == haltPc) {
+        // CPU 已在指令边界停住：扣下这次取指
+        heldFetch = pkt;
+        if (restartPending)
+            restartCpu();
         return;
     }
     Addr a = pkt->getAddr();

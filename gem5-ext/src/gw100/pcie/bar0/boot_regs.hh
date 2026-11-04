@@ -59,6 +59,9 @@ class BootRegs : public RegBlock
     /** 固件经 FW_VERSION_FW 写入 FW_VERSION（spec-pcie §6.5） */
     void setFwVersion(uint32_t v) { fwVer = v; }
 
+    /** 设备完全复位：FW_VERSION 清零（FLR 保留它） */
+    void devReset() { fwVer = 0; }
+
     /** 保存 FW_VERSION */
     void serialize(CheckpointOut &cp) const override;
 

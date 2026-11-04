@@ -59,6 +59,9 @@ class MgmtMailbox
     /** 中断电平可能变化时调用 */
     std::function<void()> onChange;
 
+    /** 复位：全部寄存器恢复复位值 */
+    void reset();
+
   private:
     /** 槽位数 */
     const unsigned slots;

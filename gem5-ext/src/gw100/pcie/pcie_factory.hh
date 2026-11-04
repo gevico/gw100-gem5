@@ -28,6 +28,7 @@
 #include "src/gw100/pcie/boot/boot_ctrl.hh"
 #include "src/gw100/pcie/config/config_space.hh"
 #include "src/gw100/pcie/hif/hif_regs.hh"
+#include "src/gw100/pcie/shim/reset_shim.hh"
 #include "src/gw100/pcie/status/status_unit.hh"
 #include "src/gw100/pcie/window/window_table.hh"
 
@@ -51,6 +52,12 @@ struct PcieParts
      * 功能级复位：把寄存器和窗口恢复为复位值；配置空间由外壳另行复位
      */
     void resetRegisters();
+
+    /**
+     * 设备完全复位：在 resetRegisters() 之外，再复位 FLR 保留的启动
+     * 状态、FW_VERSION 和 DEV_FATAL；ML 由外壳另行复位
+     */
+    void devReset();
 
     /** 按组件分节保存全部状态 */
     void serialize(CheckpointOut &cp) const;
@@ -80,6 +87,8 @@ struct PcieParts
     Bar0Handler bar0;
     /** BAR2 的处理者 */
     Bar2Handler bar2;
+    /** 设备完全复位期间响应 BAR 访问的 reset shim */
+    ResetShim shim;
     /** 按 BAR 号索引的处理者；没有处理者的 BAR 为 nullptr */
     std::array<BarHandler *, 6> bars{};
 };

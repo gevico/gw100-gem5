@@ -109,6 +109,10 @@ BootCtrl::hostBootCtrl(uint32_t v)
         refreshWindow();
         trySend();
     }
+    if ((v & 2) && onDevReset) {
+        DPRINTF(Gw100Boot, "接受 DEV_RESET\n");
+        onDevReset();
+    }
 }
 
 /** host 写 FW_SIZE：只在启动窗口打开时有效 */
@@ -232,6 +236,38 @@ BootCtrl::flr()
     }
     refreshWindow();
     trySend();
+}
+
+/**
+ * 设备完全复位：全部状态恢复复位值，包括 DEV_FATAL 和启动通路故障
+ * 的锁存（spec-pcie §13.1）；ML 由外壳另行复位
+ */
+void
+BootCtrl::devReset()
+{
+    DPRINTF(Gw100Boot, "设备完全复位\n");
+    debugWin = false;
+    fatal = false;
+    status.setFatal(false);
+    stage = 0;
+    fwReady = false;
+    error = 0;
+    size = 0;
+    winWrite = false;
+    lastWindowOpen = false;
+    linkFault = false;
+    // ML 的复位丢弃了在途的启动写入和事件，不会再有确认
+    commitCount = 0;
+    fwStartPending = false;
+    flrInProgress = false;
+    flrNeedSend = false;
+    barriersOut = 0;
+    delivered = false;
+    flrFailed = false;
+    if (flrTimer.scheduled())
+        em.deschedule(flrTimer);
+    flrRemaining = flrTimeoutTicks;
+    flrTimerStart = 0;
 }
 
 /** 尝试发出待发的 FW_START 事件和 FLR 屏障 */
