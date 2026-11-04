@@ -199,7 +199,7 @@ flowchart LR
 |---|---|---|---|
 | 入站完成器 | 客户端 | `BOOT_WR`、`DB_WR`、`EVENT` | `spec-pcie` §5.3、§7.2 |
 | HIF 的事件源（FLR、Bus Master Enable、电源状态、HDI 寄存器写入、其他 host 侧错误） | 客户端 | `EVENT` | `spec-mgmt-tile` §6.3 |
-| HDMA | 客户端 | `DESC_RD`、`DESC_WR`、`EVENT` | `spec-host-dma` §3.1、§5.3。`EVENT` 只能置位事件位（`spec-mgmt-tile` §6.3）；完成通知携带的信息怎样保存和读取，由 `spec-host-dma` 定义（其 §11 待决） |
+| HDMA | 客户端 | `DESC_RD`、`DESC_WR`、`EVENT` | `spec-host-dma` §3.1、§5.3。`EVENT` 只能置位事件位（`spec-mgmt-tile` §6.3）；事件只是唤醒，完成状态在描述符的 DW7 中，TAG 等信息在描述符中（`spec-host-dma` §5.3） |
 | HIF 寄存器（包括影子寄存器和 HDMA 的寄存器） | 目标 | `REG_RD`、`REG_WR` | `spec-mgmt-tile` §6.1、`spec-host-dma` §7 |
 
 **管理 Tile 侧**
