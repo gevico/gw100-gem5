@@ -18,8 +18,10 @@
 #include "src/gw100/ml/ml_endpoint.hh"
 #include "src/gw100/pcie/bar0/boot_regs.hh"
 #include "src/gw100/pcie/boot/boot_ctrl.hh"
+#include "src/gw100/pcie/hdi/hdi_ctrl.hh"
 #include "src/gw100/pcie/hdma/hdma_engine.hh"
 #include "src/gw100/pcie/intr/int_ctrl.hh"
+#include "src/gw100/pcie/status/status_unit.hh"
 
 namespace gem5
 {
@@ -41,6 +43,12 @@ class HifRegs : public MlTargetIf
 
     /** 接入中断控制器：INT_REQ、INT_LEVEL、CTX_VECTOR（spec-pcie §6.5） */
     void bindInt(IntCtrl *ic) { intCtrl = ic; }
+
+    /**
+     * 接入 HDI：HIF 区 0x1_1000 起是它的固件视角；ERR_REQ 置位 status 中
+     * 固件检测到的错误（spec-pcie §6.5）
+     */
+    void bindHdi(HdiCtrl *h, StatusUnit *st) { hdi = h; status = st; }
 
     /** 读取配置空间中固件需要的状态（PCI_STATE）的回调 */
     std::function<uint32_t()> pciState;
@@ -65,6 +73,10 @@ class HifRegs : public MlTargetIf
     HdmaEngine *hdma = nullptr;
     /** 中断控制器 */
     IntCtrl *intCtrl = nullptr;
+    /** HDI 控制器在 HIF 中的状态 */
+    HdiCtrl *hdi = nullptr;
+    /** ERR_STATUS（ERR_REQ 置位它） */
+    StatusUnit *status = nullptr;
 };
 
 } // namespace gw100

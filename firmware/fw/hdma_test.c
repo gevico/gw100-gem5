@@ -10,7 +10,8 @@
  * - SGL：三个 DATA 条目，指向三个不连续的 4 KiB 页。
  * 依次执行：H2D 把 SRC 写入设备内存；D2H（FENCE）读回到 DST1 + 4（4 B
  * 对齐、跨 4 KiB）；D2H（FENCE、NOTIFY）经 SGL 写到三个页；一个 DEV_ADDR
- * 越界的 H2D 使通道错误停止，RESUME 后再做一次小的 H2D。
+ * 越界的 H2D 使通道错误停止，RESUME 后再做一次小的 H2D。H2D 之后经 NI
+ * 读回设备内存的首尾两个字，检查管理 CPU 的 DPA 访问。
  *
  * @see spec-host-dma
  */
@@ -61,6 +62,12 @@ hdma_selftest(struct gw_hdma_chan *c)
     gw_hdma_commit(c);
     if (gw_hdma_wait(c, i0, TIMEOUT) != 0)
         return 1;
+    /* 经 NI 读回设备内存（spec-mgmt-tile §3.3）：host 的源数据是
+     * 0xC0DE0000 + 字节偏移 */
+    __asm__ volatile("fence" ::: "memory");
+    volatile uint32_t *dpa = (volatile uint32_t *)(GW_NI_BASE + DPA_BUF);
+    if (dpa[0] != 0xC0DE0000u || dpa[LEN / 4 - 1] != 0xC0DE0000u + LEN - 4)
+        return 7;
     if (gw_hdma_wait(c, i1, TIMEOUT) != 0)
         return 2;
     if (gw_hdma_wait(c, i2, TIMEOUT) != 0)

@@ -121,9 +121,9 @@ check_access_rules(void)
 
     /* ERR_STATUS 写 1 清零后，下一次错误重新记录位置 */
     clear_errors();
-    bm_write32(r + GW100_RSVD_BLOCK_HDI + 0x10, 1);    /* 尚未实现的块 */
+    bm_write32(r + GW100_RSVD_BLOCK + 0x10, 1);        /* 保留区域 */
     TEST_EQ(bm_read32(r + GW100_ERR_STATUS), GW100_ERR_RSVD_ACCESS);
-    TEST_EQ(bm_read32(r + GW100_ERR_ADDR), GW100_RSVD_BLOCK_HDI + 0x10);
+    TEST_EQ(bm_read32(r + GW100_ERR_ADDR), GW100_RSVD_BLOCK + 0x10);
     TEST_ASSERT(bm_read32(r + GW100_ERR_INFO) & GW100_ERR_INFO_WRITE);
     clear_errors();
 }

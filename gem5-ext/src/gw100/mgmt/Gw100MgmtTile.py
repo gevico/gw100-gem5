@@ -23,6 +23,11 @@ class Gw100MgmtTile(ClockedObject):
     cxx_class = "gem5::gw100::Gw100MgmtTile"
 
     pio = ResponsePort("接管理系统的本地总线")
+    ni = RequestPort(
+        "NI 发起端口：管理 CPU 经它访问 DPA 空间（本地地址 0x100_0000_0000 + "
+        "DPA，spec-mgmt-tile §3.3）"
+    )
+    device_pa_bits = Param.Unsigned(40, "addr.device_pa_bits")
     wdt_fatal = IntSourcePin(
         "看门狗第二级超时的专用信号，接 PCIe 设备的 wdt_fatal"
         "（spec-mgmt-tile §7.4）"

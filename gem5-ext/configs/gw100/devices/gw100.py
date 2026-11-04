@@ -7,7 +7,9 @@
 由板卡决定。
 
 设备内存暂用 SimpleMemory 代替 LPDDR5X：不在 host 的地址映射里，地址
-可以与 host 重叠，BAR2 窗口经设备的 mem_port 访问它。
+可以与 host 重叠。PCIe 设备的 mem_port（BAR2 窗口、HDMA）和管理 Tile
+的 NI 发起端口经一个交叉开关访问它，代替尚未建模的 Mesh NoC（理想化
+清单 #10）。
 
 @see spec-pcie, spec-hdi
 """
@@ -19,6 +21,7 @@ from m5.objects import (
     Gw100MgmtLink,
     Gw100PciDevice,
     Gw100PrefetchMemBar,
+    NoncoherentXBar,
     SimpleMemory,
     SrcClockDomain,
     VoltageDomain,
@@ -31,6 +34,8 @@ from .mgmt import make_mgmt_system
 # clk_pcie：PCIe 控制器、入站完成器、BAR0 寄存器、HDMA
 # （spec-clock-reset-power §3.2）
 PCIE_FREQ = "250MHz"
+# clk_core（spec-clock-reset-power §3.2）
+CORE_FREQ = "1GHz"
 
 
 @dataclass(frozen=True)
@@ -101,10 +106,21 @@ class Gw100Config:
             kvm_map=False,
             conf_table_reported=False,
         )
-        dev.mem_port = dev.devmem.port
         dev.clk_domain = SrcClockDomain(
             clock=PCIE_FREQ, voltage_domain=VoltageDomain()
         )
+        # 理想化的 NoC：clk_core 1 GHz，32 B 宽，每段 2 个周期（推算）
+        dev.devnoc = NoncoherentXBar(
+            width=32,
+            frontend_latency=2,
+            forward_latency=2,
+            response_latency=2,
+            clk_domain=SrcClockDomain(
+                clock=CORE_FREQ, voltage_domain=VoltageDomain()
+            ),
+        )
+        dev.mem_port = dev.devnoc.cpu_side_ports
+        dev.devnoc.mem_side_ports = dev.devmem.port
         dev.mgmt_link = Gw100MgmtLink()
         return dev
 
@@ -117,6 +133,9 @@ class Gw100Config:
         # （spec-clock-reset-power §4.3）
         s.tile.dev_reset_req = dev.dev_reset_req
         s.tile.pcie_reset = dev.func_reset
+        # 管理 Tile 的 NI 经理想化的 NoC 访问设备内存
+        s.tile.ni = dev.devnoc.cpu_side_ports
+        s.tile.device_pa_bits = self.addr.device_pa_bits
         return s
 
 

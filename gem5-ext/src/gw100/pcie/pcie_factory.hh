@@ -15,6 +15,7 @@
 #include <array>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "params/Gw100PciDevice.hh"
 #include "sim/serialize.hh"
@@ -29,6 +30,8 @@
 #include "src/gw100/pcie/bar2/devmem_backend.hh"
 #include "src/gw100/pcie/boot/boot_ctrl.hh"
 #include "src/gw100/pcie/config/config_space.hh"
+#include "src/gw100/pcie/hdi/hdi_ctrl.hh"
+#include "src/gw100/pcie/hdi/hdi_regs.hh"
 #include "src/gw100/pcie/hdma/hdma_engine.hh"
 #include "src/gw100/pcie/hdma/hdma_glue.hh"
 #include "src/gw100/pcie/hif/hif_regs.hh"
@@ -112,6 +115,12 @@ struct PcieParts
     MsixTable msixTable;
     /** BAR0 的 MSI-X PBA */
     MsixPba msixPba;
+    /** HDI 控制器在 HIF 中的状态 */
+    HdiCtrl hdi;
+    /** BAR0 的 HDI 控制器寄存器块 */
+    HdiRegsBlock hdiRegs;
+    /** BAR0 的 doorbell 页：管理队列与各上下文 */
+    std::vector<std::unique_ptr<DoorbellPage>> doorbells;
     /** 按 BAR 号索引的处理者；没有处理者的 BAR 为 nullptr */
     std::array<BarHandler *, 6> bars{};
 };
