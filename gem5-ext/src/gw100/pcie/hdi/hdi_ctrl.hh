@@ -39,6 +39,10 @@ class HdiCtrl
     static constexpr Addr Cc = 0x010;
     /** 寄存器偏移：HDI_CSTS */
     static constexpr Addr Csts = 0x014;
+    /** 寄存器偏移：HDI_FATAL */
+    static constexpr Addr Fatal = 0x030;
+    /** 寄存器偏移：HDI_CTX_ERR */
+    static constexpr Addr CtxErr = 0x034;
     /** 固件视角：HDI_WR_MAP */
     static constexpr Addr WrMap = 0x100;
     /** HDI_CSTS.BUSY */
@@ -59,7 +63,10 @@ class HdiCtrl
     /** host 写 doorbell 页 page 内偏移 off（0 为 SQ_TAIL，4 为 CQ_HEAD） */
     void hostDoorbell(unsigned page, Addr off, uint32_t v);
 
-    /** 固件经 HIF 区读偏移 off（0x000 – 0x0FF 与 HDI_WR_MAP）；其余返回 false */
+    /**
+     * 固件经 HIF 区读偏移 off（0x000 – 0x0FF 与 HDI_WR_MAP）；其余返回
+     * false
+     */
     bool fwRead(Addr off, uint32_t &v) const;
 
     /** 固件经 HIF 区写偏移 off；其余返回 false */
@@ -80,9 +87,18 @@ class HdiCtrl
     /** host 写了可写字段：发出 HDI_WR 事件 */
     std::function<void()> onHdiWr;
 
+    /**
+     * HDI_FATAL ≠ 0 或 HDI_CTX_ERR ≠ 0 的电平变化：INT_STATUS.ERROR 的
+     * 硬件源之一（spec-pcie §8.4）
+     */
+    std::function<void(bool)> onErrLevel;
+
   private:
     /** 记录一次可写寄存器的 host 写入 */
     void recordWrite(Addr off);
+
+    /** 把 HDI_FATAL、HDI_CTX_ERR 的当前电平交给 onErrLevel */
+    void updateErrLevel();
 
     /** 影子寄存器：0x000 – 0x0FF，按 32 位字 */
     std::array<uint32_t, 64> reg{};
