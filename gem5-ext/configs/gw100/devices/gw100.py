@@ -9,7 +9,7 @@
 设备内存暂用 SimpleMemory 代替 LPDDR5X：不在 host 的地址映射里，地址
 可以与 host 重叠。PCIe 设备的 mem_port（BAR2 窗口、HDMA）和管理 Tile
 的 NI 发起端口经一个交叉开关访问它，代替尚未建模的 Mesh NoC（理想化
-清单 #10）。
+清单 #10a、#10b）。
 
 @see spec-pcie, spec-hdi
 """

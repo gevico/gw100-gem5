@@ -85,19 +85,32 @@ scons --ignore-style EXTRAS=<仓库根目录>/gem5-ext \
 
 原则见仓库根目录 `CLAUDE.md`：模型是在模拟硬件，凡是与真实硬件不一致的简化都必须登记在这里。"方向"指这项简化让性能结果偏乐观还是偏悲观。L2 校准前要先消除标为"高"的项，否则校准的是一个不符合物理的模型。
 
-编号沿用，不复用；`Idealization:` 脚注引用的是这里的编号。
+编号沿用，不复用；`Idealization:` 脚注引用的是这里的编号。几项复合的条目拆成可以分别验收和关闭的子项（例如 10a），子项沿用原编号加字母；只有一个子项真正完成并验证后才能删去它，不整行提前删除。
 
 | # | 位置 | 现状 | 方向 | 优先级 | 计划 |
 |---|---|---|---|---|---|
-| 2 | PCIe 通路 | VExpress 的 PCIe 是功能模型，没有 Gen4 x4 的链路时序和带宽；BAR 访问固定花 `pioDelay`；HDMA 的 TLP 按 cache 行直接进入 host 内存系统，没有链路延迟和流控信用，发送通路只以 `pcie_tx_credits`（16 个 TLP，推算）近似 replay buffer | 未知 | 中 | 加 PCIe 链路 shim |
+| 2a | PCIe 通路：host 发起的访问 | VExpress 的 PCIe 是功能模型，host 的 BAR 访问没有 Gen4 x4 的链路时序和带宽，固定花 `pioDelay` | 未知 | 中 | 加 PCIe 链路 shim；本窗口的处置待决定（Q1） |
+| 2b | PCIe 通路：设备发起的 TLP | HDMA 的 TLP 按 cache 行直接进入 host 内存系统，没有链路延迟和带宽限制 | 乐观 | 中 | 同 2a |
+| 2c | PCIe 通路：流控 | 没有 posted、non-posted、completion 的流控信用；发送通路只以 `pcie_tx_credits`（16 个 TLP，推算）近似 replay buffer | 乐观 | 中 | 同 2a |
 | 9 | BAR2 窗口 | 经 `mem_port` 以功能访问读写设备内存，固定花 `bar2_latency`（200 ns），不与设备内部的其他访问竞争 | 乐观 | 中 | 性能建模阶段改为 timing 访问 |
-| 10 | 设备内存与 NoC | 用 `SimpleMemory` 代替 LPDDR5X（32 GiB），没有 DRAM 的时序、带宽和通道；PCIe 设备的 `mem_port`（BAR2、HDMA）和管理 Tile 的 NI 经一个交叉开关访问它（clk_core 1 GHz、32 B 宽、每段 2 个周期，推算），代替 Mesh NoC；HDMA 的在途请求上限 `devmem_max_outstanding` = 32 是假定的 NoC 端口缓冲；设备内存的受保护区域不检查 | 乐观 | 高 | M6 接入 NoC，M7 接入 LPDDR5X 控制器模型 |
-| 12 | FLR、D3hot→D0 | 复位立即完成，不占时间 | 乐观 | 低 | 加复位时间参数 |
-| 13 | PCIe capability | 实现 PM、PCI Express 和 MSI-X；AER、DSN、LTR、Secondary PCIe 与 Gen4 物理层 capability 未实现，Device Status 的错误位和 Transactions Pending 从不置位 | 功能缺失 | 低 | AER 随错误处理实现，其余随链路建模实现 |
+| 10a | 设备内存：DRAM | 用 `SimpleMemory` 代替 LPDDR5X（32 GiB），没有 DRAM 的时序、带宽、通道和刷新 | 乐观 | 高 | M7 接入 Memory Tile 与 LPDDR5X 控制器模型（`spec-dram`） |
+| 10b | 设备内存：互连 | PCIe 设备的 `mem_port`（BAR2、HDMA）和管理 Tile 的 NI 经一个交叉开关访问设备内存（clk_core 1 GHz、32 B 宽、每段 2 个周期，推算），代替 Mesh NoC | 乐观 | 高 | M6 接入 NoC（`spec-noc`） |
+| 10c | 设备内存：HDMA 的在途上限 | `devmem_max_outstanding` = 32 是假定的 NoC 端口缓冲，没有规格依据 | 未知 | 中 | M6 随 `spec-noc` 的在途上限（G-N4）确定 |
+| 10d | 设备内存：受保护区域 | 设备内存的受保护区域不检查（`spec-address-map` §5.3） | 乐观 | 高 | M7 随 Memory Tile 实现 |
+| 12a | FLR 的时间 | FLR 立即完成，不占时间 | 乐观 | 低 | 加复位时间参数 |
+| 12b | D3hot→D0 的时间 | D3hot→D0 的复位立即完成，不占时间 | 乐观 | 低 | 同 12a |
+| 12c | 复位时的在途事务 | 复位时不建模"停止发起、排空、丢弃在途请求、处理迟到的响应"；正确性在于这些行为，不在于加一个延迟常数 | 乐观 | 中 | 先做新接入路径（NoC、Memory Tile）需要的部分，随 M6、M7 实现 |
+| 13a | PCIe capability：错误报告 | 已实现 PM、PCI Express 和 MSI-X；AER 未实现，Device Status 的错误位从不置位 | 功能缺失 | 低 | 随错误处理实现；本窗口的处置待决定（Q2） |
+| 13b | PCIe capability：Transactions Pending | Device Status 的 Transactions Pending 从不置位 | 功能缺失 | 低 | 随 12c 的排空行为实现 |
+| 13c | PCIe capability：链路相关 | DSN、LTR、Secondary PCIe 与 Gen4 物理层 capability 未实现 | 功能缺失 | 低 | 随链路建模（2a–2c）实现 |
 | 15 | CLINT | 用 gem5 的 Clint：`mtime` 可被写入（规格要求只读）；`PLL_TS` 的锁定延迟不建模，时间戳从仿真开始即计数。看门狗按仿真时间换算 `mtime`，固件写 `mtime` 后两者不一致 | 乐观 | 低 | 换成自己的 CLINT，按规格只读 |
 | 16 | ML 客户端队列 | 启动窗口的合法写入拆成 `BOOT_WR`、doorbell 的待发槽发出 `DB_WR` 后，进入 ML 客户端队列，队列不设上限，不反压 host；当前 host 一次只有一个未完成的 MMIO 写，doorbell 又按槽合并，不会积压 | 乐观 | 中 | 待批准；或建模有限的入站缓冲和对 host 的反压 |
-| 19 | SRAM ECC | 校验位不建模，没有故障注入，不会产生可纠正或不可纠正错误；相关寄存器存在 | — | 低 | 需要时加故障注入 |
-| 20 | CRC 的 Mesh 与 Compute Tile 控制 | `CRC_MESH_RST`、`CRC_CT_RST`、`CRC_CT_CLK_EN`、`CRC_CT_ISO` 按规格读写，但还没有 NoC、Memory Tile 和 Compute Tile 的模型可以作用；`CRC_ISO_ACK`、`CRC_ISO_FAIL` 读 0；`clk_core` 的切换只改寄存器，`PLL_DDR` 锁定后不驱动任何时钟 | 功能缺失 | 中 | 随 NoC、Memory Tile、Compute Tile 的模型接入 |
+| 19a | 管理 Tile 的 SRAM ECC | 校验位不建模，没有故障注入，不会产生可纠正或不可纠正错误；相关寄存器存在 | — | 低 | 作为独立的修复包，插入位置待第 3 天的重估；包括部分写的读改写、CE/UE 与错误传播 |
+| 19b | Compute Tile 的 SRAM ECC | 尚无模型 | — | 中 | M8 从设计开始覆盖，不重犯 19a |
+| 20a | CRC：NoC | `CRC_MESH_RST` 按规格读写，但没有 NoC 模型可以作用；`clk_core` 的切换只改寄存器 | 功能缺失 | 中 | M6：NoC 上电保持复位，由固件释放 |
+| 20b | CRC：DDR 与 Memory Tile | `PLL_DDR` 锁定后不驱动任何时钟，没有 Memory Tile 可以复位 | 功能缺失 | 中 | M7 |
+| 20c | CRC：Compute Tile | `CRC_CT_RST`、`CRC_CT_CLK_EN`、`CRC_CT_ISO` 按规格读写，但没有 Compute Tile 模型可以作用 | 功能缺失 | 中 | M8 |
+| 20d | CRC：NI 隔离的应答 | `CRC_ISO_ACK`、`CRC_ISO_FAIL` 读 0 | 功能缺失 | 中 | 随 NoC 的 NI 隔离（M6）与各 Tile 的接入 |
 | 21 | 管理 CPU 的停机 | gem5 的 `TimingSimpleCPU` 不能在任意时刻停住。停机请求经中断控制器 `Gw100MgmtInterrupts` 在下一个指令边界取走，优先于全部中断，CPU 随后去取启动 ROM 末尾保留的字，管理 Tile 扣下这次取指；设备完全复位时再用复位向量处的指令响应它。与规格的差别：停机请求到达时已经在途的取指，其指令仍会执行（规格要求丢弃）；没有调试模块，停住后无法读取 CPU 状态 | 功能偏差 | 低 | 待批准；或加调试模块，换用能丢弃在途取指的 CPU 模型 |
 | 22 | 设备完全复位中的 PLIC 与 CLINT | gem5 的 PLIC 没有复位接口，`Clint` 的复位会把 `mtime` 一起清零（规格要求设备完全复位保留 `mtime`），所以两者都不复位：PLIC 的使能、优先级、阈值，CLINT 的 `mtimecmp`、`msip` 保留复位前的值。启动 ROM 不使用它们；CPU 复位后 `mstatus.MIE`、`mie` 为 0，固件在 `irq_init` 中重新设置 PLIC 的优先级、使能、阈值和 `mtimecmp` 之后才开中断，旧值不会引发中断 | 功能偏差 | 低 | 随自己的 CLINT（#15）一起实现 PLIC 与 CLINT 的复位 |
 | 23 | HDMA 的设备侧地址 | DPA 只接受设备内存的范围，Compute Tile 的 SRAM 尚未建模，指向它的描述符按 DEV_ADDR 失败；DEV_ECC 不会出现（#19） | 功能缺失 | 低 | 随 NoC 与 Compute Tile 的模型接入 |
