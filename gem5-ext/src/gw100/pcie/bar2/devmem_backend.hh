@@ -4,7 +4,7 @@
  *
  * BAR2 调试窗口经它做功能访问，延迟由调用者另计（理想化清单 #9）；
  * HDMA 经它的 HdmaDevIf 接口做 timing 访问，在途请求有上限，被反压时等
- * 重试。NoC 接入后改为经 PCIe Tile 的 NI 访问（理想化清单 #10），调用者
+ * 重试。NoC 接入后改为经 PCIe Tile 的 NI 访问（理想化清单 #10b），调用者
  * 不变。
  *
  * @see spec-pcie, spec-address-map

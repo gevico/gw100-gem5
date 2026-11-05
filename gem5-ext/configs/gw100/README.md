@@ -20,7 +20,7 @@
 | 复位 | FLR、D3hot→D0 |
 
 还没有中断投递、MSI-X、DMA 和命令协议，也还没有驱动。相关的理想化见
-`gem5-ext/README.md` 的理想化清单 #9–#13。
+`gem5-ext/README.md` 的理想化清单 #9、#10a–#10d、#12a–#12c、#13a–#13c。
 
 ## 构建 gem5
 
