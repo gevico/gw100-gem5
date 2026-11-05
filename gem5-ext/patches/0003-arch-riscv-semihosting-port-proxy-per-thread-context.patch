@@ -1,0 +1,53 @@
+gem5 补丁：RISC-V semihosting 按 ThreadContext 分别建立访存的 port proxy
+
+原因：RiscvSemihosting::portProxyImpl 用函数内的 static 缓存一个
+TranslatingPortProxy，它绑定第一个发起 semihosting 调用的
+ThreadContext。之后其他 hart（包括同一进程中其他 RiscvSystem 的核）的
+semihosting 访存都经过这个 proxy，读写的是第一个 hart 所在系统的内存：
+输出的字符串、SYS_EXIT_EXTENDED 的参数块、识别 ebreak 时读取的前后两条
+指令都会错。
+
+修改：按 ThreadContext 缓存各自的 proxy。只有一个 hart 调用
+semihosting 时行为不变。
+
+验证：多 ISA 可行性测试（gem5-ext/configs/feasibility/multi_isa.py）中
+16 个独立 RiscvSystem 的 RV32 核各自输出结果、以各自的子码退出。
+
+由仓库根目录的 Makefile 在构建 gem5 之前应用，见 gem5-ext/patches/README.md。
+
+diff --git a/src/arch/riscv/semihosting.cc b/src/arch/riscv/semihosting.cc
+index 05b80e5..99ad847 100644
+--- a/src/arch/riscv/semihosting.cc
++++ b/src/arch/riscv/semihosting.cc
+@@ -41,6 +41,8 @@
+ 
+ #include <cerrno>
+ #include <cstdio>
++#include <memory>
++#include <unordered_map>
+ 
+ #include "arch/riscv/isa.hh"
+ #include "arch/riscv/page_size.hh"
+@@ -151,10 +153,18 @@ RiscvSemihosting::call(ThreadContext *tc)
+ PortProxy &
+ RiscvSemihosting::portProxyImpl(ThreadContext *tc)
+ {
+-    static std::unique_ptr<PortProxy> port_proxy([=]() {
+-        return FullSystem ? new TranslatingPortProxy(tc) :
+-                            new SETranslatingPortProxy(tc);
+-    }());
++    // One proxy per thread context: a proxy accesses memory through the
++    // context it was created for, so a single shared proxy would make every
++    // hart (or every RISC-V system in the simulation) read and write the
++    // memory of whichever hart issued the first semihosting call.
++    static std::unordered_map<ThreadContext *, std::unique_ptr<PortProxy>>
++        port_proxies;
++    std::unique_ptr<PortProxy> &port_proxy = port_proxies[tc];
++    if (!port_proxy) {
++        port_proxy.reset(FullSystem ?
++            static_cast<PortProxy *>(new TranslatingPortProxy(tc)) :
++            static_cast<PortProxy *>(new SETranslatingPortProxy(tc)));
++    }
+     return *port_proxy;
+ }
+ 
