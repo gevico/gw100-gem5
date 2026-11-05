@@ -56,6 +56,7 @@ man-perf-tuning         性能模型与调优手册
 man-driver-guide        驱动开发指南
 man-gem5-user           gem5 虚拟平台用户手册
 man-gem5-dev            gem5 模型开发者指南
+man-qwen3-mapping       Qwen3-0.6B 映射报告：算子形状、容量、访存与切分的推算
 reference     reference/ 子模块指针；资料本身在 gevico/gw100-references
 tools         tools/ 下的其他工具，例如 tools/templates/ 的文件头模板
 

@@ -33,7 +33,7 @@
 | 存储 | `spec/memory/` | 片外 DRAM 子系统 | `spec-dram` |
 | 主机接口 | `spec/host/` | 芯片与 host 之间：链路、DMA、固件、命令协议、程序格式 | `spec-pcie`、`spec-host-dma`、`spec-mgmt-tile`、`spec-mgmt-link`、`spec-hdi`、`spec-exe-format` |
 
-手册不分子目录：`man-registers`、`man-programming`、`man-perf-tuning`、`man-driver-guide`、`man-gem5-user`、`man-gem5-dev`。
+手册不分子目录：`man-registers`、`man-programming`、`man-perf-tuning`、`man-driver-guide`、`man-gem5-user`、`man-gem5-dev`、`man-qwen3-mapping`。
 
 ## 3. 文档 ID
 
