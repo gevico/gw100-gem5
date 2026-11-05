@@ -7,6 +7,7 @@
 | `rom/` | 启动 ROM：等 SRAM 清零和 ML 建立，写 STAGE = 1、2，等待 `FW_START` 或 FLR，校验镜像头和 SHA-256，设置 PMP、清零运行区、写启动信息后跳转 | `spec-mgmt-tile` §8、§9 |
 | `fw/` | 固件。本阶段等待 `PLL_TS` 锁定（以 `mcycle` 计超时），把 `clk_mgmt`、`clk_core` 切换到 `PLL_CORE`（等锁定超时 1 ms），使能并锁定看门狗（10 ms），设置并锁定 HDMA 描述符区间的访问控制、初始化 HDMA 通道 0、1 的环，写入固件版本、置 STAGE = 4 与 `FW_READY`；主循环在 `wfi` 中等中断（`fw/irq.c`：PLIC 的 doorbell 信箱、事件、ML 错误、看门狗第一级，CLINT 定时器每 1/4 看门狗周期唤醒一次，另可设置唤醒期限），每次醒来喂狗、处理 HDI 与 FLR（确认后重新初始化 HDMA）。`fw/hdi.c` 是 HDI 的命令处理（CP）：HDI_CC 的 BUSY 握手、控制器的初始化、复位与关闭，doorbell 的检查与 `ERR_REQ`，SQE 与 CQE 经通道 0 和设备内存顶端的暂存区传输（CQE 分两次写出），管理命令（NOP 至 ABORT）与上下文命令（NOP、COPY、FILL、SIGNAL_EVENT、WAIT_EVENT、TIMESTAMP；LOAD_PROGRAM、UNLOAD_PROGRAM、LAUNCH 待 Compute Tile 建模后实现），COPY 经通道 1 按 1 MiB 分段，上下文的错误状态、错误日志和中断合并；每个队列同时只执行一条命令；初始化失败时写 ERROR = 4、STAGE = 0xF 后停住。以 `GW_FW_WDT_TEST`、`GW_FW_HDMA_TEST`、`GW_FW_INT_TEST` 编译分别得到看门狗、HDMA 和中断请求的测试固件 `fw_wdt.img`、`fw_hdma.img`、`fw_int.img`，它们不处理 HDI | `spec-mgmt-tile` §8.5、§9，`spec-hdi` |
 | `common/` | 寄存器地址（`gw100_mgmt.h`）、镜像头与启动信息（`gw100_image.h`）、FLR 的取走与确认、HDMA 的最小驱动（`gw100_hdma.h`）、SHA-256 | |
+| `feasibility/` | 可行性测试的程序，不是产品固件，`make firmware-build` 不构建它们。`rv32_hello/` 是多 ISA 可行性测试中 RV32 核运行的程序（每个核一份以 `CORE_ID` 编译的实例），构建与运行见 `gem5-ext/configs/feasibility/README.md` | |
 
 ## 构建
 
