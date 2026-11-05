@@ -64,6 +64,14 @@ scons --ignore-style EXTRAS=<仓库根目录>/gem5-ext \
 ./build/GW100/gem5-ext/tests/unit/gw100/pcie/config/config_space.test.opt
 ```
 
+枚举、构建并运行全部 GTest（在仓库根目录，先 `make gem-build`）：
+
+```sh
+.venv/bin/python tools/gtest.py
+```
+
+脚本从 `tests/unit/` 下各 `SConscript` 的 `GTest(...)` 声明枚举程序，与 `.test.cc` 的文件数对照，用一次 scons 构建全部程序后逐个运行。最后一行汇总发现、构建、运行、通过的程序数和用例的通过数 / 总数，任何一项不一致都算失败（退出码 1）。新增的测试只要在 `SConscript` 中声明就会被纳入，不用改脚本；`--no-build` 只运行已构建的程序。
+
 全栈 E2E 测试（应用 → runtime → 驱动 → Linux → PCIe → 设备）的方案尚未落地。原有的 `tests/l1_inst/`、L0 单元测试、TestHost 和 testkit 已于 2026-10-24 删除，不要恢复。
 
 ## 开发注意
