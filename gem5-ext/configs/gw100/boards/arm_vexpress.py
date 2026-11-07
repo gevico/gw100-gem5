@@ -145,10 +145,18 @@ class ArmVExpressBoard(ArmBoard):
         # bare-metal 不生成 DTB、不加载 bootloader，只做通用连接
         if self._bare_metal:
             self.pci_devices = self._pci_devices
-            return AbstractBoard._pre_instantiate(
+            root = AbstractBoard._pre_instantiate(
                 self, full_system=full_system
             )
-        return super()._pre_instantiate(full_system=full_system)
+        else:
+            root = super()._pre_instantiate(full_system=full_system)
+        for name, system in getattr(self, "_auxiliary_systems", {}).items():
+            setattr(root, name, system)
+        return root
+
+    def attach_auxiliary_systems(self, systems):
+        """将管理与设备 timing System 挂到同一个 Root。"""
+        self._auxiliary_systems = systems
 
     def _setup_io_devices(self):
         super()._setup_io_devices()
