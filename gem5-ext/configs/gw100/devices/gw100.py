@@ -6,15 +6,14 @@
 真源重建后整体迁移过去。这里创建设备和它的设备内存，挂到哪条 PCIe 总线
 由板卡决定。
 
-设备内存暂用 SimpleMemory 代替 LPDDR5X：不在 host 的地址映射里，地址
-可以与 host 重叠。PCIe 设备的 mem_port（BAR2 窗口、HDMA）和管理 Tile
-的 NI 发起端口经一个交叉开关访问它，代替尚未建模的 Mesh NoC（理想化
-清单 #10a、#10b）。
+默认设备由 memory.py 在独立 timing System 内连接八通道 LPDDR5-8433。
+管理 CPU、HDMA、BAR2 分别经过有限的来源入口。gw100_compat 使用
+SimpleMemory 和功能 BAR2。临时交叉开关的适用范围见理想化清单。
 
 @see spec-pcie, spec-hdi
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from m5.objects import (
     AddrRange,
@@ -27,6 +26,7 @@ from m5.objects import (
     VoltageDomain,
 )
 from m5.objects.PciDevice import PciMemBar, PciMemUpperBar
+from m5.proxy import Parent
 from m5.util.convert import toMemorySize
 
 from .mgmt import make_mgmt_system
@@ -54,7 +54,7 @@ class PcieParams:
 
 @dataclass(frozen=True)
 class DevmemParams:
-    """设备内存（LPDDR5X）的范围。"""
+    """设备内存的范围。"""
 
     base: int = 0x0
     size: str = "32GiB"
@@ -76,6 +76,7 @@ class Gw100Config:
     addr: AddrParams = field(default_factory=AddrParams)
     hdi_max_contexts: int = 16  # hdi.max_contexts
     hdma_channels: int = 8      # hdma.channels
+    precise_memory: bool = True
     # 需要板卡提供的能力，入口脚本据此拒绝不兼容的组合
     requires: frozenset = frozenset({"pcie"})
 
@@ -99,15 +100,21 @@ class Gw100Config:
             devmem_base=self.devmem.base,
             devmem_size=self.devmem.size,
             device_pa_bits=self.addr.device_pa_bits,
+            async_memory=self.precise_memory,
+            bar2_latency="8ns" if self.precise_memory else "200ns",
+            devmem_max_outstanding=16 if self.precise_memory else 32,
         )
+        dev.clk_domain = SrcClockDomain(
+            clock=PCIE_FREQ, voltage_domain=VoltageDomain()
+        )
+        dev.mgmt_link = Gw100MgmtLink()
+        if self.precise_memory:
+            return dev
         dev.devmem = SimpleMemory(
             range=AddrRange(start=self.devmem.base, size=self.devmem.size),
             in_addr_map=False,
             kvm_map=False,
             conf_table_reported=False,
-        )
-        dev.clk_domain = SrcClockDomain(
-            clock=PCIE_FREQ, voltage_domain=VoltageDomain()
         )
         # 理想化的 NoC：clk_core 1 GHz，32 B 宽，每段 2 个周期（推算）
         dev.devnoc = NoncoherentXBar(
@@ -121,7 +128,6 @@ class Gw100Config:
         )
         dev.mem_port = dev.devnoc.cpu_side_ports
         dev.devnoc.mem_side_ports = dev.devmem.port
-        dev.mgmt_link = Gw100MgmtLink()
         return dev
 
     def make_mgmt(self, dev: Gw100PciDevice, rom_elf: str):
@@ -133,10 +139,14 @@ class Gw100Config:
         # （spec-clock-reset-power §4.3）
         s.tile.dev_reset_req = dev.dev_reset_req
         s.tile.pcie_reset = dev.func_reset
+        # 延后解析，避免尚未挂到板卡的 endpoint 被管理 Tile 收为子对象。
+        s.tile.reset_endpoint = Parent.board.pci_devices[0]
         # 管理 Tile 的 NI 经理想化的 NoC 访问设备内存
-        s.tile.ni = dev.devnoc.cpu_side_ports
+        if not self.precise_memory:
+            s.tile.ni = dev.devnoc.cpu_side_ports
         s.tile.device_pa_bits = self.addr.device_pa_bits
         return s
 
 
 GW100 = Gw100Config()
+GW100_COMPAT = replace(GW100, precise_memory=False)

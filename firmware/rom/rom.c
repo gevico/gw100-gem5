@@ -108,11 +108,13 @@ static uint32_t
 boot_reason(void)
 {
     uint32_t c = gw_read32(GW_CRC_RESET_CAUSE);
-    if (c & (1u << 4))
-        return 2;  /* 设备完全复位 */
+    gw_write32(GW_CRC_RESET_CAUSE, c);
+    if (c & 3u) {
+        return 0; /* 冷复位 */
+    }
     if (c & ((1u << 2) | (1u << 3)))
         return 1;  /* 热复位、Link Down */
-    return 0;      /* 冷复位 */
+    return 2;      /* 设备完全复位 */
 }
 
 /** 按 spec-mgmt-tile §8.3 设置 PMP：ROM RX，装载区 RWX，运行区 RW */

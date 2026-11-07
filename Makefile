@@ -58,14 +58,18 @@ GEM5_SCONS = cd gem5 && $(if $(PYTHON_CONFIG),PYTHON_CONFIG=$(PYTHON_CONFIG) )$(
 # 运行配置。GEM5_OPTS 给 gem5 本身（写在配置脚本之前），CONFIG_ARGS 给配置脚本。
 # 例：make run TEST=pcie_regs GEM5_OPTS="--debug-flags=Gw100Pcie"
 BAREMETAL_DIR := build/gw100-baremetal
+BAREMETAL_COMPAT_DIR := build/gw100-baremetal-compat
 # 管理 Tile 的 RISC-V 程序（启动 ROM 等），run_gw100.py 默认从这里取 rom.elf
 FIRMWARE_DIR := build/gw100-firmware
+FIRMWARE_COMPAT_DIR := build/gw100-firmware-compat
 TEST ?= hello
-BAREMETAL_ELF := $(BAREMETAL_DIR)/$(TEST).elf
+RUN_BAREMETAL_DIR = $(if $(filter gw100_compat,$(DEVICE)),\
+$(BAREMETAL_COMPAT_DIR),$(BAREMETAL_DIR))
+BAREMETAL_ELF = $(RUN_BAREMETAL_DIR)/$(TEST).elf
 GEM5_CONFIG ?= gem5-ext/configs/run_gw100.py
 BOARD ?= arm_vexpress
 HOST ?= timing
-DEVICE ?= gw100
+DEVICE ?= $(if $(filter atomic,$(HOST)),gw100_compat,gw100)
 WORKLOAD ?= baremetal
 # 每种组合单独一个输出目录（相对 gem5/），扫描组合时互不覆盖
 GEM5_OUTDIR ?= m5out/$(BOARD)-$(HOST)-$(DEVICE)
@@ -85,9 +89,11 @@ TEST_TIMEOUT ?= 900
 # （约 14 ms/KB）；固件约 60 KB 时加载两次的测试仍有余量
 TEST_MAX_TICKS ?= 3000000000000
 TEST_OUTDIR ?= gem5/m5out/tests
+TEST_DEVICE = $(if $(filter command line,$(origin DEVICE)),$(DEVICE),auto)
 BMTEST = $(PYTHON) tools/bmtest.py --gem5 gem5/$(GEM5_TARGET) --config $(GEM5_CONFIG) \
 	--baremetal-dir baremetal --build-dir $(BAREMETAL_DIR) --outdir $(TEST_OUTDIR) \
-	--board $(BOARD) --device $(DEVICE) --hosts "$(HOSTS)" --tests "$(TESTS)" \
+	--compat-build-dir $(BAREMETAL_COMPAT_DIR) \
+	--board $(BOARD) --device $(TEST_DEVICE) --hosts "$(HOSTS)" --tests "$(TESTS)" \
 	-j $(TEST_JOBS) --timeout $(TEST_TIMEOUT) --max-ticks $(TEST_MAX_TICKS)
 
 # 代码提示用 clangd；cpptools 只保留调试，关闭它的 IntelliSense 以免重复报错。
@@ -99,6 +105,7 @@ AARCH64_GDB ?= $(shell command -v aarch64-linux-gnu-gdb 2>/dev/null || command -
 
 .DEFAULT_GOAL := help
 .PHONY: all run test gem-build gem5-patch memory-spec-check FORCE
+.PHONY: memory-test
 .PHONY: baremetal-build firmware-build vscode-config commit-check
 .PHONY: clean check format help
 
@@ -109,6 +116,9 @@ run: gem-build baremetal-build firmware-build
 
 test: gem-build baremetal-build firmware-build
 	$(BMTEST)
+
+memory-test: gem-build baremetal-build
+	$(PYTHON) tools/memory_verify.py --jobs $(TEST_JOBS)
 
 gem-build: memory-spec-check $(GEM5_BIN)
 
@@ -168,9 +178,13 @@ vscode-config:
 baremetal-build: firmware-build
 	$(MAKE) -C baremetal BUILD_DIR=$(abspath $(BAREMETAL_DIR)) \
 		FW_IMAGE=$(abspath $(FIRMWARE_DIR))/fw.img
+	$(MAKE) -C baremetal BUILD_DIR=$(abspath $(BAREMETAL_COMPAT_DIR)) \
+		FW_IMAGE=$(abspath $(FIRMWARE_COMPAT_DIR))/fw.img
 
 firmware-build:
 	$(MAKE) -C firmware BUILD_DIR=$(abspath $(FIRMWARE_DIR))
+	$(MAKE) -C firmware BUILD_DIR=$(abspath $(FIRMWARE_COMPAT_DIR)) \
+		MEMORY_PROFILE=compat
 
 commit-check:
 	@echo "== 提交检查 =="
@@ -263,6 +277,7 @@ help:
 	@echo "  gem-build        gem5-ext 源码或 gem5 子模块有变化时，构建 gem5/$(GEM5_TARGET) 和编译数据库；"
 	@echo "                   make -B gem-build 强制构建（改了构建选项时用）"
 	@echo "  baremetal-build  构建全部裸机测试（调用 baremetal/Makefile）"
+	@echo "  memory-test      验证八通道组件、checkpoint、独立时序和固件故障矩阵"
 	@echo "  firmware-build   构建管理 Tile 的启动 ROM（调用 firmware/Makefile，需要 riscv64-elf-gcc）"
 	@echo "  vscode-config    生成 .clangd、联合调试配置，关闭 cpptools IntelliSense（TEST= 指定 test）"
 	@echo "  commit-check     检查暂存文件头、最近提交信息和 DCO"
@@ -286,4 +301,4 @@ help:
 	@echo "  TESTS=$(TESTS)   空格分隔的 test 名，支持通配；空表示全部"
 	@echo "  HOSTS=$(HOSTS)   每个 test 在这些 host 预设下各跑一遍"
 	@echo "  TEST_JOBS=$(TEST_JOBS)  TEST_TIMEOUT=$(TEST_TIMEOUT) 秒  TEST_MAX_TICKS=$(TEST_MAX_TICKS)"
-	@echo "  TEST_OUTDIR=$(TEST_OUTDIR)   每次运行的输出在 <TEST_OUTDIR>/<host>/<test>/"
+	@echo "  TEST_OUTDIR=$(TEST_OUTDIR)   每次运行的输出在 <TEST_OUTDIR>/<device>/<host>/<test>/"

@@ -146,6 +146,8 @@ uint64_t gw100_timestamp(const gw100_t *g);
  * 返回 -1；等待超时返回 -2
  */
 int gw100_load_firmware(const gw100_t *g, const uint8_t *img, uint32_t size);
+/** 加载并发起固件启动，返回 0 或加载错误，启动结果由调用者轮询 */
+int gw100_start_firmware(const gw100_t *g, const uint8_t *img, uint32_t size);
 
 /** 加载嵌入的固件镜像，失败时测试失败 */
 void gw100_boot(const gw100_t *g);

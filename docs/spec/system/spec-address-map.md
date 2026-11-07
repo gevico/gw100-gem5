@@ -161,7 +161,7 @@ v0.1 的 Mesh 为 6 列 × 4 行（`spec-arch` §3.1），按上式计算的各�
 | Tile | SRAM 区 | 寄存器区 | 是否是 NoC 的访问 target |
 |---|---|---|---|
 | Compute Tile | [0, `ct.sram_size`)（`spec-arch` §8） | Data Mover、同步计数器、指令队列状态、错误状态等，将由 `spec-compute-tile`（待写）、`spec-tile-sync`（待写）定义 | 是 |
-| Memory Tile | 无，整个区保留 | DRAM 控制器配置、受保护区域、ECC 状态等，将由 `spec-dram`（待写）定义 | 是（只有寄存器区） |
+| Memory Tile | 本地偏移 0x0080_0000 起的控制窗口 | 通道初始化、状态、保护表和计数器由 `spec-dram` §4 定义 | 是（只有寄存器区） |
 | 管理 Tile | [0, `mgmt.sram_size`)；只有固件开放的区间可访问（`spec-mgmt-tile` §4.4） | 偏移 0 起是事件寄存器（`spec-mgmt-tile` §6.3），其他本地寄存器不对 NoC 开放 | 是（受限） |
 | PCIe Tile | 无 | 无。PCIe Tile 的寄存器（包括 HDMA）只经 ML 访问，见 §4.4 | 否：整个窗口保留 |
 | 预留位置 | 无 | 无 | 否：整个窗口保留 |
