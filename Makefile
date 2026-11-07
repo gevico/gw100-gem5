@@ -42,7 +42,8 @@ GEM5_BIN := gem5/$(GEM5_TARGET)
 # 只有这些输入比 gem5.opt 新时才调用 scons。scons 即使没有任何改动也会重新链接
 # gem5.opt（耗时一两分钟），所以不能每次都交给它判断。配置脚本 gem5-ext/configs/
 # 在运行时加载，不需要重新构建。
-GEM5_INPUTS := $(shell find gem5-ext/SConscript gem5-ext/src -type f \
+GEM5_INPUTS := $(shell find gem5-ext/SConscript gem5-ext/src \
+	gem5-ext/tests/integration -type f \
 	\( -name '*.cc' -o -name '*.hh' -o -name '*.py' -o -name SConscript \) 2>/dev/null)
 # gem5 本体的补丁（gem5-ext/patches/README.md），按文件名顺序在构建前应用
 GEM5_PATCHES := $(sort $(wildcard gem5-ext/patches/*.patch))

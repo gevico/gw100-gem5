@@ -19,14 +19,13 @@ MgmtCrc::MgmtCrc(const Config &cfg, Tick now)
 }
 
 /**
- * 设备完全复位：置位 RESET_CAUSE.DEV_RESET，其余寄存器恢复复位值，
- * 两个 PLL 关闭、时钟回到 XTAL；PLL_TS 不受影响
- * （spec-clock-reset-power §4.2、§4.4）
+ * 完整复位并记录原因位，冷复位重建原因，其他复位累积原因。
+ * 两个 PLL 关闭、时钟回到 XTAL，PLL_TS 保持锁定
  */
 void
-MgmtCrc::devReset()
+MgmtCrc::devReset(uint32_t cause)
 {
-    resetCause |= 1u << 4;
+    resetCause = (cause & 3) ? cause : resetCause | cause;
     meshRst = 0x1F;
     ctRst = 0xFFFF;
     ctClkEn = 0;
@@ -92,12 +91,14 @@ MgmtCrc::write(Addr off, uint32_t v, Tick now)
         pllCoreCfg = v;
         break;
       case 0x034:
-        if ((v & 1) && !(pllDdrCfg & 1))
-            ddrLockAt = done + cfg.pllLock;
-        else if (!(v & 1))
-            ddrLockAt = MaxTick;
-        pllDdrCfg = v;
-        break;
+          if (validDdrConfig && !validDdrConfig(v)) {
+              ddrLockAt = MaxTick;
+          } else if ((v & 1) && (!(pllDdrCfg & 1) || ddrLockAt == MaxTick)) {
+              ddrLockAt = done + cfg.pllLock;
+          } else if (!(v & 1))
+              ddrLockAt = MaxTick;
+          pllDdrCfg = v;
+          break;
       case 0x03C: {
         if (now >= switchDoneAt)
             clkSel = clkSelNext;
@@ -116,6 +117,9 @@ MgmtCrc::write(Addr off, uint32_t v, Tick now)
       }
       default:
         return MaxTick;
+    }
+    if (onChange) {
+        onChange(done);
     }
     return done;
 }

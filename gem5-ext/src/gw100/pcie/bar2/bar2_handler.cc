@@ -51,5 +51,43 @@ Bar2Handler::access(BarAccess &a)
     return latency;
 }
 
+/** 通过 timing 后端处理一次访问，满时返回 false */
+bool
+Bar2Handler::accessAsync(BarAccess a, std::function<void(Tick)> done,
+                         std::function<bool()> valid)
+{
+    if (boot.windowOpen() || !boot.debugWin ||
+        table.translate(a.off, a.size, a.write).fault !=
+            WindowTable::Fault::None) {
+        done(access(a));
+        return true;
+    }
+    if (!devmem.canSend()) {
+        return false;
+    }
+    auto target = table.translate(a.off, a.size, a.write).target;
+    auto finish = [this, a, done, valid](bool ok) {
+        if (!ok && valid()) {
+            status.logError(StatusUnit::ErrWinTarget, a.off, a.write, a.size,
+                            2);
+            if (!a.write) {
+                std::memset(a.data, 0xFF, a.size);
+            }
+        }
+        done(latency);
+    };
+    if (a.write) {
+        devmem.write(target, a.size, a.data, finish);
+    } else {
+        devmem.read(target, a.size, [a, finish](bool ok, const uint8_t *data) {
+            if (ok) {
+                std::memcpy(a.data, data, a.size);
+            }
+            finish(ok);
+        });
+    }
+    return true;
+}
+
 } // namespace gw100
 } // namespace gem5

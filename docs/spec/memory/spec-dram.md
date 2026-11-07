@@ -96,6 +96,11 @@ DRAMInterface 处理一次通道位压缩，通道内部采用 RoRaBaCoCh。
 | 0x03c | PERF_FREEZE | 32/RW | [0] 冻结计数器读取快照 |
 | 0x040–0x070 | 基础计数器 | 64/RO | 请求、读字节、写字节、retry、CDC、排队、传输 tick |
 
+计数器在仿真内持续累积，内存复位通过 EPOCH 区分代次。CDC 与传输 tick
+按 FIFO 拍累加，不能与排队 tick 相加作为单个事务的端到端延迟。
+入口统计接受的逻辑事务，Tile 统计通过预检的数据子请求。媒体实际
+burst 字节及 RMW 流量由原生 MemCtrl 统计，排队计数覆盖请求首拍前的等待。
+
 四项保护表从 0x100 开始，跨度 0x20。每项 BASE、LIMIT 为偏移 0、8 的
 64 位 RW 值，ENABLE 为偏移 0x10 的 32 位 RW 值。区间为 [BASE,LIMIT)，
 启用项按 4 KiB 对齐且包含于设备内存。锁定写入先验证全部条目。
@@ -109,7 +114,7 @@ DRAMInterface 处理一次通道位压缩，通道内部采用 RoRaBaCoCh。
 | 0x00 | PROFILE | 32/RW | 通用工作点编号 1 |
 | 0x04 | COMMAND | 32/WO | 下表命令 |
 | 0x08 | STATE | 32/RO | 下表状态 |
-| 0x0c | TRAIN_MASK | 32/RO | 两 rank 的训练成功位 |
+| 0x0c | TRAIN_MASK | 32/RO | 当前校准或训练阶段中两 rank 的成功位 |
 | 0x10 | ERROR | 32/RO | 最近命令错误，rank[15:8] |
 | 0x18 | SEQUENCE | 64/RO | 成功或失败的命令完成次数 |
 | 0x20 | CK_PS | 64/RO | 量化后的 CK 周期 |
@@ -130,6 +135,9 @@ RESUMING=10、FAILED=15。忙时提交新命令返回 BUSY，原操作继续。
 TEST 只允许管理 CPU 数据访问。训练失败进入 FAILED，超时由固件记录。
 错误编码与共享档案一致。故障注入可选择通道、rank、阶段及失败或无反馈，
 只能改变训练反馈或设备响应。
+
+进入 QUIESCE 时关闭新事务的准入。已通过整请求预检的事务保留通道信用，
+全部子 burst 和上游返回完成后再排空原生控制器，随后报告 QUIESCED。
 
 ## 5. 时钟、复位与电源
 

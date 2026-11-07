@@ -85,6 +85,8 @@ struct PcieParts
     WindowTable windows;
     /** 访问设备内存的后端 */
     DevmemBackend devmem;
+    /** BAR2 的独立 timing 后端 */
+    DevmemBackend bar2Devmem;
     /** BAR0 的全局寄存器块 */
     GlobalRegs global;
     /** BAR0 的窗口配置寄存器块 */

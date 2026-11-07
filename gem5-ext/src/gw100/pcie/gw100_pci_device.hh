@@ -25,6 +25,7 @@
 #define __GW100_PCIE_GW100_PCI_DEVICE_HH__
 
 #include <cstdint>
+#include <deque>
 #include <memory>
 
 #include "dev/intpin.hh"
@@ -38,6 +39,8 @@ namespace gem5
 {
 namespace gw100
 {
+
+class Gw100MemoryIngress;
 
 /** GW100 的 PCIe endpoint：组件的外壳 */
 class Gw100PciDevice : public PciEndpoint
@@ -62,6 +65,14 @@ class Gw100PciDevice : public PciEndpoint
 
     /** 撤销 ML HIF 侧的复位（接了管理链路时） */
     void startup() override;
+    /** 精确配置使用异步 PIO 入口 */
+    bool
+    usesTimingPio() const override
+    { return asyncMemory; }
+    /** 接受有界的异步 PIO 请求 */
+    bool timingPio(PacketPtr pkt) override;
+    /** 上游撤销异步 PIO 响应反压 */
+    void timingPioRetry() override;
 
     /** 保存配置空间头部（基类）和各组件的状态 */
     void serialize(CheckpointOut &cp) const override;
@@ -74,6 +85,8 @@ class Gw100PciDevice : public PciEndpoint
 
     /** wdt_fatal 信号撤销：它保持到复位，不会撤销 */
     void lowerInterruptPin(int num);
+    /** 冷复位或热复位时恢复配置头部并重建时间戳起点 */
+    void resetLink(Tick origin);
 
   protected:
     /** BAR 读访问的入口：交给该 BAR 的处理者 */
@@ -133,6 +146,8 @@ class Gw100PciDevice : public PciEndpoint
 
     /** 全部组件 */
     std::unique_ptr<PcieParts> parts;
+    /** 原生 PCIe 配置头部的上电值 */
+    PCIConfigType0 resetConfig;
     /** 管理链路；为空时不接管理 Tile */
     Gw100MgmtLink *link;
     /** ML 的 HIF 侧适配器 */
@@ -149,6 +164,42 @@ class Gw100PciDevice : public PciEndpoint
     bool lastBme = false;
     /** doorbell 在 ML HIF 侧的客户端编号 */
     unsigned dbClient = 0;
+    /** 一次保持到响应被接受的 PIO */
+    struct PendingPio
+    {
+        /** 原始请求包 */
+        PacketPtr packet = nullptr;
+        /** 接受时的功能代次 */
+        uint64_t epoch = 0;
+        /** 最早执行或返回时刻 */
+        Tick ready = 0;
+        /** 已交给处理者 */
+        bool started = false;
+        /** 处理者已给出结果 */
+        bool done = false;
+        /** 复位已作废此请求 */
+        bool cancelled = false;
+    };
+    /** 处理异步 PIO 和响应 */
+    void processPio();
+    /** 安排异步 PIO 生效 */
+    void wakePio(Tick when);
+    /** 作废 PCIe 旧内存事务 */
+    void invalidateMemory();
+    /** 是否使用精确异步路径 */
+    const bool asyncMemory;
+    /** 两个 PCIe 内存来源 */
+    const std::vector<Gw100MemoryIngress *> memoryIngresses;
+    /** 当前 PCIe 功能代次 */
+    uint64_t pioEpoch = 0;
+    /** 已接受的 PIO，最多十六项 */
+    std::deque<std::shared_ptr<PendingPio>> pendingPio;
+    /** 需要通知请求重试 */
+    bool pioRequestRetry = false;
+    /** 返回路径正在反压 */
+    bool pioResponseBlocked = false;
+    /** 异步 PIO 调度事件 */
+    EventFunctionWrapper pioEvent;
 };
 
 } // namespace gw100
