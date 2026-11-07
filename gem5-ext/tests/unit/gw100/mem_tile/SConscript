@@ -1,0 +1,4 @@
+# Memory Tile 纯控制与保护逻辑。
+Import('*')
+GTest('memory_control.test', 'memory_control.test.cc',
+      with_tag('gw100 memory control'))

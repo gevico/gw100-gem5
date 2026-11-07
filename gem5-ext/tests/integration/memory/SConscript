@@ -1,0 +1,3 @@
+Import('*')
+SimObject('MemoryProbe.py', sim_objects=['Gw100MemoryProbe'])
+Source('memory_probe.cc')

@@ -13,6 +13,7 @@ HIF 寄存器区（经 ML）的访问；同时是 ML 管理侧的目标。CLINT 
 from m5.objects.ClockedObject import ClockedObject
 from m5.params import *
 from m5.proxy import *
+from m5.SimObject import PyBindMethod
 
 
 class Gw100MgmtTile(ClockedObject):
@@ -38,6 +39,9 @@ class Gw100MgmtTile(ClockedObject):
     pcie_reset = ResetRequestPort(
         "送给 PCIe 设备的功能逻辑复位信号，接它的 func_reset"
     )
+    timestamp_reset = ResetRequestPort("冷复位和热复位时清零 CLINT")
+    reset_endpoint = Param.Gw100PciDevice(NULL, "CRC 复位的 PCIe endpoint")
+    cxx_exports = [PyBindMethod("externalReset")]
 
     rom_size = Param.MemorySize("64KiB", "启动 ROM（mgmt.rom_size）")
     sram_size = Param.MemorySize("2MiB", "SRAM（mgmt.sram_size）")
@@ -83,4 +87,8 @@ class Gw100MgmtTile(ClockedObject):
     )
 
     mgmt_link = Param.Gw100MgmtLink("管理链路 ML")
+    memory_tiles = VectorParam.Gw100MemoryTile([], "CRC 控制的内存 Tile")
+    memory_ingresses = VectorParam.Gw100MemoryIngress([], "临时连接入口")
+    memory_core_domain = Param.SrcClockDomain(NULL, "临时互连时钟")
+    memory_ddr_domain = Param.SrcClockDomain(NULL, "DDR 控制器时钟")
     plic = Param.PlicBase("接收本 Tile 中断的 PLIC")

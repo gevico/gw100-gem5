@@ -89,6 +89,8 @@ class HostDmaPort : public RequestPort, public HdmaHostIf
 
     /** 发出一个 MWr */
     void write(Addr addr, unsigned len, const uint8_t *data) override;
+    /** 复位或 D3hot 时丢弃尚未被 host 端口接受的包 */
+    void cancelQueued();
 
   protected:
     /** 内存包的响应 */
@@ -112,6 +114,8 @@ class HostDmaPort : public RequestPort, public HdmaHostIf
         /** 读完成时的回调 */
         HostReadDone done;
     };
+    /** 一个内存包完成或被撤销，结算信用和读回调 */
+    void completePiece(const std::shared_ptr<Op> &op);
 
     /** 内存包携带的状态：所属请求与它在请求中的偏移 */
     struct State : public Packet::SenderState

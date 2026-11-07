@@ -113,11 +113,19 @@ GlobalRegs::reset()
     tsLatchedHi = 0;
 }
 
+/** 冷复位或热复位把时间戳原点设为 origin，单位为 tick */
+void
+GlobalRegs::resetTimestamp(Tick origin)
+{
+    tsOrigin = origin;
+    tsLatchedHi = 0;
+}
+
 /** 当前设备时间戳：仿真时间换算到 timestampHz */
 uint64_t
 GlobalRegs::timestamp() const
 {
-    unsigned __int128 t = curTick();
+    unsigned __int128 t = curTick() - tsOrigin;
     return uint64_t(t * timestampHz / sim_clock::Frequency);
 }
 
@@ -127,6 +135,7 @@ GlobalRegs::serialize(CheckpointOut &cp) const
 {
     SERIALIZE_SCALAR(scratch);
     SERIALIZE_SCALAR(tsLatchedHi);
+    SERIALIZE_SCALAR(tsOrigin);
 }
 
 /** 恢复 serialize() 保存的状态 */
@@ -135,6 +144,7 @@ GlobalRegs::unserialize(CheckpointIn &cp)
 {
     UNSERIALIZE_SCALAR(scratch);
     UNSERIALIZE_SCALAR(tsLatchedHi);
+    optParamIn(cp, "tsOrigin", tsOrigin);
 }
 
 } // namespace gw100

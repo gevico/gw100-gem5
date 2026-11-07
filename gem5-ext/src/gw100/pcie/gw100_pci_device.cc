@@ -6,8 +6,10 @@
  */
 
 #include "src/gw100/pcie/gw100_pci_device.hh"
+#include "src/gw100/mem_tile/memory_ingress.hh"
 
 #include <algorithm>
+#include <cstring>
 
 #include "base/trace.hh"
 #include "debug/Gw100Pcie.hh"
@@ -27,6 +29,8 @@ namespace
 constexpr Addr DevCtl = 0x58;
 /** MSI-X 的 Message Control：MSI-X capability（0x90）+ 2 */
 constexpr Addr MsixCtl = 0x92;
+/** PM capability 的电源控制与状态寄存器 */
+constexpr Addr PmCsr = 0x44;
 /** Command 的 Interrupt Disable */
 constexpr uint16_t CmdIntxDisable = 0x0400;
 /** HIF 事件位：BME_OFF（spec-mgmt-tile §6.3） */
@@ -34,15 +38,148 @@ constexpr uint32_t EvtBmeOff = 1u << 3;
 
 } // anonymous namespace
 
+/** 安排异步 PIO 生效 */
+void
+Gw100PciDevice::wakePio(Tick when)
+{
+    when = std::max(when, curTick() + 1);
+    if (!pioEvent.scheduled()) {
+        schedule(pioEvent, when);
+    } else if (when < pioEvent.when()) {
+        reschedule(pioEvent, when);
+    }
+}
+
+/** 接受有界的异步 PIO 请求 */
+bool
+Gw100PciDevice::timingPio(PacketPtr pkt)
+{
+    if (pendingPio.size() >= 16) {
+        pioRequestRetry = true;
+        return false;
+    }
+    auto p = std::make_shared<PendingPio>();
+    p->packet = pkt;
+    p->epoch = pioEpoch;
+    p->ready = curTick() + pkt->headerDelay + pkt->payloadDelay;
+    pkt->headerDelay = pkt->payloadDelay = 0;
+    pendingPio.push_back(p);
+    wakePio(p->ready);
+    return true;
+}
+
+/** 上游撤销异步 PIO 响应反压 */
+void
+Gw100PciDevice::timingPioRetry()
+{
+    pioResponseBlocked = false;
+    wakePio(curTick() + 1);
+}
+
+/** 作废 PCIe 旧内存事务 */
+void
+Gw100PciDevice::invalidateMemory()
+{
+    ++pioEpoch;
+    for (auto *ingress : memoryIngresses) {
+        ingress->invalidate();
+    }
+    if (!pendingPio.empty()) {
+        wakePio(curTick() + 1);
+    }
+}
+
+/** 处理异步 PIO 和响应 */
+void
+Gw100PciDevice::processPio()
+{
+    for (auto &p : pendingPio) {
+        PacketPtr pkt = p->packet;
+        // 已发出的异步访问持有原包直到返回，以保持回调缓冲有效。
+        if (p->epoch != pioEpoch && (!p->started || p->done) &&
+            !p->cancelled) {
+            p->cancelled = true;
+            if (pkt->isRead()) {
+                std::memset(pkt->getPtr<uint8_t>(), 0xFF, pkt->getSize());
+            }
+            if (pkt->isRequest()) {
+                pkt->makeResponse();
+            }
+            pkt->setBadCommand();
+            p->started = p->done = true;
+            p->ready = curTick();
+        }
+        if (p->started) {
+            continue;
+        }
+        if (p->ready > curTick()) {
+            wakePio(p->ready);
+            continue;
+        }
+        int bar = -1;
+        Addr off = 0;
+        bool is_bar = getBAR(pkt->getAddr(), bar, off);
+        if (is_bar && bar == 2 && !parts->shim.active()) {
+            BarAccess a{off, unsigned(pkt->getSize()), pkt->isWrite(),
+                        pkt->getPtr<uint8_t>()};
+            auto done = [this, p](Tick latency) {
+                p->packet->makeResponse();
+                p->done = true;
+                p->ready = curTick() + latency;
+                wakePio(p->ready);
+            };
+            auto valid = [this, epoch = p->epoch] {
+                return epoch == pioEpoch;
+            };
+            p->started = true;
+            if (!parts->bar2.accessAsync(a, done, valid)) {
+                p->started = false;
+            }
+        } else {
+            p->started = true;
+            Tick latency = pkt->isWrite() ? PciEndpoint::write(pkt)
+                                          : PciEndpoint::read(pkt);
+            // 触发 FLR、复位或电源切换的配置写本身正常完成。
+            p->epoch = pioEpoch;
+            p->done = true;
+            p->ready = curTick() + latency;
+            wakePio(p->ready);
+        }
+    }
+    while (!pioResponseBlocked && !pendingPio.empty()) {
+        auto p = pendingPio.front();
+        if (!p->done) {
+            break;
+        }
+        if (p->ready > curTick()) {
+            wakePio(p->ready);
+            break;
+        }
+        if (!sendTimingPioResponse(p->packet)) {
+            pioResponseBlocked = true;
+            break;
+        }
+        pendingPio.pop_front();
+    }
+    if (pioRequestRetry && pendingPio.size() < 16) {
+        pioRequestRetry = false;
+        retryTimingPioRequest();
+    }
+}
+
 /** 按参数构造；全部组件由 Gw100PcieFactory 组装 */
 Gw100PciDevice::Gw100PciDevice(const Params &p)
-    : PciEndpoint(p), parts(Gw100PcieFactory::build(p, *this)),
+    : PciEndpoint(p),
+      parts(Gw100PcieFactory::build(p, *this)),
       link(p.mgmt_link),
       wdtFatalPin(name() + ".wdt_fatal", 0, this),
       wdtFatalEvent([this] { parts->bootCtrl.setDevFatal(); },
                     name() + ".wdtFatal"),
       devResetReqPin(name() + ".dev_reset_req", 0, this),
-      funcResetPin(name() + ".func_reset")
+      funcResetPin(name() + ".func_reset"),
+      asyncMemory(p.async_memory),
+      memoryIngresses(p.memory_ingresses),
+      pioEvent([this] { processPio(); }, name() + ".asyncPio")
 {
     // TLP 携带的 Requester ID；gem5 的配置访问不带总线号，由参数给出
     parts->hostDma.requesterId = (uint32_t(p.pci_bus) << 8) |
@@ -51,17 +188,38 @@ Gw100PciDevice::Gw100PciDevice(const Params &p)
     parts->hif.pciState = [this] { return pciState(); };
     parts->bootCtrl.onDevReset = [this] { devResetRequest(); };
     parts->bootCtrl.onFlrDone = [this] {
-        parts->hdma.setHold(false);
-        parts->intCtrl.setFlrGate(false);
-        parts->hdi.setGate(false);
+        bool d0 = (parts->config.read(PmCsr, 2) & 3) == 0;
+        parts->hdma.setHold(!d0);
+        parts->intCtrl.setFlrGate(!d0);
+        parts->hdi.setGate(!d0);
     };
     parts->intCtrl.onIntx = [this](bool level) {
-        if (level)
+        if (level) {
             intrPost();
-        else
+        } else {
             intrClear();
+        }
     };
     funcResetPin.onChange([this](const bool &v) { funcReset(v); });
+    parts->bar2Devmem.onReady = [this] { wakePio(curTick() + 1); };
+    resetConfig = config();
+}
+
+/** 冷复位或热复位时恢复配置头部并重建时间戳起点 */
+void
+Gw100PciDevice::resetLink(Tick origin)
+{
+    config() = resetConfig;
+    for (unsigned i = 0; i < BARs.size(); ++i) {
+        BARs[i]->write(upstreamInterface, config().baseAddr[i]);
+    }
+    parts->config.reset();
+    parts->global.resetTimestamp(origin);
+    lastBme = false;
+    updateBusMaster();
+    updateMsix();
+    updateHdmaPcie();
+    pioPort.sendRangeChange();
 }
 
 /** 检查端口，接入 ML 的 HIF 侧（接了管理链路时） */
@@ -122,6 +280,7 @@ Gw100PciDevice::pciState()
         v |= 1u << 1;
     if (cmd & 0x0400)  // Interrupt Disable
         v |= 1u << 5;
+    v |= (parts->config.read(PmCsr, 2) & 3) << 2;
     return v;
 }
 
@@ -138,6 +297,9 @@ Gw100PciDevice::getPort(const std::string &if_name, PortID idx)
         return parts->hostDma;
     if (if_name == "mem_port")
         return parts->devmem.port();
+    if (if_name == "bar2_mem_port") {
+        return parts->bar2Devmem.port();
+    }
     if (if_name == "wdt_fatal")
         return wdtFatalPin;
     if (if_name == "dev_reset_req") {
@@ -191,8 +353,10 @@ void
 Gw100PciDevice::funcReset(bool asserted)
 {
     if (asserted) {
+        invalidateMemory();
         DPRINTF(Gw100Pcie, "设备完全复位：复位功能逻辑\n");
         parts->devReset();
+        parts->hostDma.cancelQueued();
         if (wdtFatalEvent.scheduled())
             deschedule(wdtFatalEvent);
         if (link)
@@ -295,12 +459,26 @@ Gw100PciDevice::writeConfig(PacketPtr pkt)
 
     const CfgEvent ev = parts->config.write(off, size, val);
     pkt->makeAtomicResponse();
+    if (ev == CfgEvent::Flr) {
+        functionReset("FLR");
+    } else if (ev == CfgEvent::D0ToD3hot) {
+        invalidateMemory();
+        parts->intCtrl.setFlrGate(true);
+        parts->hdi.setGate(true);
+        parts->hdma.reset();
+        parts->hdma.setHold(true);
+        parts->hdma.setBusMaster(false);
+        parts->intCtrl.setBusMaster(false);
+        parts->hostDma.cancelQueued();
+        parts->bootCtrl.fwWriteBootStatus(parts->bootCtrl.fwBootStatus() &
+                                          ~0x100u);
+        parts->bootCtrl.hostEvent(1u << 4);
+    } else if (ev == CfgEvent::D3hotToD0) {
+        functionReset("D3hot→D0"); // No_Soft_Reset = 0
+        parts->bootCtrl.hostEvent(1u << 4);
+    }
     updateHdmaPcie();
     updateMsix();
-    if (ev == CfgEvent::Flr)
-        functionReset("FLR");
-    else if (ev == CfgEvent::D3hotToD0)
-        functionReset("D3hot→D0");  // No_Soft_Reset = 0
     return configDelay;
 }
 
@@ -331,6 +509,7 @@ Gw100PciDevice::cfgWriteCommon(Addr off, unsigned size, uint32_t val)
 void
 Gw100PciDevice::functionReset(const char *why)
 {
+    invalidateMemory();
     DPRINTF(Gw100Pcie, "%s：复位配置空间、BAR 和寄存器\n", why);
     parts->config.reset();
     parts->resetRegisters();
@@ -342,6 +521,7 @@ Gw100PciDevice::functionReset(const char *why)
     parts->hdma.setHold(true);
     parts->intCtrl.setFlrGate(true);
     parts->hdi.setGate(true);
+    parts->hostDma.cancelQueued();
     lastBme = false;
     parts->hdma.setBusMaster(false);
     parts->intCtrl.setBusMaster(false);
@@ -374,13 +554,16 @@ Gw100PciDevice::updateBusMaster()
     uint16_t cmd = letoh(config().command);
     parts->intCtrl.setIntxDisable(cmd & CmdIntxDisable);
     bool bme = cmd & PCI_CMD_BME;
-    if (bme == lastBme)
+    if (bme == lastBme) {
         return;
-    parts->intCtrl.setBusMaster(bme);
+    }
+    bool enabled = bme && (parts->config.read(PmCsr, 2) & 3) == 0;
+    parts->intCtrl.setBusMaster(enabled);
     lastBme = bme;
-    parts->hdma.setBusMaster(bme);
-    if (!bme)
+    parts->hdma.setBusMaster(enabled);
+    if (!bme) {
         parts->bootCtrl.hostEvent(EvtBmeOff);
+    }
 }
 
 /** MSI-X capability 的 Enable、Function Mask 变化：通知中断控制器 */

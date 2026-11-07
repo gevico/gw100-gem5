@@ -80,6 +80,13 @@ gem5/build/GW100/gem5.opt --outdir=build/lpddr5-8433-mixed \
   gem5-ext/configs/feasibility/lpddr5_8433.py --mode mixed
 ~~~
 
+## 独立 Memory Tile 配置
+
+configs/feasibility/memory_tile.py 实例化四 Tile、八通道和 32 GiB，
+通过三个 timing 硬件入口执行配置、训练、数据、保护和生命周期操作。
+控制器复用原生 MemCtrl，状态、FIFO 和稀疏后端由 memory.py 连接。
+训练反馈的抽象层级及原生时序的适用范围见 #25、#26。
+
 ## 测试
 
 设备级测试是在 host 上运行的裸机程序，放在 `baremetal/tests/`，每个 test 独立运行，共用 `baremetal/lib/` 的公共库。在仓库根目录执行 `make test`，默认在 `timing` 和 `atomic` 两个 host 预设下各跑一遍；架构、约定和用法见 `baremetal/README.md`。
@@ -147,6 +154,9 @@ scons --ignore-style EXTRAS=<仓库根目录>/gem5-ext \
 | 22 | 设备完全复位中的 PLIC 与 CLINT | gem5 的 PLIC 没有复位接口，`Clint` 的复位会把 `mtime` 一起清零（规格要求设备完全复位保留 `mtime`），所以两者都不复位：PLIC 的使能、优先级、阈值，CLINT 的 `mtimecmp`、`msip` 保留复位前的值。启动 ROM 不使用它们；CPU 复位后 `mstatus.MIE`、`mie` 为 0，固件在 `irq_init` 中重新设置 PLIC 的优先级、使能、阈值和 `mtimecmp` 之后才开中断，旧值不会引发中断 | 功能偏差 | 低 | 随自己的 CLINT（#15）一起实现 PLIC 与 CLINT 的复位 |
 | 23 | HDMA 的设备侧地址 | DPA 只接受设备内存的范围，Compute Tile 的 SRAM 尚未建模，指向它的描述符按 DEV_ADDR 失败；DEV_ECC 不会出现（#19） | 功能缺失 | 低 | 随 NoC 与 Compute Tile 的模型接入 |
 | 24 | Requester ID 的总线号 | 真实的 endpoint 从配置写请求中捕获自己的总线号；gem5 的配置访问不携带总线号，Requester ID（ITS 的 DeviceID）的总线号由 SimObject 参数 `pci_bus` 给出（默认 0，VExpress 的设备都在根总线上），设备号和功能号取自 gem5 的 PCI 地址。设备挂在桥后面（总线号不为 0）而参数没有相应设置时，DeviceID 会错 | 功能偏差 | 低 | 待批准；或在 gem5 的配置访问中携带总线号后改为捕获 |
+
+| 25 | 控制器训练反馈 | 校准与训练使用可配置的 10 µs、100 µs 数字反馈，两 rank 并行，支持逐 rank 失败和超时。固件执行全部控制器配置和检查 | 延迟为设计假设 | 中 | 有控制器实现或测量依据后校准反馈，能力寄存器标明抽象层级 |
+| 26 | 通用 LPDDR5 时序 | 通用档案固定运行模式，WCK、刷新与电源状态继承原生时序抽象，各参数分别量化，阵列延迟沿用通用预设。自刷新进入等待继承原生 tCKESR | 相对具体器件未知 | 中 | 用于通用架构评估，型号对齐和实物校准另立关口 |
 
 随旧模型删除而失效（2026-10-24），重建对应组件时不得重犯：
 

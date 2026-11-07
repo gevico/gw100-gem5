@@ -64,17 +64,24 @@ class MgmtCrc
     Tick accessLatency() const { return cfg.access; }
 
     /**
-     * 设备完全复位：置位 RESET_CAUSE.DEV_RESET，其余寄存器恢复复位值，
-     * 两个 PLL 关闭、时钟回到 XTAL；PLL_TS 不受影响
-     * （spec-clock-reset-power §4.2、§4.4）
+     * 完整复位并记录原因位，冷复位重建原因，其他复位累积原因。
+     * 两个 PLL 关闭、时钟回到 XTAL，PLL_TS 保持锁定
      */
-    void devReset();
+    void devReset(uint32_t cause = 1u << 4);
 
     /**
      * clk_mgmt 切换到 PLL_CORE 时调用：参数为切换完成的时刻。由管理
      * Tile 在那一刻改变管理系统时钟域的频率档
      */
     std::function<void(Tick)> onMgmtSwitch;
+    /** 已完成寄存器写入后更新连接、DDR 时钟和复位 */
+    std::function<void(Tick)> onChange;
+    /** 设备模型对 DDR PLL 档案的检查 */
+    std::function<bool(uint32_t)> validDdrConfig;
+    /** DDR PLL 的下一锁定时刻 */
+    Tick
+    ddrLockTime() const
+    { return ddrLockAt; }
 
   private:
     /** 时序参数 */

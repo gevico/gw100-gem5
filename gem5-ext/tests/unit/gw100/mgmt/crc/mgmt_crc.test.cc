@@ -61,6 +61,20 @@ TEST(MgmtCrc, W1cAndClearOnly)
     EXPECT_EQ(rd(c, 0x010, 0), 0x1Eu);
 }
 
+TEST(MgmtCrc, ExternalResetCauses)
+{
+    MgmtCrc c(cfg, 0);
+    c.devReset(2);
+    EXPECT_EQ(rd(c, 0, 0), 2u);
+    c.write(0, 2, 0);
+    c.devReset(4);
+    c.devReset(8);
+    EXPECT_EQ(rd(c, 0, 0), 12u);
+    c.devReset(1);
+    EXPECT_EQ(rd(c, 0, 0), 1u);
+    EXPECT_EQ(rd(c, 0x10, 0), 0x1Fu);
+}
+
 TEST(MgmtCrc, PllTsLocksAfterReset)
 {
     MgmtCrc c(cfg, 10 * ns);

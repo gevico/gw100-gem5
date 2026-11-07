@@ -1,0 +1,51 @@
+Optional deferred PIO completion through the existing port
+
+Memory BAR transactions need timing backpressure and asynchronous completion.
+Provide opt-in hooks while retaining native range notifications and default
+SimpleTimingPort behavior. Validated by BAR2, FLR and HDI COPY regressions.
+
+--- a/src/dev/io_device.hh
++++ b/src/dev/io_device.hh
+@@ -80,6 +80,23 @@
+         return delay + receive_delay;
+     }
+ 
++    bool
++    recvTimingReq(PacketPtr pkt) override
++    {
++        if (device->usesTimingPio())
++            return device->timingPio(pkt);
++        return SimpleTimingPort::recvTimingReq(pkt);
++    }
++
++    void
++    recvRespRetry() override
++    {
++        if (device->usesTimingPio())
++            device->timingPioRetry();
++        else
++            QueuedResponsePort::recvRespRetry();
++    }
++
+     AddrRangeList
+     getAddrRanges() const override
+     {
+@@ -135,6 +152,18 @@
+     PioDevice(const Params &p);
+     virtual ~PioDevice();
+ 
++    /** Optional asynchronous PIO, using the existing range-change port. */
++    virtual bool usesTimingPio() const { return false; }
++    /** Accept a timing PIO request, or apply request backpressure. */
++    virtual bool timingPio(PacketPtr pkt) { return false; }
++    /** Retry an asynchronous response. */
++    virtual void timingPioRetry() {}
++    /** Send an asynchronous PIO response. */
++    bool sendTimingPioResponse(PacketPtr pkt)
++    { return pioPort.sendTimingResp(pkt); }
++    /** Wake a requestor previously rejected by timingPio(). */
++    void retryTimingPioRequest() { pioPort.sendRetryReq(); }
++
+     void init() override;
+ 
+     Port &getPort(const std::string &if_name,

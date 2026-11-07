@@ -50,6 +50,9 @@ namespace gem5
 namespace gw100
 {
 
+class Gw100MemoryTile;
+class Gw100MemoryIngress;
+
 /** 管理 Tile */
 class Gw100MgmtTile : public ClockedObject, public MlTargetIf
 {
@@ -77,6 +80,8 @@ class Gw100MgmtTile : public ClockedObject, public MlTargetIf
 
     /** dev_reset_req 撤销：PCIe 的功能逻辑复位时撤销，无动作 */
     void lowerInterruptPin(int num);
+    /** 注入 POR、PERST、Hot Reset 或 Link Down 的数字硬件通知 */
+    void externalReset(unsigned cause);
 
   private:
     /** NI 发起端口：管理 CPU 经它访问 DPA 空间 */
@@ -272,6 +277,12 @@ class Gw100MgmtTile : public ClockedObject, public MlTargetIf
     IntSinkPin<Gw100MgmtTile> devResetReq;
     /** 送给 PCIe 设备的功能逻辑复位信号 */
     SignalSourcePort<bool> pcieReset;
+    /** 冷复位和热复位清零 CLINT 的信号 */
+    SignalSourcePort<bool> timestampReset;
+    /** 本次完整复位的 CRC 原因位 */
+    unsigned pendingResetCause = 1u << 4;
+    /** 最近一次冷复位或热复位的时间戳起点，tick */
+    Tick timestampOrigin = 0;
     /** DEV_RESET 请求经同步器进入 clk_ao 域的延迟 */
     const Tick devResetSync;
     /** 设备完全复位的复位保持时间 */
@@ -303,6 +314,20 @@ class Gw100MgmtTile : public ClockedObject, public MlTargetIf
     MlData mlData{};
     /** 在 ML 请求处理完毕的时刻调用 mlFinish() 的事件 */
     EventFunctionWrapper mlEvent;
+    /** CRC 状态生效后更新内存子系统 */
+    void updateMemoryControl();
+    /** 安排 CRC 控制跨域生效 */
+    void memoryControlChanged(Tick when);
+    /** CRC 控制的四个内存 Tile */
+    const std::vector<Gw100MemoryTile *> memoryTiles;
+    /** 三个硬件来源入口 */
+    const std::vector<Gw100MemoryIngress *> memoryIngresses;
+    /** 核心互连的实际时钟域 */
+    SrcClockDomain *memoryCore;
+    /** DDR 控制器的实际时钟域 */
+    SrcClockDomain *memoryDdr;
+    /** CRC 寄存器和 PLL 锁定的生效事件 */
+    EventFunctionWrapper memoryControlEvent;
 };
 
 } // namespace gw100

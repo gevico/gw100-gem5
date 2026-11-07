@@ -128,8 +128,16 @@ HostDmaPort::recvTimingResp(PacketPtr pkt)
         pkt->writeData(op->buf.data() + st->off);
     delete st;
     delete pkt;
+    completePiece(op);
+    return true;
+}
+
+/** 一个内存包完成或被撤销，结算信用和读回调 */
+void
+HostDmaPort::completePiece(const std::shared_ptr<Op> &op)
+{
     if (--op->remaining > 0)
-        return true;
+        return;
     if (op->write) {
         txInFlight--;
         if (onTxFree)
@@ -137,7 +145,23 @@ HostDmaPort::recvTimingResp(PacketPtr pkt)
     } else if (op->done) {
         op->done(op->err ? HostStatus::Ur : HostStatus::Ok, op->buf.data());
     }
-    return true;
+}
+
+/** 复位或 D3hot 时丢弃尚未被 host 端口接受的包 */
+void
+HostDmaPort::cancelQueued()
+{
+    while (!sendQ.empty()) {
+        PacketPtr pkt = sendQ.front();
+        sendQ.pop_front();
+        auto *st = dynamic_cast<State *>(pkt->popSenderState());
+        panic_if(!st, "%s: queued DMA has no state", name());
+        auto op = st->op;
+        op->err = true;
+        delete st;
+        delete pkt;
+        completePiece(op);
+    }
 }
 
 /** 接入 ML 的 HIF 侧适配器，登记一个客户端 */

@@ -1,0 +1,409 @@
+GW100 controller-level media lifecycle
+
+Allow deferred startup after firmware training, bounded local media drain,
+self-refresh retention and reset using the native rank scheduler.
+Default DRAMInterface behavior remains compatible. Validated by the
+Memory Tile timing probe and firmware lifecycle regressions.
+
+diff --git a/src/mem/DRAMInterface.py b/src/mem/DRAMInterface.py
+--- a/src/mem/DRAMInterface.py
++++ b/src/mem/DRAMInterface.py
+@@ -69,6 +69,7 @@
+     # Enable DRAM powerdown states if True. This is False by default due to
+     # performance being lower when enabled
+     enable_dram_powerdown = Param.Bool(False, "Enable powerdown states")
++    defer_startup = Param.Bool(False, "Start media explicitly after training")
+ 
+     # For power modelling we need to know if the DRAM has a DLL or not
+     dll = Param.Bool(True, "DRAM has DLL or not")
+diff --git a/src/mem/dram_interface.hh b/src/mem/dram_interface.hh
+--- a/src/mem/dram_interface.hh
++++ b/src/mem/dram_interface.hh
+@@ -229,6 +229,7 @@
+     class Rank : public EventManager
+     {
+       private:
++        friend class DRAMInterface;
+ 
+         /**
+          * A reference to the parent DRAMInterface instance
+@@ -497,6 +498,14 @@
+      * DRAM specific device characteristics
+      */
+     const uint32_t bankGroupsPerRank;
++    /** External controller owns media startup and retention. */
++    const bool deferStartup;
++    /** Media refresh has been started. */
++    bool mediaRunning = false;
++    /** Finish a refresh into an explicitly held idle state. */
++    bool holdAfterRefresh = false;
++    /** Keep DRAMPower timestamps monotonic across controller resets. */
++    bool mediaEverStarted = false;
+     const bool bankGroupArch;
+ 
+     /**
+@@ -673,6 +682,27 @@
+      */
+     void startup() override;
+ 
++    /** Start refresh after controller-level initialization. */
++    void startMedia();
++    /** No data, refresh or power transition is outstanding. */
++    bool mediaIdle() const;
++    /** Precharge and perform an extra refresh before holding idle. */
++    void holdMedia();
++    /** All ranks are explicitly held idle, with refresh suspended. */
++    bool mediaHeld() const;
++    /** Enter self-refresh from the held state. */
++    void enterSelfRefresh();
++    /** All ranks have completed self-refresh entry. */
++    bool selfRefreshing() const;
++    /** Resume a held or self-refreshing interface. */
++    void resumeMedia();
++    /** Stop a held interface, preserving its backing bytes. */
++    void stopMedia();
++    /** External lifecycle control is enabled. */
++    bool managedMedia() const { return deferStartup; }
++    /** Media has started. */
++    bool runningMedia() const { return mediaRunning; }
++
+     /**
+      * Setup the rank based on packet received
+      *
+diff --git a/src/mem/dram_interface.cc b/src/mem/dram_interface.cc
+--- a/src/mem/dram_interface.cc
++++ b/src/mem/dram_interface.cc
+@@ -636,6 +636,7 @@
+ DRAMInterface::DRAMInterface(const DRAMInterfaceParams &_p)
+     : MemInterface(_p),
+       bankGroupsPerRank(_p.bank_groups_per_rank),
++      deferStartup(_p.defer_startup),
+       bankGroupArch(_p.bank_groups_per_rank > 0),
+       tRL(_p.tCL),
+       tWL(_p.tCWL),
+@@ -783,14 +784,113 @@
+ void
+ DRAMInterface::startup()
+ {
+-    if (system()->isTimingMode()) {
+-        // timestamp offset should be in clock cycles for DRAMPower
++    if (!deferStartup)
++        startMedia();
++}
++
++void
++DRAMInterface::startMedia()
++{
++    if (!system()->isTimingMode() || mediaRunning)
++        return;
++    if (!mediaEverStarted)
+         timeStampOffset = divCeil(curTick(), tCK);
+-
+-        for (auto r : ranks) {
++    mediaEverStarted = true;
++    mediaRunning = true;
++    holdAfterRefresh = false;
++    for (auto r : ranks)
++        r->startup(curTick() + tREFI - tRP);
++}
++
++bool
++DRAMInterface::mediaIdle() const
++{
++    for (auto r : ranks) {
++        if (r->outstandingEvents || r->readEntries || r->writeEntries ||
++            r->refreshState != REF_IDLE || r->inLowPowerState ||
++            r->powerEvent.scheduled() || r->wakeUpEvent.scheduled() ||
++            r->activateEvent.scheduled() || r->prechargeEvent.scheduled())
++            return false;
++    }
++    return true;
++}
++
++void
++DRAMInterface::holdMedia()
++{
++    panic_if(!mediaIdle(), "Media must be idle before explicit hold");
++    holdAfterRefresh = true;
++    for (auto r : ranks) {
++        if (r->refreshEvent.scheduled())
++            deschedule(r->refreshEvent);
++        schedule(r->refreshEvent, curTick());
++    }
++}
++
++bool
++DRAMInterface::mediaHeld() const
++{
++    if (!holdAfterRefresh || !mediaIdle())
++        return false;
++    for (auto r : ranks) {
++        if (r->numBanksActive || r->refreshEvent.scheduled())
++            return false;
++    }
++    return true;
++}
++
++void
++DRAMInterface::enterSelfRefresh()
++{
++    panic_if(!mediaHeld(), "Self-refresh requires a completed media hold");
++    for (auto r : ranks) {
++        r->pwrStatePostRefresh = PWR_PRE_PDN;
++        r->powerDownSleep(PWR_SREF, curTick() + tCK);
++    }
++}
++
++bool
++DRAMInterface::selfRefreshing() const
++{
++    for (auto r : ranks) {
++        if (r->pwrState != PWR_SREF || r->powerEvent.scheduled())
++            return false;
++    }
++    return mediaRunning && holdAfterRefresh;
++}
++
++void
++DRAMInterface::resumeMedia()
++{
++    panic_if(!mediaHeld() && !selfRefreshing(), "Media is not held");
++    holdAfterRefresh = false;
++    for (auto r : ranks) {
++        if (r->pwrState == PWR_SREF)
++            r->scheduleWakeUpEvent(tXS);
++        else
+             r->startup(curTick() + tREFI - tRP);
+-        }
+-    }
++    }
++}
++
++void
++DRAMInterface::stopMedia()
++{
++    panic_if(mediaRunning && !mediaHeld(), "Stop requires media hold");
++    for (auto r : ranks) {
++        if (r->refreshEvent.scheduled())
++            deschedule(r->refreshEvent);
++        r->flushCmdList();
++        r->actTicks.assign(activationLimit, 0);
++        r->pwrStatePostRefresh = PWR_IDLE;
++        r->lastBurstTick = 0;
++        for (auto &b : r->banks) {
++            b.rdAllowedAt = b.wrAllowedAt = curTick();
++            b.preAllowedAt = b.actAllowedAt = curTick();
++        }
++    }
++    mediaRunning = false;
++    holdAfterRefresh = false;
++    nextBurstAt = curTick() + commandOffset();
+ }
+ 
+ bool
+@@ -990,6 +1090,8 @@
+ void
+ DRAMInterface::drainRanks()
+ {
++    if (deferStartup && selfRefreshing())
++        return;
+     // also need to kick off events to exit self-refresh
+     for (auto r : ranks) {
+         // force self-refresh exit, which in turn will issue auto-refresh
+@@ -1004,6 +1106,8 @@
+ bool
+ DRAMInterface::allRanksDrained() const
+ {
++    if (deferStartup && selfRefreshing())
++        return true;
+     // true until proven false
+     bool all_ranks_drained = true;
+     for (auto r : ranks) {
+@@ -1441,6 +1545,11 @@
+         assert(pwrState == PWR_REF);
+ 
+         assert(!powerEvent.scheduled());
++
++        if (dram.holdAfterRefresh) {
++            schedulePowerEvent(PWR_IDLE, curTick());
++            return;
++        }
+ 
+         if ((dram.ctrl->drainState() == DrainState::Draining) ||
+             (dram.ctrl->drainState() == DrainState::Drained)) {
+diff --git a/src/mem/mem_ctrl.hh b/src/mem/mem_ctrl.hh
+--- a/src/mem/mem_ctrl.hh
++++ b/src/mem/mem_ctrl.hh
+@@ -51,6 +51,7 @@
+ #include <unordered_set>
+ #include <utility>
+ #include <vector>
++#include <functional>
+ 
+ #include "base/callback.hh"
+ #include "base/statistics.hh"
+@@ -259,6 +260,8 @@
+ 
+         MemoryPort(const std::string& name, MemCtrl& _ctrl);
+         void disableSanityCheck();
++        /** All queued timing responses have been accepted. */
++        bool idle() const { return queue.size() == 0; }
+ 
+       protected:
+ 
+@@ -779,6 +782,21 @@
+     virtual void startup() override;
+     virtual void drainResume() override;
+ 
++    /** Start explicitly managed DRAM after initialization. */
++    void startMedia();
++    /** Flush writes and hold precharged DRAM after an extra refresh. */
++    void quiesceMedia(std::function<void()> done);
++    /** Enter self-refresh from an explicitly held interface. */
++    void enterSelfRefresh(std::function<void()> done);
++    /** Resume an explicitly held or self-refreshing interface. */
++    void resumeMedia(std::function<void()> done);
++    /** Reset an already held interface, preserving backing bytes. */
++    void stopMedia();
++    /** Managed media can accept normal timing requests. */
++    bool mediaAvailable() const;
++    /** No lifecycle operation is in progress. */
++    bool maintenanceIdle() const { return !maintenanceDone; }
++
+   protected:
+ 
+     virtual Tick recvAtomic(PacketPtr pkt);
+@@ -791,6 +809,17 @@
+     bool recvFunctionalLogic(PacketPtr pkt, MemInterface* mem_intr);
+     Tick recvAtomicLogic(PacketPtr pkt, MemInterface* mem_intr);
+ 
++    /** Poll the bounded local maintenance operation. */
++    void checkMedia();
++    /** Lifecycle operation completion. */
++    std::function<void()> maintenanceDone;
++    /** Local operation, 1 hold, 2 self-refresh, 3 resume. */
++    unsigned maintenanceOp = 0;
++    /** The extra refresh has been requested. */
++    bool maintenanceClosing = false;
++    /** Event independent of the global checkpoint drain manager. */
++    EventFunctionWrapper maintenanceEvent;
++
+ };
+ 
+ } // namespace memory
+diff --git a/src/mem/mem_ctrl.cc b/src/mem/mem_ctrl.cc
+--- a/src/mem/mem_ctrl.cc
++++ b/src/mem/mem_ctrl.cc
+@@ -77,7 +77,8 @@
+     backendLatency(p.static_backend_latency),
+     commandWindow(p.command_window),
+     prevArrival(0),
+-    stats(*this)
++    stats(*this),
++    maintenanceEvent([this] { checkMedia(); }, name() + ".maintenance")
+ {
+     DPRINTF(MemCtrl, "Setting up controller\n");
+ 
+@@ -1422,6 +1423,102 @@
+    return dram->allRanksDrained();
+ }
+ 
++void
++MemCtrl::startMedia()
++{
++    auto *iface = dynamic_cast<DRAMInterface *>(dram);
++    panic_if(!iface, "External lifecycle requires DRAM");
++    iface->startMedia();
++    dram->nextBurstAt = curTick() + dram->commandOffset();
++}
++
++bool
++MemCtrl::mediaAvailable() const
++{
++    auto *iface = dynamic_cast<DRAMInterface *>(dram);
++    return iface && iface->runningMedia() && !maintenanceDone &&
++        !iface->mediaHeld() && !iface->selfRefreshing();
++}
++
++void
++MemCtrl::quiesceMedia(std::function<void()> done)
++{
++    panic_if(maintenanceDone, "Concurrent media maintenance");
++    maintenanceDone = std::move(done);
++    maintenanceOp = 1;
++    maintenanceClosing = false;
++    schedule(maintenanceEvent, curTick() + clockPeriod());
++}
++
++void
++MemCtrl::enterSelfRefresh(std::function<void()> done)
++{
++    panic_if(maintenanceDone, "Concurrent media maintenance");
++    auto *iface = dynamic_cast<DRAMInterface *>(dram);
++    iface->enterSelfRefresh();
++    maintenanceDone = std::move(done);
++    maintenanceOp = 2;
++    schedule(maintenanceEvent, curTick() + clockPeriod());
++}
++
++void
++MemCtrl::resumeMedia(std::function<void()> done)
++{
++    panic_if(maintenanceDone, "Concurrent media maintenance");
++    auto *iface = dynamic_cast<DRAMInterface *>(dram);
++    iface->resumeMedia();
++    maintenanceDone = std::move(done);
++    maintenanceOp = 3;
++    schedule(maintenanceEvent, curTick() + clockPeriod());
++}
++
++void
++MemCtrl::stopMedia()
++{
++    panic_if(maintenanceDone, "Media maintenance has not completed");
++    auto *iface = dynamic_cast<DRAMInterface *>(dram);
++    iface->stopMedia();
++    burstTicks.clear();
++    prevArrival = 0;
++}
++
++void
++MemCtrl::checkMedia()
++{
++    auto *iface = dynamic_cast<DRAMInterface *>(dram);
++    bool done = false;
++    if (maintenanceOp == 1) {
++        if (iface->selfRefreshing())
++            iface->resumeMedia();
++        if (!totalReadQueueSize && totalWriteQueueSize) {
++            dram->busStateNext = WRITE;
++            if (!nextReqEvent.scheduled())
++                schedule(nextReqEvent, curTick());
++        }
++        if (!totalReadQueueSize && !totalWriteQueueSize &&
++            respQueue.empty() && port.idle() && iface->mediaIdle()) {
++            if (!iface->runningMedia() || iface->mediaHeld()) {
++                done = true;
++            } else if (!maintenanceClosing) {
++                iface->holdMedia();
++                maintenanceClosing = true;
++            }
++        }
++    } else if (maintenanceOp == 2) {
++        done = iface->selfRefreshing();
++    } else {
++        done = iface->mediaIdle();
++    }
++    if (done) {
++        auto callback = std::move(maintenanceDone);
++        maintenanceDone = nullptr;
++        maintenanceOp = 0;
++        callback();
++    } else {
++        schedule(maintenanceEvent, curTick() + clockPeriod());
++    }
++}
++
+ DrainState
+ MemCtrl::drain()
+ {

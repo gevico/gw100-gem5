@@ -56,10 +56,10 @@ TEST_F(ConfigSpaceTest, ReadOnlyFields)
     EXPECT_EQ(cs.read(0x62, 2), 4u | (4u << 4) | (1u << 12));
 }
 
-/** PMCSR：D0 → D3hot 无事件，D3hot → D0 产生 D3hotToD0 */
+/** PMCSR：D0 → D3hot 与 D3hot → D0 各产生对应事件 */
 TEST_F(ConfigSpaceTest, D3hotRoundTrip)
 {
-    EXPECT_EQ(cs.write(0x44, 2, 3), CfgEvent::None);
+    EXPECT_EQ(cs.write(0x44, 2, 3), CfgEvent::D0ToD3hot);
     EXPECT_EQ(cs.read(0x44, 2) & 0x3, 3u);
     EXPECT_EQ(cs.write(0x44, 2, 0), CfgEvent::D3hotToD0);
     EXPECT_EQ(cs.read(0x44, 2) & 0x3, 0u);
