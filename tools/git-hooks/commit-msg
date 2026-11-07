@@ -27,7 +27,7 @@ HEADER_RE = re.compile(
     r"^(?P<type>[a-z]+)\((?P<scope>[^()]*)\)(?P<bang>!)?: (?P<subject>.*)$")
 TRAILER_RE = re.compile(r"^[A-Za-z][A-Za-z-]*: \S")
 IDEALIZATION_RE = re.compile(
-    r"^(add|remove|update) #\d+(, (add|remove|update) #\d+)*$")
+    r"^(add|remove|update) #\d+[a-z]?(, (add|remove|update) #\d+[a-z]?)*$")
 SCISSORS = "------------------------ >8 ------------------------"
 
 
