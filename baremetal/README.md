@@ -52,6 +52,19 @@ baremetal/
 | 124 | TIMEOUT | 到达仿真 tick 上限（运行器另有墙钟超时，也记为 TIMEOUT） |
 | 其他 | ERROR | gem5 因其他原因退出 |
 
+## 配置与能力矩阵
+
+baremetal/test-matrix.json 为每个测试声明能力和额外配置参数。
+未分类测试或未知能力会使入口检查失败。默认 timing 使用 gw100，
+atomic 使用 gw100_compat，分别加载匹配的固件和 ELF。
+运行器逐项打印 RUN/SKIP 并报告实际执行数量。
+
+新增 DRAM 用例归属 dram 能力。dram_access 验证容量和部分写，
+dram_boot_events 验证初始化中的 FLR 与电源事件，dram_error 验证启动失败。
+dram_lifecycle 在实际 COPY 已传输部分数据时注入 FLR 或 D3hot，验证旧
+事务收尾和三轮数据保持。dram_link_reset 通过测试夹具的数字输入请求
+PERST、Hot Reset 和 Link Down，随后重新枚举并由 ROM、固件重新训练。
+
 ## 现有 test
 
 | test | 验证什么 |

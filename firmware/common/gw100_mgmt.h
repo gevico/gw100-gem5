@@ -84,6 +84,8 @@
 #define GW_EVT_FLR          (1u << 1)
 /** 事件位：HDI_WR（host 写了 HDI 控制器的可写寄存器） */
 #define GW_EVT_HDI_WR       (1u << 2)
+/** 事件位：电源状态改变 */
+#define GW_EVT_PM (1u << 4)
 
 /** CRC 寄存器的起始 */
 #define GW_CRC_BASE         0x20020000UL
@@ -94,12 +96,18 @@
 #define GW_CRC_RESET_CAUSE  (GW_CRC_BASE + 0x000)
 /** CRC_PLL_CORE_CFG：[0] EN */
 #define GW_CRC_PLL_CORE_CFG (GW_CRC_BASE + 0x030)
+/** CRC_MESH_RST：[0] NOC，[4:1] MEM，写零释放 */
+#define GW_CRC_MESH_RST (GW_CRC_BASE + 0x010)
+/** CRC_PLL_DDR_CFG：[0] EN，[3:1] 通用工作点编号 */
+#define GW_CRC_PLL_DDR_CFG (GW_CRC_BASE + 0x034)
 /** CRC_PLL_STATUS：[0] CORE_LOCK，[1] DDR_LOCK，[2] TS_LOCK */
 #define GW_CRC_PLL_STATUS   (GW_CRC_BASE + 0x038)
 /** CRC_CLK_SEL：[0] CORE，[1] MGMT；1 为 PLL_CORE */
 #define GW_CRC_CLK_SEL      (GW_CRC_BASE + 0x03C)
 /** CRC_PLL_STATUS.CORE_LOCK */
 #define GW_PLL_CORE_LOCK    (1u << 0)
+/** CRC_PLL_STATUS.DDR_LOCK */
+#define GW_PLL_DDR_LOCK (1u << 1)
 /** CRC_PLL_STATUS.TS_LOCK */
 #define GW_PLL_TS_LOCK      (1u << 2)
 /** clock.pll_lock_timeout = 1 ms，以 mtime（100 MHz）计 */
@@ -123,6 +131,8 @@
 #define GW_FW_VERSION_FW    (GW_HIF_BASE + 0x10008)
 /** DEV_CTRL_FW：[0] DEBUG_WIN，[1] DEV_FATAL（只能置位） */
 #define GW_DEV_CTRL_FW      (GW_HIF_BASE + 0x1000C)
+/** PCI_STATE：[3:2] 电源状态，0 为 D0，3 为 D3hot */
+#define GW_PCI_STATE (GW_HIF_BASE + 0x10010)
 /** BOOT_LOAD_STATUS：[0] WIN_WRITE */
 #define GW_BOOT_LOAD_STATUS (GW_HIF_BASE + 0x10014)
 /** FLR_CTRL：[0] TAKE，[1] DONE（W1S） */

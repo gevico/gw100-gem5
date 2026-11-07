@@ -57,13 +57,9 @@ gw100_timestamp(const gw100_t *g)
     return ((uint64_t)hi << 32) | lo;
 }
 
-/**
- * 按 spec-pcie §6.4 的驱动流程加载 size 字节的固件镜像 img。成功返回
- * 0；加载失败（STAGE 回到 2）返回 ERROR 编码；启动失败（STAGE = 0xF）
- * 返回 -1；等待超时返回 -2
- */
+/** 加载并发起固件启动，返回 0 或加载错误，启动结果由调用者轮询 */
 int
-gw100_load_firmware(const gw100_t *g, const uint8_t *img, uint32_t size)
+gw100_start_firmware(const gw100_t *g, const uint8_t *img, uint32_t size)
 {
     /* 第 1 步：等待 STAGE = 2，超时 1 s；固件已在运行时跳过加载 */
     uint64_t t0 = gw100_timestamp(g);
@@ -90,8 +86,23 @@ gw100_load_firmware(const gw100_t *g, const uint8_t *img, uint32_t size)
     bm_dsb();
     bm_write32(g->bar0 + GW100_FW_SIZE, size);
     bm_write32(g->bar0 + GW100_BOOT_CTRL, GW100_BOOT_FW_START);
+    return 0;
+}
+
+/**
+ * 按 spec-pcie §6.4 的驱动流程加载 size 字节的固件镜像 img。成功返回
+ * 0；加载失败（STAGE 回到 2）返回 ERROR 编码；启动失败（STAGE = 0xF）
+ * 返回 -1；等待超时返回 -2
+ */
+int
+gw100_load_firmware(const gw100_t *g, const uint8_t *img, uint32_t size)
+{
+    int result = gw100_start_firmware(g, img, size);
+    if (result) {
+        return result;
+    }
     /* 第 5 步：轮询 BOOT_STATUS，超时 5 s */
-    t0 = gw100_timestamp(g);
+    uint64_t t0 = gw100_timestamp(g);
     for (;;) {
         uint32_t st = bm_read32(g->bar0 + GW100_BOOT_STATUS);
         if (st & GW100_BOOT_FW_READY)

@@ -574,17 +574,23 @@ ML 本身（事务、顺序、流控、链路状态与故障、ML 的寄存器�
 
 ### 8.5 固件初始化的职责
 
-固件开始运行后，到置位 `FW_READY` 之前，必须完成：
+固件进入 `fw_main` 后立即发布 STAGE = 4、FW_READY = 0。
+在发布就绪之前完成以下步骤。
 
 1. 等待 `PLL_TS` 锁定（`spec-clock-reset-power` §6）。`PLL_TS` 未锁定时 `mtime` 不走，这一步的超时改用 `mcycle` 计：此时 `clk_mgmt` 仍是 `XTAL`，频率已知，等待 `clock.pll_lock_timeout` 对应的周期数仍未锁定，按固件初始化失败处理。管理 CPU 的 `mcountinhibit.CY` 复位为 0，启动 ROM 不修改它；CY = 0 时 `mcycle` 每个 `clk_mgmt` 周期加 1（时钟切换的暂停期间不加）。固件用两次读数之差（模 2^64）计时，不依赖初值。每次轮询先读 TS_LOCK，为 1 即成功，否则再判断超时。然后按 `spec-clock-reset-power` §3.4 切换到工作时钟（等待锁定的超时以 `mtime` 计）；写非零的 `WDT_LOAD`，再使能并锁定看门狗（§7.4）。
 2. 释放 NoC 的复位（`spec-clock-reset-power` §4.3）。NoC 复位后的默认配置已足以访问全部 Memory Tile；性能相关的配置放在第 5 步。
-3. 释放 Memory Tile 的复位，初始化设备内存，包括 LPDDR5X 训练。失败时写启动错误码（固件初始化失败）和 STAGE = 0xF，然后停止。
-4. 在 Memory Tile 中设置固件需要的受保护区域（如有，`spec-address-map` §5.3）。
+3. 配置 DDR PLL 并等待锁定，释放 Memory Tile 的复位。按 `spec-dram` §6 执行控制器配置、校准、训练和逐通道、逐 rank 数据自检。每阶段有超时，等待时喂狗并服务启动事件。失败记录位置和原因，写固件初始化错误、STAGE = 0xF、FW_READY = 0，然后停止。
+4. 排空自检写入，设置、回读并锁定受保护区域表，再开放普通数据访问。受保护区域的权限见 `spec-address-map` §5.3。
 5. 打开 Compute Tile 的时钟并释放复位，配置 NoC 和各 Tile。
 6. 设置 SRAM 的访问控制（§4.4），包括 HDMA 的描述符区间，然后锁定。
 7. 初始化 HDMA 的通道和描述符环。
 8. 写入命令协议控制器的只读字段（版本、能力）和固件版本。
-9. 写 STAGE = 4、置位 `FW_READY`。
+9. 检查电源、FLR 与错误状态，在 D0 且全部初始化成功后置位 `FW_READY`。
+
+通用控制器模型的训练反馈和规定等待见 `spec-dram`。本次独立交付通过
+临时 timing 适配器连接 Memory Tile，Compute Tile 与完整 NoC 依各自关口实施。
+初始化期间的 FLR 只清理 PCIe 功能状态并确认，DRAM 初始化继续执行。
+D3hot 到达时完成有界初始化，再排空并进入自刷新，D0 恢复后继续发布就绪。
 
 ---
 
@@ -614,7 +620,7 @@ ML 本身（事务、顺序、流控、链路状态与故障、ML 的寄存器�
      - 否则写 `FLR_CTRL.DONE`，再读 `FLR_STATUS`，按以下顺序判断：FAIL = 1，按第 1 步的 FAIL 处理；IN_PROGRESS = 0，确认成功，进入第 5 步；DELIVERED = 1，有 FLR 事件在 TAKE 之后送达，回到第 1 步；其他（某个 FLR 仍处于"处理中"），重复本步；
      - 本步不另设超时：HIF 以 `pcie.flr_proc_timeout` 监视"处理中"，超时时置位 FAIL；
   4. 第 1、3 步的 `REG_RD` 失败时（访问错误异常）：链路已处于故障态或固件访问了错误的地址，设备不能继续使用，置位致命错误（若仍可写）并停止，不得把这次 FLR 当作已确认；
-  5. 恢复：HDMA 退出复位，固件重新初始化 HDMA 的通道、描述符环和命令协议，最后置位 `FW_READY`。恢复期间随时可能发生新的 FLR：新 FLR 发生后 HIF 立即恢复门控，此后被 HIF 处理的写都不生效，此前已经生效的由 FLR 复位；同一方向的写按顺序处理，所以恢复期间的写不会越过下一次 DONE。固件在恢复的每一步之间以及置位 `FW_READY` 之后检查 `EVT_PENDING.FLR`，置位就放弃恢复，回到第 1 步。
+  5. 恢复时，已完成启动且处于 D0 的固件重新初始化 HDMA 和命令协议，然后置位 `FW_READY`。初始化尚在进行时继续原初始化流程。恢复期间发生新的 FLR 时回到第 1 步，HIF 按 `spec-pcie` §13.2 重新门控本轮恢复写入。
 
   HIF 在确认之前对 host 屏蔽窗口和 `FW_READY`、丢弃 doorbell、忽略固件对 `FW_READY` 写 1、保持 HDMA 复位，因此清理期间写 STAGE、`FW_READY` 或 HDMA 寄存器不会过早生效。固件和启动 ROM 都不需要保存任何状态来区分新旧 FLR。
 - STAGE 不是 4 时发生 FLR（启动尚未完成）：HIF 关闭启动窗口，等旧的启动写入都已提交，再以屏障事件发出 FLR 事件（`spec-pcie` §7.2）。启动 ROM 在 §8.1 的检查点看到 FLR 后放弃本次加载：清零 `EVT_PENDING.FW_START`，清零镜像大小和错误码，写 STAGE = 2，最后按上一条确认，确认成功后启动窗口打开。

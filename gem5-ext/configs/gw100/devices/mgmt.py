@@ -84,6 +84,7 @@ def make_mgmt_system(link, rom_elf: str) -> RiscvSystem:
         mgmt_link=link, plic=s.plic, cpu=s.cpu, pll_perf_level=0
     )
     s.tile.pio = s.membus.mem_side_ports
+    s.tile.timestamp_reset = s.clint.reset
 
     s.workload = RiscvBareMetal(
         bootloader=rom_elf, semihosting=RiscvSemihosting()

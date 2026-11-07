@@ -26,23 +26,33 @@ gem5 会在仿真开始前等待 GDB 连接 127.0.0.1:7100（--gdb-port 可改�
 """
 
 import argparse
+import json
 import os
 import sys
+from pathlib import Path
 
 import m5
-from m5.objects import Root
 
 from gem5.simulate.simulator import Simulator
 
 from gw100.boards import BOARDS, DEFAULT_BOARD
 from gw100.devices import DEFAULT_DEVICE, DEVICES
+from gw100.devices.memory import make_memory_system
+from gw100.generated import memory_defs as d
 from gw100.hosts import DEFAULT_HOST, HOSTS
 from gw100.workload import set_linux_workload
 
 # 启动 ROM 的默认镜像：make firmware-build 的输出
-DEFAULT_ROM = os.path.normpath(os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "..", "..", "build",
-    "gw100-firmware", "rom.elf"))
+DEFAULT_ROM = os.path.normpath(
+    os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "..",
+        "..",
+        "build",
+        "gw100-firmware",
+        "rom.elf",
+    )
+)
 
 APP_EXIT = "semi:ADP_Stopped_ApplicationExit"
 EXIT_TICK_LIMIT = 124
@@ -61,9 +71,16 @@ class Args(argparse.Namespace):
     wait_gdb: bool
     gdb_port: int
     rom: str
+    dram_fail_mask: int
+    dram_timeout_mask: int
+    dram_fault_phase: str
+    dram_corrupt_selftest: bool
+    dram_corrupt_mask: int
+    hardware_reset_test: bool
 
 
 def main() -> None:
+    m5.ticks.setGlobalFrequency("1ps")
     parser = argparse.ArgumentParser(description="GW100 board/host/device")
     _ = parser.add_argument(
         "--board",
@@ -116,6 +133,24 @@ def main() -> None:
         default=DEFAULT_ROM,
         help=f"管理 Tile 启动 ROM 的 RISC-V 镜像（默认 {DEFAULT_ROM}）",
     )
+    parser.add_argument(
+        "--dram-fail-mask", type=lambda v: int(v, 0), default=0
+    )
+    parser.add_argument(
+        "--dram-timeout-mask", type=lambda v: int(v, 0), default=0
+    )
+    parser.add_argument(
+        "--dram-fault-phase", choices=("calibrate", "train"), default="train"
+    )
+    parser.add_argument("--dram-corrupt-selftest", action="store_true")
+    parser.add_argument(
+        "--dram-corrupt-mask", type=lambda v: int(v, 0), default=0
+    )
+    parser.add_argument(
+        "--hardware-reset-test",
+        action="store_true",
+        help="允许裸机测试请求外部数字复位输入",
+    )
     args = parser.parse_args(namespace=Args())
 
     if args.workload == "baremetal" and not args.kernel:
@@ -125,6 +160,26 @@ def main() -> None:
 
     board_cls = BOARDS[args.board]
     device = DEVICES[args.device]
+    if any(
+        v < 0 or v > 0xFFFF
+        for v in (
+            args.dram_fail_mask,
+            args.dram_timeout_mask,
+            args.dram_corrupt_mask,
+        )
+    ):
+        parser.error("DRAM 反馈掩码需要位于 0..0xffff")
+    if not device.precise_memory and (
+        args.dram_fail_mask
+        or args.dram_timeout_mask
+        or args.dram_corrupt_selftest
+        or args.dram_corrupt_mask
+    ):
+        parser.error("DRAM 反馈注入需要 gw100 timing 配置")
+    if device.precise_memory and args.host == "atomic":
+        parser.error(
+            "LPDDR5 timing 配置支持 timing/o3，atomic 使用 gw100_compat"
+        )
     missing = device.requires - board_cls.features()
     if missing:
         parser.error(
@@ -138,6 +193,23 @@ def main() -> None:
         [dev],
         bare_metal=(args.workload == "baremetal"),
     )
+    if not os.path.isfile(args.rom):
+        parser.error(f"启动 ROM 不存在 {args.rom}，请先构建固件")
+    mgmt = device.make_mgmt(dev, args.rom)
+    systems = {"gw100_mgmt": mgmt}
+    memory = None
+    if device.precise_memory:
+        memory = make_memory_system(
+            dev,
+            mgmt,
+            fail_mask=args.dram_fail_mask,
+            timeout_mask=args.dram_timeout_mask,
+            fault_phase=2 if args.dram_fault_phase == "calibrate" else 3,
+            corrupt_selftest=args.dram_corrupt_selftest,
+            corrupt_mask=args.dram_corrupt_mask,
+        )
+        systems["gw100_memory"] = memory
+    board.attach_auxiliary_systems(systems)
     if args.workload == "baremetal":
         assert args.kernel, "前面已用 parser.error() 检查过 --kernel"
         board.set_baremetal_workload(
@@ -147,16 +219,76 @@ def main() -> None:
         # 认识的退出事件，裸机模式直接用底层
         # m5.instantiate()/m5.simulate()。
         board._pre_instantiate()
-        if not os.path.isfile(args.rom):
-            parser.error(
-                f"启动 ROM 镜像不存在：{args.rom}（先 make firmware-build）"
-            )
         # 管理 Tile 所在的 RISC-V 系统，与 host 系统在同一个 Root 下
-        Root.getInstance().gw100_mgmt = device.make_mgmt(dev, args.rom)
         m5.instantiate()
         board._post_instantiate()
-        event = m5.simulate(args.max_ticks or m5.MaxTick)
+        limit = args.max_ticks or m5.MaxTick
+        event = m5.simulate(limit)
+        while args.hardware_reset_test and event.getCause() == (
+            "semi:ADP_Stopped_UserInterruption"
+        ):
+            mgmt.tile.externalReset(event.getCode())
+            event = m5.simulate(max(0, limit - m5.curTick()))
         cause = event.getCause()
+        if memory is not None:
+            controller = memory.controllers[0]
+            report = {
+                "profile": "generic-lpddr5-8433",
+                "capture_tick": m5.curTick(),
+                "channels": d.CHANNELS,
+                "bytes": d.TOTAL_BYTES,
+                "ck_ps": controller.dram.tCK.getValue(),
+                "model_version": "gw100-memory-v0.2",
+                "nominal_MT_s": d.DATA_RATE_MT_S,
+                "ck_equivalent_MT_s": 8_000_000
+                / controller.dram.tCK.getValue(),
+                "profile_parameters": {
+                    "read_slots": int(controller.dram.read_buffer_size),
+                    "write_slots": int(controller.dram.write_buffer_size),
+                    "page_policy": str(controller.dram.page_policy),
+                    "scheduler": str(controller.mem_sched_policy),
+                    "controller_front_ps": controller.static_frontend_latency.getValue(),
+                    "controller_back_ps": controller.static_backend_latency.getValue(),
+                    "calibration_ps": d.CALIBRATION_PS,
+                    "training_ps": d.TRAIN_PS,
+                    "adapter_bytes": d.FIFO_BYTES,
+                    "adapter_clock_ps": d.CORE_PS,
+                },
+                "dram_timing_ps": {
+                    key: getattr(controller.dram, key).getValue()
+                    for key in (
+                        "tCK",
+                        "tCL",
+                        "tCWL",
+                        "tBURST",
+                        "tRFC",
+                        "tREFI",
+                        "tXS",
+                    )
+                },
+                "ingress_metric_names": [
+                    "requests",
+                    "read_bytes",
+                    "write_bytes",
+                    "retries",
+                    "cdc_beat_ticks",
+                    "queue_ticks",
+                    "transfer_beat_ticks",
+                ],
+                "ingress_metrics": [
+                    [i.metric(k) for k in range(7)] for i in memory.ingresses
+                ],
+                "tile_state": [
+                    [
+                        t.readRegister(off)
+                        for off in (8, 16, 24, 0x1008, 0x2008)
+                    ]
+                    for t in memory.tiles
+                ],
+            }
+            (Path(m5.options.outdir) / "memory.json").write_text(
+                json.dumps(report, indent=2) + "\n"
+            )
         if cause == APP_EXIT:
             code = event.getCode()
         elif args.max_ticks and m5.curTick() >= args.max_ticks:

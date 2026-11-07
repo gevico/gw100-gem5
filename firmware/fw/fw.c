@@ -2,11 +2,10 @@
  * @file  fw.c
  * @brief 管理 Tile 固件：初始化后置位 FW_READY，处理 HDI 命令与 FLR
  *
- * 等待 PLL_TS 锁定、切换到工作时钟、使能并锁定看门狗，设置并锁定 HDMA
- * 描述符区间的访问控制，初始化 HDMA 的通道 0、1，写入固件版本，置
- * STAGE = 4 与 FW_READY（spec-mgmt-tile §8.5 中尚未建模的步骤留待后续
- * 阶段），然后在主循环中等中断（irq.c）、喂狗，处理 HDI（hdi.c），并按
- * §9 处理 FLR（确认之后重新初始化 HDMA）。
+ * 入口发布 STAGE = 4、FW_READY = 0，建立工作时钟、看门狗和事件服务。
+ * dram.c 通过正常 NI 配置、训练和自检八通道内存，随后建立 HDMA 与 HDI。
+ * 初始化成功后发布 FW_READY，主循环处理中断、FLR 和 D3hot/D0，
+ * 初始化与恢复等待期间持续喂狗并处理启动事件。
  *
  * 以 GW_FW_HDMA_TEST 编译时是 HDMA 的测试固件：初始化之后运行
  * hdma_test.c 中的传输，把结果写入 FW_VERSION_FW（0xD0A0_0000 | 步骤号，
@@ -27,12 +26,20 @@
 
 #include <stdint.h>
 
+#include "dram.h"
 #include "gw100_flr.h"
 #include "gw100_hdma.h"
 #include "gw100_image.h"
 #include "gw100_mgmt.h"
 #include "hdi.h"
 #include "irq.h"
+
+/** 启动流程的 HDMA 与协议初始化已经完成 */
+static unsigned boot_complete;
+/** 内存目前在自刷新保持 */
+static unsigned memory_suspended;
+/** 电源转换正在调用可重入的启动事件服务 */
+static unsigned memory_changing;
 
 /** 镜像头：由 tools/fwpack.py 填写，链接时只占位 */
 static const struct gw_image_hdr image_header
@@ -49,6 +56,15 @@ mtime(void)
 static void
 init_fail(void)
 {
+#ifndef GW_FW_COMPAT_MEMORY
+    if (gw_dram_failure.phase) {
+        gw_write32(GW_FW_VERSION_FW,
+                   0xD2000000u | (gw_dram_failure.tile << 20) |
+                       (gw_dram_failure.channel << 18) |
+                       (gw_dram_failure.rank << 16) |
+                       (gw_dram_failure.phase << 8) | gw_dram_failure.reason);
+    }
+#endif
     gw_write32(GW_FW_BOOT_STATUS,
                GW_BOOT_STATUS(GW_STAGE_FAILED, 0, GW_ERR_INIT));
     gw_halt();
@@ -194,6 +210,10 @@ wdt_selftest(void)
 static void
 set_ready(void)
 {
+    if (!boot_complete || memory_suspended || memory_changing ||
+        (gw_read32(GW_PCI_STATE) & 0xCu)) {
+        return;
+    }
 #ifdef GW_FW_DEBUG_WIN
     gw_write32(GW_DEV_CTRL_FW, 1u);
 #endif
@@ -213,16 +233,92 @@ handle_flr(void)
          * 状态随 FLR 复位 */
         gw_write32(GW_EVT_PENDING, GW_EVT_HDMA_NOTIFY | GW_EVT_HDMA_ERR);
 #ifdef FW_HDI
-        hdi_reset();
+        if (boot_complete) {
+            hdi_reset();
+        }
 #endif
         if (gw_flr_confirm() != 0)
             continue;
-        hdma_init();  /* FLR 复位了 HDMA */
-        set_ready();
+        if (boot_complete && !memory_suspended && !memory_changing &&
+            !(gw_read32(GW_PCI_STATE) & 0xCu)) {
+            hdma_init();
+            set_ready();
+        }
         if (!(gw_read32(GW_EVT_PENDING) & GW_EVT_FLR))
             return;
     }
 }
+#endif
+
+/** 初始化和电源等待期间喂狗，服务 FLR，并保留业务事件 */
+static void
+boot_service(void)
+{
+    wdt_kick();
+    uint32_t events = gw_read32(GW_EVT_PENDING);
+    if (events & GW_EVT_FLR) {
+#ifndef GW_FW_WDT_TEST
+        handle_flr();
+#else
+        while (gw_flr_take() & GW_FLR_IN_PROGRESS) {
+            if (!gw_flr_confirm())
+                break;
+            wdt_kick();
+        }
+#endif
+    }
+    uint32_t handled = events & GW_EVT_PM;
+    if (handled) {
+        gw_write32(GW_EVT_PENDING, handled);
+        irq_unmask(handled);
+    }
+}
+
+#ifndef GW_FW_COMPAT_MEMORY
+/** 启动完成前保持 D3hot，D0 后满足内存恢复等待 */
+static void
+boot_power_wait(void)
+{
+    for (;;) {
+        if (gw_read32(GW_PCI_STATE) & 0xCu) {
+            if (!memory_suspended) {
+                if (dram_suspend(boot_service)) {
+                    init_fail();
+                }
+                memory_suspended = 1;
+            }
+            boot_service();
+        } else if (memory_suspended) {
+            if (dram_resume(boot_service)) {
+                init_fail();
+            }
+            memory_suspended = 0;
+        } else {
+            return;
+        }
+    }
+}
+
+#ifndef GW_FW_WDT_TEST
+/** 处理运行期 D3hot/D0，并在恢复内存后重建 HDMA 与命令协议 */
+static void
+handle_power(void)
+{
+    if (!(gw_read32(GW_PCI_STATE) & 0xCu) && !memory_suspended) {
+        return;
+    }
+    memory_changing = 1;
+    gw_write32(GW_FW_BOOT_STATUS,
+               GW_BOOT_STATUS(GW_STAGE_FW_RUN, 0, GW_ERR_NONE));
+#ifdef FW_HDI
+    hdi_reset();
+#endif
+    boot_power_wait();
+    hdma_init();
+    memory_changing = 0;
+    set_ready();
+}
+#endif
 #endif
 
 /** 固件的主流程；info 为启动 ROM 交来的启动信息 */
@@ -232,12 +328,23 @@ fw_main(uint64_t hartid, const struct gw_boot_info *info)
     (void)hartid;
     (void)info;
     const struct gw_image_hdr *h = (const struct gw_image_hdr *)GW_SRAM_BASE;
+    gw_write32(GW_FW_BOOT_STATUS,
+               GW_BOOT_STATUS(GW_STAGE_FW_RUN, 0, GW_ERR_NONE));
     ts_wait();
     clock_init();
 #ifdef GW_FW_WDT_TEST
     wdt_init(WDT_TEST_LOAD);
+#ifndef GW_FW_COMPAT_MEMORY
+    if (dram_init(boot_service)) {
+        init_fail();
+    }
+    boot_power_wait();
+#else
+    boot_service();
+#endif
     wdt_selftest();
     gw_write32(GW_FW_VERSION_FW, h->fw_version);
+    boot_complete = 1;
     set_ready();
     uint64_t next = mtime();
     for (uint32_t n = 1;; n++) {
@@ -248,6 +355,14 @@ fw_main(uint64_t hartid, const struct gw_boot_info *info)
     }
 #else
     wdt_init(WDT_LOAD);
+#ifndef GW_FW_COMPAT_MEMORY
+    if (dram_init(boot_service)) {
+        init_fail();
+    }
+    boot_power_wait();
+#else
+    boot_service();
+#endif
     acl_init();
     hdma_init();
 #if defined(GW_FW_HDMA_TEST)
@@ -264,6 +379,7 @@ fw_main(uint64_t hartid, const struct gw_boot_info *info)
     hdi_init(&chans[0], &chans[1], h->fw_version);
 #endif
     irq_init(WDT_LOAD / 4);
+    boot_complete = 1;
     set_ready();
     int more = 0;
     for (;;) {
@@ -276,6 +392,11 @@ fw_main(uint64_t hartid, const struct gw_boot_info *info)
         (void)flags;
         if (ev & GW_EVT_FLR)
             handle_flr();  /* 它自己写 1 清零 EVT_PENDING.FLR */
+#ifndef GW_FW_COMPAT_MEMORY
+        if ((ev & GW_EVT_PM) || memory_suspended) {
+            handle_power();
+        }
+#endif
 #ifdef FW_HDI
         uint32_t own = hdi_event(ev);
         if (db)

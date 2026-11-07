@@ -11,10 +11,11 @@
 @see spec-pcie, spec-hdi
 """
 
-from .gw100 import GW100
+from .gw100 import GW100, GW100_COMPAT
 
 DEVICES = {
     "gw100": GW100,
+    "gw100_compat": GW100_COMPAT,
 }
 
 DEFAULT_DEVICE = "gw100"

@@ -13,6 +13,7 @@ gem5 的进程退出码就是裸机程序的退出码：0 PASS、1 FAIL、2 CRAS
 import argparse
 import concurrent.futures
 import fnmatch
+import json
 import pathlib
 import subprocess
 import sys
@@ -20,6 +21,13 @@ import time
 
 RESULTS = {0: "PASS", 1: "FAIL", 2: "CRASH", 124: "TIMEOUT"}
 TAIL_LINES = 15
+
+
+def device_for(args, host):
+    """把自动测试矩阵展开为明确的产品或兼容配置。"""
+    if args.device != "auto":
+        return args.device
+    return "gw100_compat" if host == "atomic" else "gw100"
 
 
 def list_tests(baremetal_dir: pathlib.Path) -> list[str]:
@@ -42,16 +50,33 @@ def select(tests: list[str], patterns: list[str]) -> list[str]:
 
 
 def run_one(args, test: str, host: str) -> tuple[str, str, str, pathlib.Path, float]:
-    outdir = args.outdir / host / test
+    device = device_for(args, host)
+    outdir = args.outdir / device / host / test
     outdir.mkdir(parents=True, exist_ok=True)
     log = outdir / "test.log"
-    elf = args.build_dir / f"{test}.elf"
+    build_dir = (
+        args.compat_build_dir if device == "gw100_compat" else args.build_dir
+    )
+    elf = build_dir / f"{test}.elf"
     cmd = [
-        str(args.gem5), "-q", f"--outdir={outdir}", str(args.config),
-        "--board", args.board, "--host", host, "--device", args.device,
-        "--workload", "baremetal", "--kernel", str(elf),
-        "--max-ticks", str(args.max_ticks),
+        str(args.gem5),
+        "-q",
+        f"--outdir={outdir}",
+        str(args.config),
+        "--board",
+        args.board,
+        "--host",
+        host,
+        "--device",
+        device,
+        "--workload",
+        "baremetal",
+        "--kernel",
+        str(elf),
+        "--max-ticks",
+        str(args.max_ticks),
     ]
+    cmd.extend(args.test_specs[test].get("config_args", []))
     start = time.monotonic()
     with log.open("w", encoding="utf-8") as f:
         f.write("$ " + " ".join(cmd) + "\n")
@@ -83,9 +108,14 @@ def main() -> int:
     p.add_argument("--config", type=pathlib.Path, required=True, help="gem5 配置脚本")
     p.add_argument("--baremetal-dir", type=pathlib.Path, default=pathlib.Path("baremetal"))
     p.add_argument("--build-dir", type=pathlib.Path, required=True, help="test ELF 所在目录")
+    p.add_argument(
+        "--compat-build-dir",
+        type=pathlib.Path,
+        default=pathlib.Path("build/gw100-baremetal-compat"),
+    )
     p.add_argument("--outdir", type=pathlib.Path, required=True, help="各次运行的输出根目录")
     p.add_argument("--board", default="arm_vexpress")
-    p.add_argument("--device", default="gw100")
+    p.add_argument("--device", default="auto")
     p.add_argument("--hosts", default="timing atomic", help="空格分隔的 host 预设")
     p.add_argument("--tests", default="", help="空格分隔的 test 名，支持通配；空表示全部")
     p.add_argument("-j", "--jobs", type=int, default=4)
@@ -99,20 +129,62 @@ def main() -> int:
     args.gem5_root = args.gem5.parents[2]       # <gem5>/build/GW100/gem5.opt
     args.config = args.config.resolve()
     args.build_dir = args.build_dir.resolve()
+    args.compat_build_dir = args.compat_build_dir.resolve()
     args.outdir = args.outdir.resolve()
 
-    tests = select(list_tests(args.baremetal_dir), args.tests.split())
+    discovered = list_tests(args.baremetal_dir)
+    args.test_specs = json.loads(
+        (args.baremetal_dir / "test-matrix.json").read_text()
+    )
+    if set(discovered) != set(args.test_specs):
+        p.error("测试能力分类不完整，请同步 baremetal/test-matrix.json")
+    for test, spec in args.test_specs.items():
+        if set(spec) - {"requires", "config_args"}:
+            p.error(f"{test} 包含未知测试分类字段")
+        if not isinstance(spec.get("requires"), list) or (
+            set(spec["requires"]) - {"dram"}
+        ):
+            p.error(f"{test} 包含未知测试能力")
+        if not all(isinstance(v, str) for v in spec.get("config_args", [])):
+            p.error(f"{test} 的 config_args 必须是字符串列表")
+    tests = select(discovered, args.tests.split())
     hosts = args.hosts.split()
     if args.list:
         print("\n".join(tests))
         return 0
 
-    missing = [t for t in tests if not (args.build_dir / f"{t}.elf").is_file()]
+    jobs = []
+    skipped = {}
+    for test in tests:
+        for host in hosts:
+            device = device_for(args, host)
+            if device == "gw100" and host == "atomic":
+                p.error(
+                    "gw100 timing 内存需要 timing/o3，atomic 使用 gw100_compat"
+                )
+            requires = set(args.test_specs[test]["requires"])
+            capabilities = {"dram"} if device == "gw100" else set()
+            if requires - capabilities:
+                skipped[(test, host)] = ("SKIP", pathlib.Path())
+                print(f"SKIP {test} [{host}/{device}] 需要 {sorted(requires)}")
+            else:
+                jobs.append((test, host))
+                print(f"RUN  {test} [{host}/{device}]")
+    missing = []
+    for test, host in jobs:
+        directory = (
+            args.compat_build_dir
+            if device_for(args, host) == "gw100_compat"
+            else args.build_dir
+        )
+        if not (directory / f"{test}.elf").is_file():
+            missing.append(str(directory / f"{test}.elf"))
     if missing:
         sys.exit(f"找不到 ELF，请先编译：{' '.join(missing)}")
 
-    jobs = [(t, h) for t in tests for h in hosts]
-    print(f"运行 {len(tests)} 个 test × {len(hosts)} 个 host 预设，并行 {args.jobs}")
+    print(
+        f"实际运行 {len(jobs)} 项，能力跳过 {len(skipped)} 项，并行 {args.jobs}"
+    )
     results = {}
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool:
         futures = [pool.submit(run_one, args, t, h) for t, h in jobs]
@@ -121,6 +193,7 @@ def main() -> int:
             results[(test, host)] = (result, log)
             print(f"  {result:<9} {test} [{host}]  {secs:.1f} s")
 
+    results.update(skipped)
     width = max(len(t) for t in tests)
     print("\n汇总：")
     print("  " + "test".ljust(width) + "".join(f"  {h:<9}" for h in hosts))
@@ -128,13 +201,15 @@ def main() -> int:
         print("  " + t.ljust(width) +
               "".join(f"  {results[(t, h)][0]:<9}" for h in hosts))
 
-    failed = [(k, v) for k, v in results.items() if v[0] != "PASS"]
+    failed = [
+        (k, v) for k, v in results.items() if v[0] not in {"PASS", "SKIP"}
+    ]
     for (test, host), (result, log) in sorted(failed):
         print(f"\n{result}: {test} [{host}]，日志 {log}")
         print(tail(log, TAIL_LINES))
 
-    passed = len(results) - len(failed)
-    print(f"\n{passed}/{len(results)} 通过")
+    passed = sum(v[0] == "PASS" for v in results.values())
+    print(f"\n{passed}/{len(jobs)} 通过，{len(skipped)} 项按能力跳过")
     return 0 if not failed else 1
 
 
