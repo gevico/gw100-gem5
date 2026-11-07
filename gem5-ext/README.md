@@ -35,18 +35,50 @@ Linux（以 Ubuntu 24.04 为例）：先装好 `build-essential m4 scons python3
 - 按张量指令粒度建模，不逐个 MAC 仿真。
 - ISA 不放进 `gem5/src/arch`：张量指令由 Tile 的 SimObject 自己译码；编码将由重建后的单一真源生成（旧的 `isa_defs.hh` 已随 func-core 删除）。
 - 片上网络计划用自研的轻量 2D Mesh，粒度是 DMA 传输，支持多播；Garnet 只用来交叉验证。Compute Tile 重建之前还没有片上互连。
-- DRAM 为 LPDDR5X-8533，从 gem5 自带的 LPDDR5-6400 派生，共 8 个 x16 通道。
+- 通用 LPDDR5 性能预设位于 src/memory/，当前提供
+  LPDDR5_8433_1x16_BG_BL32，继承上游 LPDDR5-5500。参数依据见
+  [spec-dram 的通用性能附录](../docs/spec/memory/spec-dram/lpddr5-8433.md)。
 
 ## 组件与规格的对应
 
 | 目录 | SimObject / 模块 | 对应规格 | 状态 |
 |---|---|---|---|
+| src/memory/ | LPDDR5_8433_1x16_BG_BL32，复用上游 DRAMInterface 与 MemCtrl | spec-dram 通用性能附录 | 独立性能预设，使用下述配置验证 |
 | `src/gw100/pcie/` | `Gw100PciDevice`：外壳，只负责 PciEndpoint 的入口、`mem_port`、ML 的 HIF 侧接入、功能级复位与设备完全复位的编排（`dev_reset_req` 请求 CRC，`func_reset` 接受复位）、看门狗的 `wdt_fatal` 信号和 checkpoint；`Gw100PcieFactory` 组装下列组件，接口见 `pcie_types.hh`。`status/`：`StatusUnit`（ERR/INT）；`boot/`：`BootCtrl`（STAGE、启动窗口、提交计数、FW_START 门控、启动通路故障、FLR 门控与确认）；`hif/`：`HifRegs`（固件可见的 HIF 寄存器区，ML 的 HIF 侧目标）；`window/`：`WindowTable`（BAR2 调试窗口）；`config/`：`ConfigSpace`，其下 `capability/`：`Capability` 基类、`PmCapability`、`PcieCapability`、`MsixCapability`（0x90）；`bar0/`：`Bar0Handler` 与 `GlobalRegs`、`WindowRegs`、`BootRegs`、`HdmaMirror`（HDMA 寄存器的只读镜像）；`bar2/`：`Bar2Handler`（启动窗口、调试窗口、关闭）、`DevmemBackend`、`Gw100PrefetchMemBar`；`shim/`：`ResetShim`（设备完全复位期间的 reset shim）；`intr/`：`IntCtrl`（MSI-X 的待发、来源、粘滞 Pending 与发送，INTx 电平，`CTX_VECTOR`）与 BAR0 的 `MsixTable`、`MsixPba`；`hdi/`：`HdiCtrl`（HDI 控制器寄存器的影子、`HDI_WR_MAP` 与 `HDI_WR` 事件、BUSY 握手、doorbell 待发槽按最后一次写入的先后发出 `DB_WR`）与 BAR0 的 `HdiRegsBlock`、`DoorbellPage`；`hdma/`：`HdmaEngine`（Host DMA：描述符环、SGL、仲裁、tag 与有限缓冲、错误停止与中止），经 `HdmaClock`、`HostDmaPort`（dma 端口，TLP 按 cache 行拆成内存包）、`MlHdmaClient` 和 `DevmemBackend` 的 timing 接口接入 | `spec-host-dma`、`spec-pcie`、`spec-clock-reset-power` | 寄存器层与启动流程完成：裸机测试 `boot_ok`、`boot_errors`、`boot_flr` 覆盖 F10、F11 的启动部分，`dev_reset` 覆盖设备完全复位，`pcie_*` 覆盖 F1–F7、F11/F12 的寄存器部分；`hdma_basic` 覆盖 HDMA 的连续缓冲、SGL、错误停止与 BAR0 镜像；`msix_intx`、`int_fw` 覆盖 MSI-X、INTx 与固件的中断请求；`ConfigSpace`、`WindowTable`、`StatusUnit`、`ResetShim`、`HdmaEngine`、`IntCtrl`、`HdiCtrl` 有单元测试。`hdi_copy`、`hdi_errors` 覆盖 HDI 的 HIF 侧与固件的命令处理（LOAD_PROGRAM、LAUNCH 等待 Compute Tile） |
 | `src/gw100/ml/` | `Gw100MgmtLink`：ML 的两端适配器 `MlEndpoint` 与四个 `AsyncFifo`，两端分别由 PCIe 设备（`clk_pcie`）和管理 Tile（`clk_mgmt`）驱动 | `spec-mgmt-link` | 完成；`MlEndpoint` 有单元测试（建立、顺序、tag、屏障、撤销、超时与故障、延迟与吞吐） |
 | `src/gw100/mgmt/` | `Gw100MgmtTile`：外壳，本地总线端口、ML 管理侧目标、PLIC 中断源、NI 发起端口（本地地址 0x100_0000_0000 + DPA）。`sram/`：`MgmtSram`（ROM、按 bank 排队的 SRAM、复位后的硬件清零）；`mailbox/`：`MgmtMailbox`（doorbell 信箱、事件寄存器）；`regs/`：`MgmtLocalRegs`（ML、SRAM 控制、访问控制）；`wdt/`：`MgmtWdt`（看门狗的两级超时状态机；外壳按同步后的 `mtime` 安排到期，第二级时扣下 CPU 的取指并经专用信号 `wdt_fatal` 置位 HIF 的 `DEV_FATAL`）；`crc/`：`MgmtCrc`（复位原因、PLL 锁定、无毛刺时钟切换；切换 `clk_mgmt` 时改变管理系统时钟域的频率档）；`intr/`：`MgmtInterrupts`（RISC-V 中断控制器加上停机请求，CPU 在指令边界停住）。外壳还实现 CRC 的设备完全复位时序：复位本 Tile、ML 两端和 PCIe 的功能逻辑，释放后让 CPU 从启动 ROM 重新开始。管理 CPU（`RiscvTimingSimpleCPU`，RV64，M/U）、CLINT、PLIC 用 gem5 的设备，在 `configs/gw100/devices/mgmt.py` 中组成独立的 RiscvSystem | `spec-mgmt-tile` | 启动相关部分完成，运行真实的 RISC-V 启动 ROM 与固件（`firmware/`）；时钟切换、看门狗、设备完全复位完成；`MgmtCrc`、`MgmtWdt` 有单元测试；NoC 端口未实现 |
 | （待建）`src/noc/` | 轻量 2D Mesh，支持多播 | `spec-noc` | 未开始 |
 
 原来的 func-core、Compute Tile 和 common 已删除，按新的规格逐步重建。
+
+## 通用 LPDDR5-8433
+
+执行 make gem-build 后，可在 gem5 配置中通过 m5.objects 使用该类。
+
+~~~python
+from m5.objects import AddrRange, LPDDR5_8433_1x16_BG_BL32
+
+dram = LPDDR5_8433_1x16_BG_BL32(range=AddrRange("1GiB"))
+controller = dram.controller()
+~~~
+
+默认组织和纳秒级阵列访问时序沿用上游 LPDDR5-5500，CK、分段 burst、
+命令间隔和 tRTP 按指定的 8433 MT/s 重算。参数源为
+[LPDDR5.py](src/memory/LPDDR5.py)，推算规则见上述规格附录。
+
+独立 timing 验证覆盖预热后的行命中延迟，以及保留刷新的读、写和混合
+流量，参数量化和手算对照输出到终端，完整统计保存在各自输出目录。
+
+~~~sh
+gem5/build/GW100/gem5.opt --outdir=build/lpddr5-8433-latency \
+  gem5-ext/configs/feasibility/lpddr5_8433.py
+gem5/build/GW100/gem5.opt --outdir=build/lpddr5-8433-read \
+  gem5-ext/configs/feasibility/lpddr5_8433.py --mode read
+gem5/build/GW100/gem5.opt --outdir=build/lpddr5-8433-write \
+  gem5-ext/configs/feasibility/lpddr5_8433.py --mode write
+gem5/build/GW100/gem5.opt --outdir=build/lpddr5-8433-mixed \
+  gem5-ext/configs/feasibility/lpddr5_8433.py --mode mixed
+~~~
 
 ## 测试
 
