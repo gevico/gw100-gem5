@@ -87,6 +87,8 @@ enum class CfgEvent
     None,
     /** host 写了 Device Control 的 Initiate FLR */
     Flr,
+    /** 电源状态从 D0 进入 D3hot */
+    D0ToD3hot,
     /** 电源状态由 D3hot 回到 D0（No_Soft_Reset = 0，需要复位） */
     D3hotToD0,
 };

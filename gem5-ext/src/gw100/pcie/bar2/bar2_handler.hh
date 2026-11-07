@@ -44,6 +44,9 @@ class Bar2Handler : public BarHandler
      * 调试窗口开启时按窗口换算成 DPA 访问设备内存；否则按关闭处理
      */
     Tick access(BarAccess &a) override;
+    /** 通过 timing 后端处理一次访问，满时返回 false */
+    bool accessAsync(BarAccess a, std::function<void(Tick)> done,
+                     std::function<bool()> valid);
 
   private:
     /** 启动窗口与调试窗口的开关 */

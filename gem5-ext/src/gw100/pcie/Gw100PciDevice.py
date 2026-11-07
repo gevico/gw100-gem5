@@ -70,6 +70,11 @@ class Gw100PciDevice(PciEndpoint):
     link_width = Param.UInt8(4, "当前链路宽度")
 
     mem_port = RequestPort("接设备内存，BAR2 窗口和 HDMA 经它访问")
+    bar2_mem_port = RequestPort("精确配置的独立 BAR2 timing 内存端口")
+    async_memory = Param.Bool(False, "采用有界异步 PIO 与独立 BAR2 入口")
+    memory_ingresses = VectorParam.Gw100MemoryIngress(
+        [], "FLR 与电源变化时作废的两个 PCIe 内存入口"
+    )
     devmem_max_outstanding = Param.Unsigned(
         32,
         "HDMA 对设备内存的在途请求上限：NoC 端口的缓冲，待 spec-noc 确定"

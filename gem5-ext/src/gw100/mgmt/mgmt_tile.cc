@@ -6,6 +6,9 @@
  */
 
 #include "src/gw100/mgmt/mgmt_tile.hh"
+#include "src/gw100/mem_tile/memory_ingress.hh"
+#include "src/gw100/mem_tile/memory_tile.hh"
+#include "src/gw100/pcie/gw100_pci_device.hh"
 
 #include <cstring>
 
@@ -119,10 +122,12 @@ Gw100MgmtTile::Gw100MgmtTile(const Params &p)
           curTick()),
       pllPerfLevel(p.pll_perf_level),
       mgmtClk(dynamic_cast<SrcClockDomain *>(p.clk_domain)),
-      clkSwitchEvent([this] {
-          mgmtClk->perfLevel(pllPerfLevel);
-          wdtUpdate();  // 时钟沿变了，重新安排到期事件
-      }, name() + ".clkSwitch", false, Event::CPU_Switch_Pri),
+      clkSwitchEvent(
+          [this] {
+              mgmtClk->perfLevel(pllPerfLevel);
+              wdtUpdate(); // 时钟沿变了，重新安排到期事件
+          },
+          name() + ".clkSwitch", false, Event::CPU_Switch_Pri),
       tsPeriod(p.timestamp_freq),
       tsSync(p.ts_sync),
       cpu(p.cpu),
@@ -130,6 +135,7 @@ Gw100MgmtTile::Gw100MgmtTile(const Params &p)
       haltPc(MgmtSram::RomBase + p.rom_size - 4),
       devResetReq(name() + ".dev_reset_req", 0, this),
       pcieReset(name() + ".pcie_reset"),
+      timestampReset(name() + ".timestamp_reset"),
       devResetSync(p.dev_reset_sync),
       devResetHold(p.dev_reset_hold),
       xtalPerfLevel(p.xtal_perf_level),
@@ -141,7 +147,13 @@ Gw100MgmtTile::Gw100MgmtTile(const Params &p)
       pio(name() + ".pio", *this),
       ni(name() + ".ni", *this),
       dpaSize(1ULL << p.device_pa_bits),
-      mlEvent([this] { mlFinish(); }, name() + ".mlFinish")
+      mlEvent([this] { mlFinish(); }, name() + ".mlFinish"),
+      memoryTiles(p.memory_tiles),
+      memoryIngresses(p.memory_ingresses),
+      memoryCore(p.memory_core_domain),
+      memoryDdr(p.memory_ddr_domain),
+      memoryControlEvent([this] { updateMemoryControl(); },
+                         name() + ".memoryControl")
 {
     fatal_if(!mgmtClk || !mgmtClk->validPerfLevel(pllPerfLevel) ||
              !mgmtClk->validPerfLevel(xtalPerfLevel),
@@ -151,6 +163,10 @@ Gw100MgmtTile::Gw100MgmtTile(const Params &p)
         if (!clkSwitchEvent.scheduled())
             schedule(clkSwitchEvent, when);
     };
+    if (!memoryTiles.empty()) {
+        crc.validDdrConfig = [](uint32_t value) { return value == 3; };
+        crc.onChange = [this](Tick when) { memoryControlChanged(when); };
+    }
     fatal_if(!link, "%s: 没有接管理链路", name());
     fatal_if(!plic, "%s: 没有接 PLIC", name());
     fatal_if(cpu && cpu->numThreads != 1, "%s: 管理 CPU 只能有一个线程",
@@ -180,6 +196,9 @@ Gw100MgmtTile::getPort(const std::string &if_name, PortID idx)
         return devResetReq;
     if (if_name == "pcie_reset")
         return pcieReset;
+    if (if_name == "timestamp_reset") {
+        return timestampReset;
+    }
     return ClockedObject::getPort(if_name, idx);
 }
 
@@ -227,7 +246,8 @@ uint64_t
 Gw100MgmtTile::mtimeSample(Tick t) const
 {
     Tick lag = cyclesToTicks(tsSync);
-    return t > lag ? (t - lag) / tsPeriod : 0;
+    return t > timestampOrigin + lag ? (t - timestampOrigin - lag) / tsPeriod
+                                     : 0;
 }
 
 /** 看门狗状态变化后：更新中断，进入第二级，重新安排到期事件 */
@@ -244,9 +264,10 @@ Gw100MgmtTile::wdtUpdate()
     // 第一个满足 mtimeSample(e) ≥ T0 + L 的时钟沿 e
     Tick lag = cyclesToTicks(tsSync);
     uint64_t dl = wdt.deadline();
-    if (dl > (MaxTick - lag) / tsPeriod)
-        return;  // 远在仿真能到达的时刻之后
-    Tick target = dl * tsPeriod + lag;
+    if (dl > (MaxTick - timestampOrigin - lag) / tsPeriod) {
+        return; // 远在仿真能到达的时刻之后
+    }
+    Tick target = timestampOrigin + dl * tsPeriod + lag;
     Tick e = clockEdge();
     if (target > e)
         e = clockEdge(ticksToCycles(target - e));
@@ -288,8 +309,25 @@ void
 Gw100MgmtTile::raiseInterruptPin(int num)
 {
     (void)num;
-    if (!inDevReset && !devResetAssertEvent.scheduled())
+    if (!inDevReset && !devResetAssertEvent.scheduled()) {
+        pendingResetCause = 1u << 4;
         schedule(devResetAssertEvent, curTick() + devResetSync);
+    }
+}
+
+/** 注入 POR、PERST、Hot Reset 或 Link Down 的数字硬件通知 */
+void
+Gw100MgmtTile::externalReset(unsigned cause)
+{
+    panic_if(cause != 1 && cause != 2 && cause != 4 && cause != 8,
+             "%s: invalid external reset cause", name());
+    if (inDevReset) {
+        return;
+    }
+    pendingResetCause = cause;
+    if (!devResetAssertEvent.scheduled()) {
+        schedule(devResetAssertEvent, curTick() + devResetSync);
+    }
 }
 
 /** dev_reset_req 撤销：PCIe 的功能逻辑复位时撤销，无动作 */
@@ -310,6 +348,15 @@ Gw100MgmtTile::devResetAssert()
     inDevReset = true;
     if (pcieReset.isConnected())
         pcieReset.set(true);  // PCIe 的功能逻辑与 ML 的 HIF 侧
+    if (pendingResetCause & 0xF) {
+        timestampOrigin = curTick();
+        if (timestampReset.isConnected()) {
+            timestampReset.set(true);
+        }
+        if (params().reset_endpoint) {
+            params().reset_endpoint->resetLink(timestampOrigin);
+        }
+    }
     link->reset(Gw100MgmtLink::Side::Mgmt);
     // ML 的复位丢弃了在途的 REG_RD，CPU 等待的读以访问错误结束
     for (PacketPtr pkt : hifReads)
@@ -325,7 +372,13 @@ Gw100MgmtTile::devResetAssert()
     if (clkSwitchEvent.scheduled())
         deschedule(clkSwitchEvent);
     mgmtClk->perfLevel(xtalPerfLevel);
-    crc.devReset();
+    crc.devReset(pendingResetCause);
+    for (auto *tile : memoryTiles) {
+        tile->resetMemory();
+    }
+    if (!memoryTiles.empty()) {
+        memoryControlChanged(curTick());
+    }
     wdt.reset();
     if (wdtEvent.scheduled())
         deschedule(wdtEvent);
@@ -348,6 +401,9 @@ Gw100MgmtTile::devResetRelease()
     link->release(Gw100MgmtLink::Side::Mgmt);
     if (pcieReset.isConnected())
         pcieReset.set(false);
+    if (timestampReset.isConnected()) {
+        timestampReset.set(false);
+    }
     restartPending = true;
     if (heldFetch)
         restartCpu();
@@ -509,10 +565,54 @@ Gw100MgmtTile::accessHif(PacketPtr pkt)
     }
 }
 
+/** 安排 CRC 控制跨域生效 */
+void
+Gw100MgmtTile::memoryControlChanged(Tick when)
+{
+    when = std::max(when, curTick() + 1);
+    if (!memoryControlEvent.scheduled()) {
+        schedule(memoryControlEvent, when);
+    } else if (when < memoryControlEvent.when()) {
+        reschedule(memoryControlEvent, when);
+    }
+}
+
+/** CRC 状态生效后更新内存子系统 */
+void
+Gw100MgmtTile::updateMemoryControl()
+{
+    uint32_t mesh = 0, pll = 0, clock = 0;
+    crc.read(0x010, mesh, curTick());
+    crc.read(0x038, pll, curTick());
+    crc.read(0x03C, clock, curTick());
+    if (memoryCore) {
+        memoryCore->perfLevel((clock & 1) ? 0 : 1);
+    }
+    if (memoryDdr) {
+        memoryDdr->perfLevel((pll & 2) ? 0 : 1);
+    }
+    for (auto *ingress : memoryIngresses) {
+        ingress->setEnabled(!(mesh & 1));
+    }
+    for (unsigned k = 0; k < memoryTiles.size(); ++k) {
+        memoryTiles[k]->setControl(!(mesh & (1 | (2u << k))), pll & 2);
+    }
+    if (!(pll & 2) && crc.ddrLockTime() != MaxTick &&
+        crc.ddrLockTime() > curTick()) {
+        memoryControlChanged(crc.ddrLockTime());
+    }
+}
+
 /** 管理 CPU 经 NI 访问 DPA 空间（spec-mgmt-tile §3.3） */
 void
 Gw100MgmtTile::accessNi(PacketPtr pkt)
 {
+    uint32_t mesh = 0;
+    if (!memoryTiles.empty() &&
+        (!crc.read(0x010, mesh, curTick()) || (mesh & 1))) {
+        respondError(pkt);
+        return;
+    }
     if (!ni.isConnected()) {
         respondError(pkt);
         return;

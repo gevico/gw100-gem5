@@ -56,6 +56,8 @@ class GlobalRegs : public RegBlock
 
     /** 把 SCRATCH 和时间戳锁存值恢复为复位值；INT/ERR 由 StatusUnit 复位 */
     void reset() override;
+    /** 冷复位或热复位把时间戳原点设为 origin，单位为 tick */
+    void resetTimestamp(Tick origin);
 
     /** 保存 SCRATCH 和时间戳锁存值 */
     void serialize(CheckpointOut &cp) const override;
@@ -86,6 +88,8 @@ class GlobalRegs : public RegBlock
     uint32_t scratch = 0;
     /** 读 TIMESTAMP_LO 时锁存的高 32 位，供 TIMESTAMP_HI 返回 */
     uint32_t tsLatchedHi = 0;
+    /** 最近一次冷复位或热复位的时间戳原点，tick */
+    Tick tsOrigin = 0;
 
     /** 本块的寄存器组；寄存器对象只是上面状态的视图 */
     RegisterBankLE bank{"global", Base};

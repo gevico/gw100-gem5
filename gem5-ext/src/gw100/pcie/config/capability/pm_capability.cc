@@ -39,6 +39,9 @@ PmCapability::afterWrite(const CfgBytes &old, CfgBytes &cfg, Addr base,
         cfg[csr] = (cfg[csr] & ~0x3) | old_pm;
     if (old_pm == 3 && (cfg[csr] & 0x3) == 0)
         return CfgEvent::D3hotToD0;
+    if (old_pm == 0 && (cfg[csr] & 0x3) == 3) {
+        return CfgEvent::D0ToD3hot;
+    }
     return CfgEvent::None;
 }
 
