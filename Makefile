@@ -97,7 +97,9 @@ VSCODE_CDB := gem5/$(GEM5_CDB)
 AARCH64_GDB ?= $(shell command -v aarch64-linux-gnu-gdb 2>/dev/null || command -v gdb-multiarch 2>/dev/null)
 
 .DEFAULT_GOAL := help
-.PHONY: all run test gem-build gem5-patch FORCE baremetal-build firmware-build vscode-config commit-check clean check format help
+.PHONY: all run test gem-build gem5-patch memory-spec-check FORCE
+.PHONY: baremetal-build firmware-build vscode-config commit-check
+.PHONY: clean check format help
 
 all: gem-build baremetal-build firmware-build
 
@@ -107,7 +109,10 @@ run: gem-build baremetal-build firmware-build
 test: gem-build baremetal-build firmware-build
 	$(BMTEST)
 
-gem-build: $(GEM5_BIN)
+gem-build: memory-spec-check $(GEM5_BIN)
+
+memory-spec-check:
+	$(PYTHON) tools/memory_spec.py --check
 
 # 改了 PYTHON_CONFIG 等构建选项、或怀疑构建状态不一致时，用 make -B gem-build 强制构建
 $(GEM5_BIN): $(GEM5_INPUTS) $(GEM5_HEAD_STAMP) $(GEM5_KCONFIG)

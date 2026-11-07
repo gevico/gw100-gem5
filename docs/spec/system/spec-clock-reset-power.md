@@ -115,7 +115,7 @@
 | `clk_core` | Compute Tile、NoC 的路由器，Memory Tile、管理 Tile、PCIe Tile 的 NI，指令通道 | `clock.core_freq` = 1 GHz | `PLL_CORE`；复位后为 `XTAL` |
 | `clk_mgmt` | 管理 CPU、启动 ROM、管理 Tile 的 SRAM 和本地寄存器 | `mgmt.cpu_freq`（`spec-mgmt-tile` §13） | `PLL_CORE` 分频；复位后为 `XTAL` |
 | `clk_pcie` | PCIe 控制器、入站完成器、BAR0 寄存器、HDMA | `clock.pcie_freq` = 250 MHz，数据通路 256 位（默认配置；250 MHz × 32 B = 8 GB/s，不低于链路的 7.877 GB/s，推算）。余量很小，所选 IP 必须以实测的持续吞吐满足 `spec-pcie` §11.2 | PCIe PHY 输出 |
-| `clk_ddr` | Memory Tile 的 DRAM 控制器 | 由所选 PHY 的控制器接口决定。参考：LPDDR5X-8533 的 WCK 为 4266.5 MHz，WCK:CK = 4:1 时 CK 约 1067 MHz（推算）；控制器时钟与 CK 的比例由 PHY 定义 | `PLL_DDR` |
+| `clk_ddr` | Memory Tile 的 DRAM 控制器 | 通用 LPDDR5-8433 模型采用量化后的 CK 周期 949 ps，WCK:CK=4:1，具体量化见 spec-dram | `PLL_DDR` |
 | `clk_ts` | 时间戳计数器 | `dev.timestamp_hz` = 100 MHz（分辨率 10 ns） | 常开的 `PLL_TS` 由 `XTAL` 4 倍频产生，复位撤销后由 CRC 自动使能，软件不能配置（§4.3） |
 | `clk_ao` | CRC、熔丝、复位原因寄存器 | `clock.xtal_freq` | `XTAL` |
 
@@ -348,7 +348,7 @@ CRC 的寄存器位于管理 CPU 本地地址 0x2002_0000 起，共 4 KiB（`spe
 | 0x020 | `CRC_CT_ISO_ACK` | RO | 0 | [15:0]：NI 隔离已完成。NoC 释放复位后，处于 NI 隔离状态的 Tile 对应位为 1 |
 | 0x024 | `CRC_CT_ISO_FAIL` | RO | 0 | [15:0]：NI 隔离失败（§4.5），保持到设备完全复位 |
 | 0x030 | `CRC_PLL_CORE_CFG` | RW | 0 | [0] EN。其余位为倍频和分频系数，格式由所选 PLL 决定（实现定义） |
-| 0x034 | `CRC_PLL_DDR_CFG` | RW | 0 | 同上 |
+| 0x034 | `CRC_PLL_DDR_CFG` | RW | 0 | [0] EN，[3:1] 工作点编号，通用 8433 档编号为 1，有效使能值为 3 |
 | 0x038 | `CRC_PLL_STATUS` | RO | 0 | [0] CORE_LOCK。[1] DDR_LOCK。[2] TS_LOCK。固件初始化时等待 TS_LOCK，以 `mcycle` 计 `clock.pll_lock_timeout`，超时仍为 0 时按固件初始化失败处理（`spec-mgmt-tile` §8.5） |
 | 0x03C | `CRC_CLK_SEL` | RW | 0 | [0] CORE：0 为 `XTAL`，1 为 `PLL_CORE`。[1] MGMT：同上。读回的是切换完成后的实际选择 |
 | 其余 | — | RsvdZ | 0 | |

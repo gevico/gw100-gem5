@@ -138,8 +138,8 @@ flowchart LR
 
 ### 3.3 设备内存
 
-- LPDDR5X-8533（`dram.type`），`dram.channels` = 8 条 x16 通道，由 4 个 Memory Tile 各连接 2 条。
-- 理论峰值带宽：8 × 16 bit × 8533 MT/s ÷ 8 ≈ 136.5 GB/s（推算，引脚上的理想值，不是可用带宽）。具体器件的颗粒密度、rank 组织和信号完整性将由 `spec-dram`（待写） 确认。
+- 通用 LPDDR5-8433（`dram.type`），`dram.channels` = 8 条 x16 通道，由 4 个 Memory Tile 各连接 2 条。
+- 理论峰值带宽：8 × 16 bit × 8433 MT/s ÷ 8 = 134.928 GB/s（推算，引脚上的理想值，不是可用带宽）。通用模型采用每通道两个 16 Gb rank，参数及抽象范围见 `spec-dram`。
 - 容量 `dram.size` = 32 GiB（即通常所说的 32 GB 内存；每条通道 4 GiB，推算）。LLaMA2-7B 的 INT4 权重约 3.5 GB（`spec-pcie` §2.1），其余容量用于 KV cache、激活和多个模型同时驻留。
 - 设备内存的地址在 8 条通道之间交织（`spec-address-map` §3.2）。
 
@@ -224,7 +224,7 @@ decode 阶段受设备内存带宽限制，矩阵引擎的算力远未用满；p
 | `clock.core_freq` | 见 `spec-clock-reset-power` §10 | Compute Tile、NoC 的工作频率；§5.2 的推算按 1 GHz |
 | `ct.count` | 16 | |
 | `ct.sram_size` | 2 MiB | 每个 Compute Tile |
-| `dram.type` | LPDDR5X-8533 | |
+| `dram.type` | 通用 LPDDR5-8433 | |
 | `dram.channels` | 8 | 每个 Memory Tile 2 条，每条 x16 |
 | `dram.size` | 32 GiB | §3.3 |
 | `noc.link_bytes_per_cycle` | 64 | §4；`spec-noc`（待写） 写成后移交 |

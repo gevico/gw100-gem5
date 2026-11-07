@@ -1,0 +1,606 @@
+{
+  "version": 1,
+  "profile": "generic-lpddr5-8433",
+  "definitions": {
+    "topology": [
+      {
+        "name": "VERSION",
+        "value": 65536,
+        "unit": "mixed",
+        "basis": "GW100 设计选择或由组织推算；单位见 spec-dram"
+      },
+      {
+        "name": "TILES",
+        "value": 4,
+        "unit": "mixed",
+        "basis": "GW100 设计选择或由组织推算；单位见 spec-dram"
+      },
+      {
+        "name": "CHANNELS_PER_TILE",
+        "value": 2,
+        "unit": "mixed",
+        "basis": "GW100 设计选择或由组织推算；单位见 spec-dram"
+      },
+      {
+        "name": "CHANNELS",
+        "value": 8,
+        "unit": "mixed",
+        "basis": "GW100 设计选择或由组织推算；单位见 spec-dram"
+      },
+      {
+        "name": "RANKS_PER_CHANNEL",
+        "value": 2,
+        "unit": "mixed",
+        "basis": "GW100 设计选择或由组织推算；单位见 spec-dram"
+      },
+      {
+        "name": "DEVICE_BYTES",
+        "value": 2147483648,
+        "unit": "mixed",
+        "basis": "GW100 设计选择或由组织推算；单位见 spec-dram"
+      },
+      {
+        "name": "TOTAL_BYTES",
+        "value": 34359738368,
+        "unit": "mixed",
+        "basis": "GW100 设计选择或由组织推算；单位见 spec-dram"
+      },
+      {
+        "name": "INTERLEAVE_BYTES",
+        "value": 256,
+        "unit": "mixed",
+        "basis": "GW100 设计选择或由组织推算；单位见 spec-dram"
+      },
+      {
+        "name": "BURST_BYTES",
+        "value": 64,
+        "unit": "mixed",
+        "basis": "GW100 设计选择或由组织推算；单位见 spec-dram"
+      },
+      {
+        "name": "TILE_WINDOW_BASE",
+        "value": 68719476736,
+        "unit": "mixed",
+        "basis": "GW100 设计选择或由组织推算；单位见 spec-dram"
+      },
+      {
+        "name": "TILE_WINDOW_STRIDE",
+        "value": 134217728,
+        "unit": "mixed",
+        "basis": "GW100 设计选择或由组织推算；单位见 spec-dram"
+      },
+      {
+        "name": "REGISTER_OFFSET",
+        "value": 8388608,
+        "unit": "mixed",
+        "basis": "GW100 设计选择或由组织推算；单位见 spec-dram"
+      },
+      {
+        "name": "REGISTER_BYTES",
+        "value": 12288,
+        "unit": "mixed",
+        "basis": "GW100 设计选择或由组织推算；单位见 spec-dram"
+      },
+      {
+        "name": "CHANNEL_BASE",
+        "value": 4096,
+        "unit": "mixed",
+        "basis": "GW100 设计选择或由组织推算；单位见 spec-dram"
+      },
+      {
+        "name": "CHANNEL_STRIDE",
+        "value": 4096,
+        "unit": "mixed",
+        "basis": "GW100 设计选择或由组织推算；单位见 spec-dram"
+      },
+      {
+        "name": "PROTECTION_BASE",
+        "value": 256,
+        "unit": "mixed",
+        "basis": "GW100 设计选择或由组织推算；单位见 spec-dram"
+      },
+      {
+        "name": "PROTECTION_STRIDE",
+        "value": 32,
+        "unit": "mixed",
+        "basis": "GW100 设计选择或由组织推算；单位见 spec-dram"
+      },
+      {
+        "name": "PROTECTION_ENTRIES",
+        "value": 4,
+        "unit": "mixed",
+        "basis": "GW100 设计选择或由组织推算；单位见 spec-dram"
+      },
+      {
+        "name": "PROFILE_ID",
+        "value": 1,
+        "unit": "mixed",
+        "basis": "GW100 设计选择或由组织推算；单位见 spec-dram"
+      },
+      {
+        "name": "DATA_RATE_MT_S",
+        "value": 8433,
+        "unit": "mixed",
+        "basis": "GW100 设计选择或由组织推算；单位见 spec-dram"
+      },
+      {
+        "name": "CK_PS",
+        "value": 949,
+        "unit": "mixed",
+        "basis": "GW100 设计选择或由组织推算；单位见 spec-dram"
+      },
+      {
+        "name": "SOURCE_LIMIT",
+        "value": 16,
+        "unit": "mixed",
+        "basis": "GW100 设计选择或由组织推算；单位见 spec-dram"
+      },
+      {
+        "name": "FRONT_SLOTS",
+        "value": 64,
+        "unit": "mixed",
+        "basis": "GW100 设计选择或由组织推算；单位见 spec-dram"
+      },
+      {
+        "name": "READ_SLOTS",
+        "value": 64,
+        "unit": "mixed",
+        "basis": "GW100 设计选择或由组织推算；单位见 spec-dram"
+      },
+      {
+        "name": "WRITE_SLOTS",
+        "value": 64,
+        "unit": "mixed",
+        "basis": "GW100 设计选择或由组织推算；单位见 spec-dram"
+      },
+      {
+        "name": "FIFO_DEPTH",
+        "value": 8,
+        "unit": "mixed",
+        "basis": "GW100 设计选择或由组织推算；单位见 spec-dram"
+      },
+      {
+        "name": "FIFO_BYTES",
+        "value": 32,
+        "unit": "mixed",
+        "basis": "GW100 设计选择或由组织推算；单位见 spec-dram"
+      },
+      {
+        "name": "SYNC_STAGES",
+        "value": 2,
+        "unit": "mixed",
+        "basis": "GW100 设计选择或由组织推算；单位见 spec-dram"
+      },
+      {
+        "name": "PIPELINE_CYCLES",
+        "value": 2,
+        "unit": "mixed",
+        "basis": "GW100 设计选择或由组织推算；单位见 spec-dram"
+      },
+      {
+        "name": "CAPABILITIES_VALUE",
+        "value": 7,
+        "unit": "mixed",
+        "basis": "GW100 设计选择或由组织推算；单位见 spec-dram"
+      },
+      {
+        "name": "CORE_PS",
+        "value": 1000,
+        "unit": "mixed",
+        "basis": "GW100 设计选择或由组织推算；单位见 spec-dram"
+      },
+      {
+        "name": "PCIE_PS",
+        "value": 4000,
+        "unit": "mixed",
+        "basis": "GW100 设计选择或由组织推算；单位见 spec-dram"
+      }
+    ],
+    "timing": [
+      {
+        "name": "TRFC_PS",
+        "value": 280000,
+        "unit": "ps",
+        "basis": "SK1 PDF p.295 Table 240 的 16 Gb 常温参考；tXS 按上游关系推算"
+      },
+      {
+        "name": "TXS_PS",
+        "value": 287500,
+        "unit": "ps",
+        "basis": "SK1 PDF p.295 Table 240 的 16 Gb 常温参考；tXS 按上游关系推算"
+      },
+      {
+        "name": "TREFI_PS",
+        "value": 3900000,
+        "unit": "ps",
+        "basis": "SK1 PDF p.295 Table 240 的 16 Gb 常温参考；tXS 按上游关系推算"
+      }
+    ],
+    "initialization": [
+      {
+        "name": "CALIBRATION_PS",
+        "value": 10000000,
+        "unit": "ps",
+        "basis": "控制器级训练替身的 GW100 建模选择"
+      },
+      {
+        "name": "TRAIN_PS",
+        "value": 100000000,
+        "unit": "ps",
+        "basis": "控制器级训练替身的 GW100 建模选择"
+      },
+      {
+        "name": "TIMEOUT_PS",
+        "value": 1000000000,
+        "unit": "ps",
+        "basis": "控制器级训练替身的 GW100 建模选择"
+      }
+    ],
+    "register_common": [
+      {
+        "name": "REG_VERSION",
+        "value": 0,
+        "unit": "byte offset",
+        "basis": "spec-dram 软件接口"
+      },
+      {
+        "name": "REG_TOPOLOGY",
+        "value": 4,
+        "unit": "byte offset",
+        "basis": "spec-dram 软件接口"
+      },
+      {
+        "name": "REG_STATUS",
+        "value": 8,
+        "unit": "byte offset",
+        "basis": "spec-dram 软件接口"
+      },
+      {
+        "name": "REG_CAPABILITIES",
+        "value": 12,
+        "unit": "byte offset",
+        "basis": "spec-dram 软件接口"
+      },
+      {
+        "name": "REG_EPOCH",
+        "value": 16,
+        "unit": "byte offset",
+        "basis": "spec-dram 软件接口"
+      },
+      {
+        "name": "REG_ERROR",
+        "value": 24,
+        "unit": "byte offset",
+        "basis": "spec-dram 软件接口"
+      },
+      {
+        "name": "REG_ERROR_SOURCE",
+        "value": 28,
+        "unit": "byte offset",
+        "basis": "spec-dram 软件接口"
+      },
+      {
+        "name": "REG_ERROR_ADDR",
+        "value": 32,
+        "unit": "byte offset",
+        "basis": "spec-dram 软件接口"
+      },
+      {
+        "name": "REG_ERROR_TXN",
+        "value": 40,
+        "unit": "byte offset",
+        "basis": "spec-dram 软件接口"
+      },
+      {
+        "name": "REG_ERROR_INFO",
+        "value": 48,
+        "unit": "byte offset",
+        "basis": "spec-dram 软件接口"
+      },
+      {
+        "name": "REG_PROTECTION_LOCK",
+        "value": 56,
+        "unit": "byte offset",
+        "basis": "spec-dram 软件接口"
+      },
+      {
+        "name": "REG_PERF_FREEZE",
+        "value": 60,
+        "unit": "byte offset",
+        "basis": "spec-dram 软件接口"
+      },
+      {
+        "name": "REG_REQUESTS",
+        "value": 64,
+        "unit": "byte offset",
+        "basis": "spec-dram 软件接口"
+      },
+      {
+        "name": "REG_READ_BYTES",
+        "value": 72,
+        "unit": "byte offset",
+        "basis": "spec-dram 软件接口"
+      },
+      {
+        "name": "REG_WRITE_BYTES",
+        "value": 80,
+        "unit": "byte offset",
+        "basis": "spec-dram 软件接口"
+      },
+      {
+        "name": "REG_RETRIES",
+        "value": 88,
+        "unit": "byte offset",
+        "basis": "spec-dram 软件接口"
+      },
+      {
+        "name": "REG_CDC_TICKS",
+        "value": 96,
+        "unit": "byte offset",
+        "basis": "spec-dram 软件接口"
+      },
+      {
+        "name": "REG_QUEUE_TICKS",
+        "value": 104,
+        "unit": "byte offset",
+        "basis": "spec-dram 软件接口"
+      },
+      {
+        "name": "REG_TRANSFER_TICKS",
+        "value": 112,
+        "unit": "byte offset",
+        "basis": "spec-dram 软件接口"
+      }
+    ],
+    "register_channel": [
+      {
+        "name": "CH_PROFILE",
+        "value": 0,
+        "unit": "byte offset",
+        "basis": "spec-dram 软件接口"
+      },
+      {
+        "name": "CH_COMMAND",
+        "value": 4,
+        "unit": "byte offset",
+        "basis": "spec-dram 软件接口"
+      },
+      {
+        "name": "CH_STATE",
+        "value": 8,
+        "unit": "byte offset",
+        "basis": "spec-dram 软件接口"
+      },
+      {
+        "name": "CH_TRAIN_MASK",
+        "value": 12,
+        "unit": "byte offset",
+        "basis": "spec-dram 软件接口"
+      },
+      {
+        "name": "CH_ERROR",
+        "value": 16,
+        "unit": "byte offset",
+        "basis": "spec-dram 软件接口"
+      },
+      {
+        "name": "CH_SEQUENCE",
+        "value": 24,
+        "unit": "byte offset",
+        "basis": "spec-dram 软件接口"
+      },
+      {
+        "name": "CH_CK_PS",
+        "value": 32,
+        "unit": "byte offset",
+        "basis": "spec-dram 软件接口"
+      }
+    ],
+    "enum_command": [
+      {
+        "name": "CMD_CONFIGURE",
+        "value": 1,
+        "unit": "code",
+        "basis": "spec-dram 控制器命令"
+      },
+      {
+        "name": "CMD_CALIBRATE",
+        "value": 2,
+        "unit": "code",
+        "basis": "spec-dram 控制器命令"
+      },
+      {
+        "name": "CMD_TRAIN",
+        "value": 3,
+        "unit": "code",
+        "basis": "spec-dram 控制器命令"
+      },
+      {
+        "name": "CMD_ENABLE",
+        "value": 4,
+        "unit": "code",
+        "basis": "spec-dram 控制器命令"
+      },
+      {
+        "name": "CMD_QUIESCE",
+        "value": 5,
+        "unit": "code",
+        "basis": "spec-dram 控制器命令"
+      },
+      {
+        "name": "CMD_SELF_REFRESH",
+        "value": 6,
+        "unit": "code",
+        "basis": "spec-dram 控制器命令"
+      },
+      {
+        "name": "CMD_RESUME",
+        "value": 7,
+        "unit": "code",
+        "basis": "spec-dram 控制器命令"
+      }
+    ],
+    "enum_state": [
+      {
+        "name": "STATE_RESET",
+        "value": 0,
+        "unit": "code",
+        "basis": "spec-dram 控制器状态"
+      },
+      {
+        "name": "STATE_CONFIGURED",
+        "value": 1,
+        "unit": "code",
+        "basis": "spec-dram 控制器状态"
+      },
+      {
+        "name": "STATE_CALIBRATING",
+        "value": 2,
+        "unit": "code",
+        "basis": "spec-dram 控制器状态"
+      },
+      {
+        "name": "STATE_CALIBRATED",
+        "value": 3,
+        "unit": "code",
+        "basis": "spec-dram 控制器状态"
+      },
+      {
+        "name": "STATE_TRAINING",
+        "value": 4,
+        "unit": "code",
+        "basis": "spec-dram 控制器状态"
+      },
+      {
+        "name": "STATE_TEST",
+        "value": 5,
+        "unit": "code",
+        "basis": "spec-dram 控制器状态"
+      },
+      {
+        "name": "STATE_READY",
+        "value": 6,
+        "unit": "code",
+        "basis": "spec-dram 控制器状态"
+      },
+      {
+        "name": "STATE_QUIESCING",
+        "value": 7,
+        "unit": "code",
+        "basis": "spec-dram 控制器状态"
+      },
+      {
+        "name": "STATE_QUIESCED",
+        "value": 8,
+        "unit": "code",
+        "basis": "spec-dram 控制器状态"
+      },
+      {
+        "name": "STATE_SELF_REFRESH",
+        "value": 9,
+        "unit": "code",
+        "basis": "spec-dram 控制器状态"
+      },
+      {
+        "name": "STATE_RESUMING",
+        "value": 10,
+        "unit": "code",
+        "basis": "spec-dram 控制器状态"
+      },
+      {
+        "name": "STATE_FAILED",
+        "value": 15,
+        "unit": "code",
+        "basis": "spec-dram 控制器状态"
+      }
+    ],
+    "enum_error": [
+      {
+        "name": "ERR_NONE",
+        "value": 0,
+        "unit": "code",
+        "basis": "spec-dram 控制器错误"
+      },
+      {
+        "name": "ERR_NOT_READY",
+        "value": 1,
+        "unit": "code",
+        "basis": "spec-dram 控制器错误"
+      },
+      {
+        "name": "ERR_PERMISSION",
+        "value": 2,
+        "unit": "code",
+        "basis": "spec-dram 控制器错误"
+      },
+      {
+        "name": "ERR_RANGE",
+        "value": 3,
+        "unit": "code",
+        "basis": "spec-dram 控制器错误"
+      },
+      {
+        "name": "ERR_CONFIG",
+        "value": 4,
+        "unit": "code",
+        "basis": "spec-dram 控制器错误"
+      },
+      {
+        "name": "ERR_BUSY",
+        "value": 5,
+        "unit": "code",
+        "basis": "spec-dram 控制器错误"
+      },
+      {
+        "name": "ERR_TRAIN",
+        "value": 6,
+        "unit": "code",
+        "basis": "spec-dram 控制器错误"
+      },
+      {
+        "name": "ERR_TIMEOUT",
+        "value": 7,
+        "unit": "code",
+        "basis": "spec-dram 控制器错误"
+      },
+      {
+        "name": "ERR_RESET",
+        "value": 8,
+        "unit": "code",
+        "basis": "spec-dram 控制器错误"
+      },
+      {
+        "name": "ERR_PROTOCOL",
+        "value": 9,
+        "unit": "code",
+        "basis": "spec-dram 控制器错误"
+      },
+      {
+        "name": "ERR_MEDIA",
+        "value": 10,
+        "unit": "code",
+        "basis": "spec-dram 控制器错误"
+      }
+    ],
+    "enum_source": [
+      {
+        "name": "SOURCE_MGMT",
+        "value": 0,
+        "unit": "code",
+        "basis": "由硬件入口绑定的来源"
+      },
+      {
+        "name": "SOURCE_HDMA",
+        "value": 1,
+        "unit": "code",
+        "basis": "由硬件入口绑定的来源"
+      },
+      {
+        "name": "SOURCE_BAR2",
+        "value": 2,
+        "unit": "code",
+        "basis": "由硬件入口绑定的来源"
+      }
+    ]
+  }
+}
