@@ -2,3 +2,4 @@
 Import('*')
 GTest('link_packet.test', 'link_packet.test.cc', with_tag('gw100 pcie link'))
 GTest('link_serializer.test', 'link_serializer.test.cc', with_tag('gw100 pcie link'))
+GTest('link_resources.test', 'link_resources.test.cc', with_tag('gw100 pcie link'))
