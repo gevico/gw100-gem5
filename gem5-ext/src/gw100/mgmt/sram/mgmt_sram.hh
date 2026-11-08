@@ -1,6 +1,6 @@
 /**
  * @file  mgmt_sram.hh
- * @brief 管理 Tile 的启动 ROM 与 SRAM：存储、bank 仲裁与复位后的清零
+ * @brief 管理 Tile 的 SRAM 存储、bank 仲裁与复位清零
  *
  * SRAM 由若干个连续的单口 bank 组成（spec-mgmt-tile §4.2）。每次 64 位
  * 访问占用所在 bank 一个周期，不足 64 位的写做 RMW，计两次访问
@@ -24,25 +24,20 @@ namespace gem5
 namespace gw100
 {
 
-/** 管理 Tile 的启动 ROM 与 SRAM */
+/** 管理 Tile 的 SRAM 存储与参考调度 */
 class MgmtSram
 {
   public:
-    /** 本地地址：ROM 的起始 */
-    static constexpr Addr RomBase = 0x0000'0000;
     /** 本地地址：SRAM 的起始 */
     static constexpr Addr SramBase = 0x1000'0000;
 
-    /** 构造：rom_size、sram_size 为字节数，banks 为 SRAM 的 bank 数 */
-    MgmtSram(uint64_t rom_size, uint64_t sram_size, unsigned banks);
-
-    /** [a, a + size) 是否整个落在 ROM 内 */
-    bool inRom(Addr a, unsigned size) const;
+    /** 构造：sram_size 为字节数，banks 为 SRAM 的 bank 数 */
+    MgmtSram(uint64_t sram_size, unsigned banks);
 
     /** [a, a + size) 是否整个落在 SRAM 内 */
     bool inSram(Addr a, unsigned size) const;
 
-    /** 本地地址 a 处的存储；调用者已用 inRom/inSram 检查范围 */
+    /** 本地地址 a 处的存储；调用者已用 inSram 检查范围 */
     uint8_t *ptr(Addr a);
 
     /**
@@ -61,8 +56,6 @@ class MgmtSram
     /** 清零完成的时刻 */
     Tick initDoneTick() const { return initDoneAt; }
 
-    /** ROM 的字节数 */
-    const uint64_t romSize;
     /** SRAM 的字节数 */
     const uint64_t sramSize;
 
@@ -72,8 +65,6 @@ class MgmtSram
 
     /** bank 数 */
     const unsigned banks;
-    /** ROM 的内容 */
-    std::vector<uint8_t> rom;
     /** SRAM 的内容 */
     std::vector<uint8_t> sram;
     /** 各 bank 空闲的时刻 */

@@ -16,20 +16,13 @@ namespace gem5
 namespace gw100
 {
 
-/** 构造：rom_size、sram_size 为字节数，banks 为 SRAM 的 bank 数 */
-MgmtSram::MgmtSram(uint64_t rom_size, uint64_t sram_size, unsigned banks)
-    : romSize(rom_size), sramSize(sram_size), banks(banks),
-      rom(rom_size, 0), sram(sram_size, 0), bankFree(banks, 0)
+/** 构造：sram_size 为字节数，banks 为 SRAM 的 bank 数 */
+MgmtSram::MgmtSram(uint64_t sram_size, unsigned banks)
+    : sramSize(sram_size), banks(banks),
+      sram(sram_size, 0), bankFree(banks, 0)
 {
     fatal_if(banks == 0 || sram_size % banks != 0,
              "SRAM 容量 %d 不能均分为 %d 个 bank", sram_size, banks);
-}
-
-/** [a, a + size) 是否整个落在 ROM 内 */
-bool
-MgmtSram::inRom(Addr a, unsigned size) const
-{
-    return a >= RomBase && a + size <= RomBase + romSize;
 }
 
 /** [a, a + size) 是否整个落在 SRAM 内 */
@@ -39,13 +32,11 @@ MgmtSram::inSram(Addr a, unsigned size) const
     return a >= SramBase && a + size <= SramBase + sramSize;
 }
 
-/** 本地地址 a 处的存储；调用者已用 inRom/inSram 检查范围 */
+/** 本地地址 a 处的存储；调用者已用 inSram 检查范围 */
 uint8_t *
 MgmtSram::ptr(Addr a)
 {
-    if (a >= SramBase)
-        return &sram[a - SramBase];
-    return &rom[a - RomBase];
+    return &sram[a - SramBase];
 }
 
 /** 本地地址 a 所在的 bank */
