@@ -45,7 +45,12 @@ check_after_reset(bm_pci_bdf_t d)
     TEST_EQ(bm_pci_cfg_read32(d, BM_PCI_BAR0), 0);
     TEST_EQ(bm_pci_cfg_read32(d, BM_PCI_BAR0 + 8), 0xC);   /* 64 位、可预取 */
     TEST_EQ(bm_pci_cfg_read32(d, BM_PCI_BAR0 + 12), 0);
+#ifdef GW100_COMPAT
     TEST_EQ(bm_pci_cfg_read16(d, DEVCTL), DEVCTL_DEFAULT);
+#else
+    /* FLR 与功能电源复位保留链路共用的 MPS。 */
+    TEST_EQ(bm_pci_cfg_read16(d, DEVCTL), DEVCTL_DEFAULT | (1u << 5));
+#endif
     TEST_EQ(bm_pci_cfg_read16(d, PM_CAP + 4) & 0x3, 0);
 
     gw100_t g = gw100_open();

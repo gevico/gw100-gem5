@@ -127,8 +127,15 @@ check_pcie(bm_pci_bdf_t d)
     TEST_EQ(mc & 0x7FF, 31);                    /* 32 个表项 */
     TEST_EQ(mc & 0xC000, 0);                    /* 复位时未使能 */
 
-    /* 扩展配置空间：没有扩展 capability */
+    /* 扩展 capability 按匹配的模型档案验证。 */
+#ifdef GW100_COMPAT
     TEST_EQ(bm_pci_cfg_read32(d, 0x100), 0);
+#else
+    TEST_EQ(bm_pci_cfg_read32(d, 0x100), 0x14010001u);
+    TEST_EQ(bm_pci_cfg_read32(d, 0x140), 0x18010019u);
+    TEST_EQ(bm_pci_cfg_read32(d, 0x180), 0x1A010025u);
+    TEST_EQ(bm_pci_cfg_read32(d, 0x1A0), 0x00010026u);
+#endif
 }
 
 /** Command 寄存器：清除 Memory Space 后该位读回 0，BAR 的值保持不变 */

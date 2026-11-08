@@ -176,7 +176,7 @@ baremetal-build: firmware-build
 	$(MAKE) -C baremetal BUILD_DIR=$(abspath $(BAREMETAL_DIR)) \
 		FW_IMAGE=$(abspath $(FIRMWARE_DIR))/fw.img
 	$(MAKE) -C baremetal BUILD_DIR=$(abspath $(BAREMETAL_COMPAT_DIR)) \
-		FW_IMAGE=$(abspath $(FIRMWARE_COMPAT_DIR))/fw.img
+		FW_IMAGE=$(abspath $(FIRMWARE_COMPAT_DIR))/fw.img DEVICE_PROFILE=compat
 
 firmware-build:
 	$(MAKE) -C firmware BUILD_DIR=$(abspath $(FIRMWARE_DIR))

@@ -142,7 +142,7 @@ def main() -> int:
         if set(spec) - {"requires", "config_args"}:
             p.error(f"{test} 包含未知测试分类字段")
         if not isinstance(spec.get("requires"), list) or (
-            set(spec["requires"]) - {"dram"}
+            set(spec["requires"]) - {"dram", "pcie_link"}
         ):
             p.error(f"{test} 包含未知测试能力")
         if not all(isinstance(v, str) for v in spec.get("config_args", [])):
@@ -163,7 +163,7 @@ def main() -> int:
                     "gw100 timing 内存需要 timing/o3，atomic 使用 gw100_compat"
                 )
             requires = set(args.test_specs[test]["requires"])
-            capabilities = {"dram"} if device == "gw100" else set()
+            capabilities = {"dram", "pcie_link"} if device == "gw100" else set()
             if requires - capabilities:
                 skipped[(test, host)] = ("SKIP", pathlib.Path())
                 print(f"SKIP {test} [{host}/{device}] 需要 {sorted(requires)}")
