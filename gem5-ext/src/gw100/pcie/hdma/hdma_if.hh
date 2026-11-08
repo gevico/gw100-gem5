@@ -14,6 +14,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <utility>
 
 #include "base/types.hh"
 #include "src/gw100/ml/ml_types.hh"
@@ -67,11 +68,44 @@ class HdmaHostIf
      */
     virtual void read(Addr addr, unsigned len, HostReadDone done) = 0;
 
+    /** 指定完整 MRd 当前能否被本地发送端接受。 */
+    virtual bool
+    canRead(Addr, unsigned) const
+    {
+        return true;
+    }
+
+    /** 接受真实 tag 与 Attr[2:0]，在 DLL 提交时调用 committed。 */
+    virtual bool
+    readTagged(Addr addr, unsigned len, uint8_t,
+               std::function<void()> committed, HostReadDone done, uint8_t = 0)
+    {
+        committed();
+        read(addr, len, std::move(done));
+        return true;
+    }
+
+    /** 撤销尚未提交到 DLL 的读，释放本地预留。 */
+    virtual void
+    cancelRead(uint8_t)
+    {}
+
+    /** 已提交读进入隔离，保留匹配元数据并释放数据预留。 */
+    virtual void
+    isolateRead(uint8_t)
+    {}
+
+    /** 复位或电源门控撤销尚未提交的主动业务。 */
+    virtual void
+    cancelPending()
+    {}
+
     /** 发送通路能否再接受一个写请求 */
     virtual bool canWrite() const = 0;
 
     /** 发出一个 MWr：len 不超过 MPS，不跨 4 KiB；交给发送通路即返回 */
-    virtual void write(Addr addr, unsigned len, const uint8_t *data) = 0;
+    virtual void write(Addr addr, unsigned len, const uint8_t *data,
+                       uint8_t attributes = 0) = 0;
 };
 
 /** 设备内存读的完成回调：是否成功与读到的数据 */
