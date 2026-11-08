@@ -46,6 +46,9 @@ class Gw100MgmtTile(ClockedObject):
     rom_size = Param.MemorySize("64KiB", "启动 ROM（mgmt.rom_size）")
     sram_size = Param.MemorySize("2MiB", "SRAM（mgmt.sram_size）")
     sram_banks = Param.Unsigned(8, "SRAM 的 bank 数")
+    sram = Param.Gw100Sram("共享 SRAM 实例")
+    sram_cpu = RequestPort("CPU 的 SRAM timing 入口")
+    sram_ml = RequestPort("ML 的 SRAM timing 入口")
     fw_load_max = Param.MemorySize("1MiB", "装载区（mgmt.fw_load_max）")
     db_slots = Param.Unsigned(34, "doorbell 槽位数（mgmt.db_slots）")
 

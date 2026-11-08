@@ -10,11 +10,14 @@
 #include "src/gw100/mem_tile/memory_tile.hh"
 #include "src/gw100/pcie/gw100_pci_device.hh"
 
+#include <algorithm>
 #include <cstring>
 
 #include "arch/generic/decoder.hh"
+#include "arch/riscv/faults.hh"
 #include "base/logging.hh"
 #include "base/trace.hh"
+#include "cpu/simple/timing.hh"
 #include "cpu/thread_context.hh"
 #include "debug/Gw100Mgmt.hh"
 #include "mem/packet_access.hh"
@@ -55,6 +58,22 @@ Gw100MgmtTile::PioPort::PioPort(const std::string &name,
 bool
 Gw100MgmtTile::PioPort::recvTimingReq(PacketPtr pkt)
 {
+    Addr address = pkt->getAddr();
+    if (address >= tile.sram->base() &&
+        address-tile.sram->base() < tile.sram->size()) {
+        if (sramPackets.size() == tile.sram->model().config().slots ||
+            tile.sramCpu.waitingRetry) {
+            retrySram = true;
+            return false;
+        }
+        if (!tile.sramCpu.sendTimingReq(pkt)) {
+            tile.sramCpu.waitingRetry = true;
+            retrySram = true;
+            return false;
+        }
+        sramPackets.insert(pkt);
+        return true;
+    }
     tile.handleTiming(pkt);
     return true;
 }
@@ -70,7 +89,8 @@ Gw100MgmtTile::PioPort::recvAtomic(PacketPtr pkt)
         pkt->setBadAddress();
         return tile.clockPeriod();
     }
-    pkt->makeResponse();
+    if (!pkt->isResponse())
+        pkt->makeResponse();
     return done - curTick();
 }
 
@@ -85,11 +105,9 @@ Gw100MgmtTile::PioPort::recvFunctional(PacketPtr pkt)
             pkt->writeData(tile.rom.ptr(a));
         else
             pkt->setData(tile.rom.ptr(a));
-    } else if (tile.sram.inSram(a, sz)) {
-        if (pkt->isWrite())
-            pkt->writeData(tile.sram.ptr(a));
-        else
-            pkt->setData(tile.sram.ptr(a));
+    } else if (tile.sram->contains(a, sz)) {
+        tile.sramCpu.sendFunctional(pkt);
+        return;
     } else if (pkt->isRead()) {
         // 寄存器的功能读只用于调试，返回 0，不产生副作用
         std::memset(pkt->getPtr<uint8_t>(), 0, sz);
@@ -103,7 +121,7 @@ Gw100MgmtTile::PioPort::getAddrRanges() const
 {
     AddrRangeList r;
     r.push_back(RangeSize(MgmtRom::RomBase, tile.rom.romSize));
-    r.push_back(RangeSize(MgmtSram::SramBase, tile.sram.sramSize));
+    r.push_back(RangeSize(tile.sram->base(), tile.sram->size()));
     r.push_back(RangeSize(MgmtWdt::Base, MgmtWdt::Size));
     r.push_back(RangeSize(MgmtLocalRegs::Base, MgmtLocalRegs::Size));
     r.push_back(RangeSize(MgmtMailbox::Base, MgmtMailbox::Size));
@@ -117,9 +135,11 @@ Gw100MgmtTile::PioPort::getAddrRanges() const
 /** 按参数构造各组件 */
 Gw100MgmtTile::Gw100MgmtTile(const Params &p)
     : ClockedObject(p),
-      rom(p.rom_size), sram(p.sram_size, p.sram_banks),
+      rom(p.rom_size), sram(p.sram),
+      sramCpu(name()+".sram_cpu", *this, true),
+      sramMl(name()+".sram_ml", *this, false),
       mailbox(p.db_slots),
-      regs(sram),
+      regs(*sram),
       fwLoadMax(p.fw_load_max),
       link(p.mgmt_link),
       plic(p.plic),
@@ -130,9 +150,12 @@ Gw100MgmtTile::Gw100MgmtTile(const Params &p)
       clkSwitchEvent(
           [this] {
               mgmtClk->perfLevel(pllPerfLevel);
+              sram->resumeMemory();
               wdtUpdate(); // 时钟沿变了，重新安排到期事件
           },
           name() + ".clkSwitch", false, Event::CPU_Switch_Pri),
+      clkPauseEvent([this] { sram->pauseMemory(); }, name()+".clkPause",
+                    false, Event::CPU_Switch_Pri),
       tsPeriod(p.timestamp_freq),
       tsSync(p.ts_sync),
       cpu(p.cpu),
@@ -165,8 +188,20 @@ Gw100MgmtTile::Gw100MgmtTile(const Params &p)
              "%s: 管理系统的时钟域没有频率档 %u、%u", name(), pllPerfLevel,
              xtalPerfLevel);
     crc.onMgmtSwitch = [this](Tick when) {
-        if (!clkSwitchEvent.scheduled())
+        if (!clkSwitchEvent.scheduled()) {
+            Tick target = when-params().clk_switch_pause;
+            Tick first = clockEdge();
+            Tick pauseAt = first + (target > first ?
+                (target-first+clockPeriod()-1)/clockPeriod()*clockPeriod() : 0);
+            schedule(clkPauseEvent, std::min(pauseAt, when));
             schedule(clkSwitchEvent, when);
+        }
+    };
+    fatal_if(sram->size() != p.sram_size ||
+             sram->model().config().banks != p.sram_banks,
+             "%s: 管理档案与 SRAM 实例不一致", name());
+    sram->model().eccEvent = [this](uint64_t address, bool ue) {
+        regs.recordEcc(sram->base()+address, ue, curTick());
     };
     if (!memoryTiles.empty()) {
         crc.validDdrConfig = [](uint32_t value) { return value == 3; };
@@ -177,6 +212,20 @@ Gw100MgmtTile::Gw100MgmtTile(const Params &p)
     fatal_if(cpu && cpu->numThreads != 1, "%s: 管理 CPU 只能有一个线程",
              name());
     if (cpu) {
+        auto *timing = dynamic_cast<TimingSimpleCPU *>(cpu);
+        fatal_if(!timing, "%s: 管理 CPU 需要 TimingSimpleCPU 错误转换接口",
+                 name());
+        timing->setMemoryErrorHandler([](PacketPtr packet, BaseMMU::Mode mode) {
+            Addr address = packet->req->hasVaddr() ? packet->req->getVaddr() :
+                                                    packet->req->getPaddr();
+            // 取指请求可向下对齐，mtval 指向实际指令或其失败片段。
+            if (mode == BaseMMU::Execute && packet->req->hasPC())
+                address = std::max(address, packet->req->getPC());
+            auto code = mode == BaseMMU::Execute ? RiscvISA::INST_ACCESS :
+                        mode == BaseMMU::Write ? RiscvISA::STORE_ACCESS :
+                                                RiscvISA::LOAD_ACCESS;
+            return std::make_shared<RiscvISA::AddressFault>(address, code);
+        });
         intr = dynamic_cast<MgmtInterrupts *>(cpu->getInterruptController(0));
         fatal_if(!intr, "%s: 管理 CPU 的中断控制器必须是 "
                  "Gw100MgmtInterrupts", name());
@@ -191,6 +240,10 @@ Gw100MgmtTile::getPort(const std::string &if_name, PortID idx)
 {
     if (if_name == "pio")
         return pio;
+    if (if_name == "sram_cpu")
+        return sramCpu;
+    if (if_name == "sram_ml")
+        return sramMl;
     if (if_name == "ni")
         return ni;
     if (if_name == "wdt_fatal") {
@@ -207,7 +260,7 @@ Gw100MgmtTile::getPort(const std::string &if_name, PortID idx)
     return ClockedObject::getPort(if_name, idx);
 }
 
-/** 接入 ML 的管理侧，开始 SRAM 的硬件清零 */
+/** 接入 ML 管理侧并绑定寄存器通知。 */
 void
 Gw100MgmtTile::init()
 {
@@ -218,14 +271,15 @@ Gw100MgmtTile::init()
     ml->onChange = [this] { updateIrqs(); };
     cpuClient = ml->addClient();
     regs.bindMl(ml);
-    sram.startInit(curTick(), clockPeriod());
 }
 
-/** 撤销 ML 管理侧的复位 */
+/** 功能加载结束后启动 SRAM 清零并释放 ML 管理侧。 */
 void
 Gw100MgmtTile::startup()
 {
     ClockedObject::startup();
+    if (sram->model().state() == SramModel::State::Reset)
+        sram->initialize();
     link->release(Gw100MgmtLink::Side::Mgmt);
 }
 
@@ -351,6 +405,13 @@ Gw100MgmtTile::devResetAssert()
 {
     DPRINTF(Gw100Mgmt, "设备完全复位：开始\n");
     inDevReset = true;
+    ++mlGeneration;
+    if (sramMl.pending) {
+        delete sramMl.pending->popSenderState();
+        delete sramMl.pending;
+        sramMl.pending = nullptr;
+    }
+    sram->resetMemory(false);
     if (pcieReset.isConnected())
         pcieReset.set(true);  // PCIe 的功能逻辑与 ML 的 HIF 侧
     if (pendingResetCause & 0xF) {
@@ -377,6 +438,8 @@ Gw100MgmtTile::devResetAssert()
     // 本地寄存器、信箱、看门狗、CRC 恢复复位值，时钟回到 XTAL
     if (clkSwitchEvent.scheduled())
         deschedule(clkSwitchEvent);
+    if (clkPauseEvent.scheduled())
+        deschedule(clkPauseEvent);
     mgmtClk->perfLevel(xtalPerfLevel);
     crc.devReset(pendingResetCause);
     for (auto *tile : memoryTiles) {
@@ -403,7 +466,7 @@ Gw100MgmtTile::devResetRelease()
 {
     DPRINTF(Gw100Mgmt, "设备完全复位：释放\n");
     inDevReset = false;
-    sram.startInit(curTick(), clockPeriod());
+    sram->initialize();
     link->release(Gw100MgmtLink::Side::Mgmt);
     if (pcieReset.isConnected())
         pcieReset.set(false);
@@ -459,13 +522,8 @@ Gw100MgmtTile::accessLocal(PacketPtr pkt, Tick now)
         pkt->setData(rom.ptr(a));
         return one;
     }
-    if (sram.inSram(a, sz)) {
-        Tick done = sram.schedule(a, sz, wr, now, per);
-        if (wr)
-            pkt->writeData(sram.ptr(a));
-        else
-            pkt->setData(sram.ptr(a));
-        return done;
+    if (sram->contains(a, sz)) {
+        return now + sramCpu.sendAtomic(pkt);
     }
     if (sz != 4 && sz != 8)
         return MaxTick;
@@ -488,7 +546,7 @@ Gw100MgmtTile::accessLocal(PacketPtr pkt, Tick now)
         MgmtLocalRegs::Size) {
         uint64_t v = 0;
         if (wr) {
-            if (!regs.write(a, sz, pkt->getUintX(ByteOrder::little)))
+            if (!regs.write(a, sz, pkt->getUintX(ByteOrder::little), now))
                 return MaxTick;
         } else {
             if (!regs.read(a, sz, v, curTick()))
@@ -712,24 +770,26 @@ Gw100MgmtTile::handleTiming(PacketPtr pkt)
 void
 Gw100MgmtTile::mlRequest(const MlTxnPtr &txn, MlRespond respond_fn)
 {
-    panic_if(mlEvent.scheduled(), "%s: ML 一次只交出一个事务", name());
+    panic_if(mlEvent.scheduled() || mlRespond,
+             "%s: ML 一次只交出一个事务", name());
     Tick now = clockEdge();
     Tick per = clockPeriod();
     Tick done = now + per;
     MlStatus st = MlStatus::Ok;
     MlData data{};
+    Addr address = 0;
+    bool memory = false;
 
     switch (txn->type) {
       case MlType::BootWr: {
         if (txn->addr + txn->len > fwLoadMax) {
             regs.recordViol(MgmtLocalRegs::ViolBoot,
-                            MgmtSram::SramBase + txn->addr);
+                            sram->base() + txn->addr);
             st = MlStatus::Reject;
             break;
         }
-        Addr a = MgmtSram::SramBase + txn->addr;
-        done = sram.schedule(a, txn->len, true, now, per);
-        std::memcpy(sram.ptr(a), txn->data.data(), txn->len);
+        address = sram->base() + txn->addr;
+        memory = true;
         break;
       }
       case MlType::DbWr: {
@@ -750,19 +810,12 @@ Gw100MgmtTile::mlRequest(const MlTxnPtr &txn, MlRespond respond_fn)
       case MlType::DescRd:
       case MlType::DescWr: {
         Addr a = txn->addr;
-        if (!sram.inSram(a, txn->len) || !regs.descAllowed(a, txn->len)) {
+        if (!sram->contains(a, txn->len) || !regs.descAllowed(a, txn->len)) {
             st = MlStatus::Reject;
             break;
         }
-        bool wr = txn->type == MlType::DescWr;
-        done = sram.schedule(a, txn->len, wr, now, per);
-        uint8_t *p = sram.ptr(a);
-        for (unsigned i = 0; i < txn->len; i++) {
-            if (!wr)
-                data[i] = p[i];
-            else if (txn->be & (1ULL << i))
-                p[i] = txn->data[i];
-        }
+        address = a;
+        memory = true;
         break;
       }
       default:
@@ -772,7 +825,95 @@ Gw100MgmtTile::mlRequest(const MlTxnPtr &txn, MlRespond respond_fn)
     mlRespond = respond_fn;
     mlStatus = st;
     mlData = data;
+    if (memory) {
+        bool write = txn->type != MlType::DescRd;
+        auto req = std::make_shared<Request>(
+            address, txn->len, 0, Request::funcRequestorId);
+        std::vector<bool> enable(txn->len);
+        for (unsigned i = 0; i < txn->len; ++i)
+            enable[i] = (txn->be >> i) & 1;
+        if (write)
+            req->setByteEnable(enable);
+        auto pkt = new Packet(req, write ? MemCmd::WriteReq : MemCmd::ReadReq);
+        pkt->allocate();
+        if (write)
+            pkt->setData(txn->data.data());
+        pkt->pushSenderState(new MlSramState(mlGeneration));
+        if (sramMl.waitingRetry || !sramMl.sendTimingReq(pkt)) {
+            sramMl.waitingRetry = true;
+            sramMl.pending = pkt;
+        }
+        return;
+    }
     schedule(mlEvent, done);
+}
+
+/** 实际发送成功后释放对应的 CPU SRAM 事务槽。 */
+bool
+Gw100MgmtTile::PioPort::Queue::sendTiming(PacketPtr packet)
+{
+    bool sram = owner.sramPackets.count(packet);
+    bool accepted = RespPacketQueue::sendTiming(packet);
+    if (accepted && sram) {
+        owner.sramPackets.erase(packet);
+        owner.retry();
+    }
+    return accepted;
+}
+
+/** 在 SRAM 和转发响应均有额度时通知上游重试。 */
+void
+Gw100MgmtTile::PioPort::retry()
+{
+    if (retrySram && !tile.sramCpu.waitingRetry &&
+        sramPackets.size() < tile.sram->model().config().slots) {
+        retrySram = false;
+        sendRetryReq();
+    }
+}
+
+/** 向 CPU 的上游转发准入恢复通知。 */
+void
+Gw100MgmtTile::SramPort::retryCpu()
+{
+    tile.pio.retry();
+}
+
+/** 重新提交 ML 请求或通知 CPU 可重试。 */
+void
+Gw100MgmtTile::SramPort::recvReqRetry()
+{
+    waitingRetry = false;
+    if (cpuSide) {
+        retryCpu();
+    } else if (pending) {
+        PacketPtr packet = pending;
+        if (sendTimingReq(packet))
+            pending = nullptr;
+        else
+            waitingRetry = true;
+    }
+}
+
+/** 转发 CPU 响应或完成当前代次的 ML 事务。 */
+bool
+Gw100MgmtTile::SramPort::recvTimingResp(PacketPtr packet)
+{
+    if (cpuSide) {
+        tile.pio.schedTimingResp(packet, curTick());
+        return true;
+    }
+    auto state = static_cast<MlSramState *>(packet->popSenderState());
+    if (state->generation == tile.mlGeneration && tile.mlRespond) {
+        tile.mlStatus = packet->isError() ? MlStatus::Reject : MlStatus::Ok;
+        if (packet->isRead() && !packet->isError())
+            std::copy_n(packet->getConstPtr<uint8_t>(), packet->getSize(),
+                        tile.mlData.begin());
+        tile.mlFinish();
+    }
+    delete state;
+    delete packet;
+    return true;
 }
 
 /** ML 请求处理完毕的时刻到达：调用保存的 respond */

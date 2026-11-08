@@ -18,7 +18,8 @@
 #include <functional>
 
 #include "base/types.hh"
-#include "src/gw100/mgmt/sram/mgmt_sram.hh"
+#include "src/gw100/sram/gw100_sram.hh"
+#include "src/gw100/mgmt/regs/ecc_status.hh"
 #include "src/gw100/ml/ml_endpoint.hh"
 
 namespace gem5
@@ -42,7 +43,7 @@ class MgmtLocalRegs
     static constexpr unsigned ViolNoc = 1;
 
     /** 构造：sram 提供 INIT_DONE */
-    explicit MgmtLocalRegs(MgmtSram &sram);
+    explicit MgmtLocalRegs(Gw100Sram &sram);
 
     /** 接入 ML 管理侧适配器，ML 寄存器经它读写 */
     void bindMl(MlEndpoint *ep) { ml = ep; }
@@ -54,7 +55,9 @@ class MgmtLocalRegs
     bool read(Addr a, unsigned size, uint64_t &v, Tick now) const;
 
     /** CPU 写本地地址 a 处 size 字节；规则同 read() */
-    bool write(Addr a, unsigned size, uint64_t v);
+    bool write(Addr a, unsigned size, uint64_t v, Tick now = 0);
+    /** SRAM 采样事件，地址为管理 CPU 本地地址。 */
+    void recordEcc(Addr address, bool ue, Tick now);
 
     /** HDMA 经 ML 访问 [a, a + len) 是否落在 DESC_BASE – DESC_LIMIT 内 */
     bool descAllowed(Addr a, unsigned len) const;
@@ -69,7 +72,7 @@ class MgmtLocalRegs
     bool ceIrq() const;
 
     /** PLIC 源 5 的电平：SRAM_ECC_STATUS.UE */
-    bool ueIrq() const { return eccStatus & 2; }
+    bool ueIrq() const { return ecc.status & 2; }
 
     /** PLIC 源 6 的电平：ACL_VIOL_STATUS ≠ 0 */
     bool aclIrq() const { return aclViol != 0; }
@@ -93,18 +96,11 @@ class MgmtLocalRegs
     };
 
     /** 本地寄存器依赖的 SRAM */
-    MgmtSram &sram;
+    Gw100Sram &sram;
+    /** 软件可见的 ECC 状态及硬件优先清除规则。 */
+    MgmtEccStatus ecc;
     /** ML 管理侧适配器 */
     MlEndpoint *ml = nullptr;
-
-    /** SRAM_ECC_STATUS：[0] CE，[1] UE */
-    uint32_t eccStatus = 0;
-    /** SRAM_ECC_CE_COUNT */
-    uint32_t ceCount = 0;
-    /** SRAM_ECC_CE_THRESH */
-    uint32_t ceThresh = 0;
-    /** SRAM_ECC_UE_ADDR */
-    uint64_t ueAddr = 0;
 
     /** ACL_LOCK：[0] LOCK */
     bool aclLock = false;

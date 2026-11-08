@@ -4,7 +4,7 @@
  *
  * 本类负责与 gem5 的对接：pio 端口的时序、功能访问（加载 ROM 镜像），
  * 以及 PLIC 中断源的电平。各项行为由组件实现：
- * - 启动 ROM 由 MgmtRom 持有，SRAM 由 MgmtSram 持有。
+ * - 启动 ROM 由 MgmtRom 持有，共享 SRAM 由 Gw100Sram 提供。
  * - 看门狗的状态机：MgmtWdt；本类按 mtime 安排到期事件，第二级超时时
  *   停住管理 CPU 并置位 wdt_fatal 信号；
  * - 管理 CPU 的停机与复位：经中断控制器 MgmtInterrupts 让 CPU 在指令
@@ -41,8 +41,8 @@
 #include "src/gw100/mgmt/intr/mgmt_interrupts.hh"
 #include "src/gw100/mgmt/mailbox/mgmt_mailbox.hh"
 #include "src/gw100/mgmt/regs/mgmt_local_regs.hh"
-#include "src/gw100/mgmt/sram/mgmt_sram.hh"
 #include "src/gw100/mgmt/rom/mgmt_rom.hh"
+#include "src/gw100/sram/gw100_sram.hh"
 #include "src/gw100/mgmt/wdt/mgmt_wdt.hh"
 #include "src/gw100/ml/mgmt_link.hh"
 
@@ -67,10 +67,10 @@ class Gw100MgmtTile : public ClockedObject, public MlTargetIf
     Port &getPort(const std::string &if_name,
                   PortID idx = InvalidPortID) override;
 
-    /** 接入 ML 的管理侧，开始 SRAM 的硬件清零 */
+    /** 接入 ML 管理侧并绑定寄存器通知。 */
     void init() override;
 
-    /** 撤销 ML 管理侧的复位 */
+    /** 功能加载结束后启动 SRAM 清零并释放 ML 管理侧。 */
     void startup() override;
 
     /** ML 管理侧的目标：处理 HIF 发来的请求（spec-mgmt-tile §5.1） */
@@ -85,6 +85,38 @@ class Gw100MgmtTile : public ClockedObject, public MlTargetIf
     void externalReset(unsigned cause);
 
   private:
+    /** CPU 转发的 SRAM 响应在上游接受前保留入口额度。 */
+    class SramPort : public RequestPort
+    {
+      public:
+        /** 绑定管理 Tile 和 CPU 或 ML 来源。 */
+        SramPort(const std::string &name, Gw100MgmtTile &tile, bool cpu)
+            : RequestPort(name), tile(tile), cpuSide(cpu) {}
+        /** 共享组件是否尚欠一次请求 retry。 */
+        bool waitingRetry = false;
+        /** ML 唯一尚未获准的 SRAM 请求。 */
+        PacketPtr pending = nullptr;
+        /** 向 CPU 的上游转发准入恢复通知。 */
+        void retryCpu();
+      protected:
+        /** 转发 CPU 响应或完成当前代次的 ML 事务。 */
+        bool recvTimingResp(PacketPtr packet) override;
+        /** 重新提交 ML 请求或通知 CPU 可重试。 */
+        void recvReqRetry() override;
+      private:
+        /** 所属的管理 Tile。 */
+        Gw100MgmtTile &tile;
+        /** true 绑定 CPU，false 绑定 ML。 */
+        bool cpuSide;
+    };
+    /** ML 复位收尾时用于抑制迟到回调的对象代次。 */
+    struct MlSramState : public Packet::SenderState
+    {
+        /** 创建请求时的 ML 代次。 */
+        uint64_t generation;
+        /** 保存已接受 ML 事务的所属代次。 */
+        explicit MlSramState(uint64_t value) : generation(value) {}
+    };
     /** NI 发起端口：管理 CPU 经它访问 DPA 空间 */
     class NiPort : public RequestPort
     {
@@ -123,6 +155,12 @@ class Gw100MgmtTile : public ClockedObject, public MlTargetIf
       public:
         /** 构造：tile 为所属的管理 Tile */
         PioPort(const std::string &name, Gw100MgmtTile &tile);
+        /** CPU 请求在上游接受响应前继续保留的 SRAM 额度。 */
+        std::set<PacketPtr> sramPackets;
+        /** CPU 是否需要收到一次 SRAM 请求 retry。 */
+        bool retrySram = false;
+        /** 在 SRAM 和转发响应均有额度时通知上游重试。 */
+        void retry();
 
       protected:
         /** 时序访问：交给管理 Tile，稍后经队列返回响应 */
@@ -141,7 +179,21 @@ class Gw100MgmtTile : public ClockedObject, public MlTargetIf
         /** 所属的管理 Tile */
         Gw100MgmtTile &tile;
         /** 待发出的响应 */
-        RespPacketQueue queue;
+        /** 在实际返回接受点释放管理 SRAM 入口额度。 */
+        class Queue : public RespPacketQueue
+        {
+          public:
+            /** 绑定所属 Tile 和 CPU 响应端口。 */
+            Queue(Gw100MgmtTile &tile, PioPort &owner)
+                : RespPacketQueue(tile, owner), owner(owner) {}
+            /** 实际发送成功后释放对应的 CPU SRAM 事务槽。 */
+            bool sendTiming(PacketPtr packet) override;
+          private:
+            /** 维护入口额度的 CPU 端口。 */
+            PioPort &owner;
+        };
+        /** 有界 SRAM 请求使用的管理响应队列。 */
+        Queue queue;
     };
 
     /** PLIC 源编号（spec-mgmt-tile §7.2） */
@@ -225,10 +277,14 @@ class Gw100MgmtTile : public ClockedObject, public MlTargetIf
     /** ML 请求处理完毕的时刻到达：调用保存的 respond */
     void mlFinish();
 
-    /** 独立启动 ROM。 */
+    /** 启动 ROM 与独立共享 SRAM 实例。 */
     MgmtRom rom;
-    /** 管理 SRAM 存储和参考调度。 */
-    MgmtSram sram;
+    /** 由本管理 Tile 的 CPU 与 ML 复用的 SRAM 实例。 */
+    Gw100Sram *sram;
+    /** 分别绑定共享组件来源 0、1 的 CPU 和 ML 端口。 */
+    SramPort sramCpu, sramMl;
+    /** 管理 Tile 复位时递增的 ML 对象代次。 */
+    uint64_t mlGeneration = 0;
     /** doorbell 信箱与事件寄存器 */
     MgmtMailbox mailbox;
     /** 本地寄存器 */
@@ -254,6 +310,8 @@ class Gw100MgmtTile : public ClockedObject, public MlTargetIf
      * 应答，使 CPU 收到 CLK_SEL 的写应答时已按新频率计时
      */
     EventFunctionWrapper clkSwitchEvent;
+    /** 无毛刺切换前停止 SRAM 的旧时钟有效边沿。 */
+    EventFunctionWrapper clkPauseEvent;
     /** 看门狗 */
     MgmtWdt wdt;
     /** mtime 一个计数对应的 tick 数（dev.timestamp_hz） */

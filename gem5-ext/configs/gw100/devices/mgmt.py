@@ -19,6 +19,7 @@ from m5.objects import (
     Clint,
     Gw100MgmtInterrupts,
     Gw100MgmtTile,
+    Gw100Sram,
     NoncoherentXBar,
     Plic,
     RiscvBareMetal,
@@ -30,6 +31,7 @@ from m5.objects import (
     SrcClockDomain,
     VoltageDomain,
 )
+from ..generated import sram_defs as sramdefs
 
 # 复位后 clk_mgmt 选择 XTAL（spec-clock-reset-power §3.4）
 XTAL_FREQ = "25MHz"
@@ -80,9 +82,27 @@ def make_mgmt_system(link, rom_elf: str) -> RiscvSystem:
     s.clint.int_pin = s.rtc.int_pin
     s.clint.pio = s.membus.mem_side_ports
 
-    s.tile = Gw100MgmtTile(
-        mgmt_link=link, plic=s.plic, cpu=s.cpu, pll_perf_level=0
+    s.sram = Gw100Sram(
+        base=0x1000_0000,
+        size=f"{sramdefs.MANAGEMENT_SIZE}B",
+        banks=sramdefs.MANAGEMENT_BANKS,
+        word_bytes=sramdefs.MANAGEMENT_WORD_BYTES,
+        sources=sramdefs.MANAGEMENT_SOURCES,
+        slots=sramdefs.MANAGEMENT_SLOTS,
+        read_cycles=sramdefs.MANAGEMENT_READ_CYCLES,
+        write_cycles=sramdefs.MANAGEMENT_WRITE_CYCLES,
+        interval_cycles=sramdefs.MANAGEMENT_INTERVAL_CYCLES,
+        mask_bytes=sramdefs.MANAGEMENT_MASK_BYTES,
+        interleaved=bool(sramdefs.MANAGEMENT_INTERLEAVED),
+        split_ports=bool(sramdefs.MANAGEMENT_SPLIT_PORTS),
+        ecc=bool(sramdefs.MANAGEMENT_ECC),
     )
+    s.tile = Gw100MgmtTile(
+        mgmt_link=link, plic=s.plic, cpu=s.cpu, pll_perf_level=0,
+        sram=s.sram,
+    )
+    s.tile.sram_cpu = s.sram.ports
+    s.tile.sram_ml = s.sram.ports
     s.tile.pio = s.membus.mem_side_ports
     s.tile.timestamp_reset = s.clint.reset
 
