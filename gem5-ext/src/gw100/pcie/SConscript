@@ -11,3 +11,4 @@ Source('pcie_factory.cc')
 
 DebugFlag('Gw100Pcie', 'GW100 PCIe endpoint 的寄存器与配置空间访问')
 Source('gw100_pci_link.cc')
+Source('gw100_pci_checkpoint.cc')
