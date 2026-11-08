@@ -205,3 +205,36 @@ HdiCtrl::fwWrite(Addr off, uint32_t v)
 
 } // namespace gw100
 } // namespace gem5
+
+namespace gem5::gw100
+{
+
+/** 保存HDI 影子寄存器、门控和有界 doorbell 槽。 */
+void
+HdiCtrl::serialize(CheckpointOut &cp) const
+{
+    SERIALIZE_SCALAR(wrMap);
+    SERIALIZE_SCALAR(busyPend);
+    SERIALIZE_SCALAR(busyFw);
+    SERIALIZE_SCALAR(gated);
+    SERIALIZE_CONTAINER(reg);
+    SERIALIZE_CONTAINER(slotVal);
+    SERIALIZE_CONTAINER(slotValid);
+    SERIALIZE_CONTAINER(order);
+}
+
+/** 恢复HDI 影子寄存器、门控和有界 doorbell 槽。 */
+void
+HdiCtrl::unserialize(CheckpointIn &cp)
+{
+    UNSERIALIZE_SCALAR(wrMap);
+    UNSERIALIZE_SCALAR(busyPend);
+    UNSERIALIZE_SCALAR(busyFw);
+    UNSERIALIZE_SCALAR(gated);
+    arrayParamIn(cp, "reg", reg.data(), reg.size());
+    arrayParamIn(cp, "slotVal", slotVal.data(), slotVal.size());
+    arrayParamIn(cp, "slotValid", slotValid.data(), slotValid.size());
+    UNSERIALIZE_CONTAINER(order);
+}
+
+} // namespace gem5::gw100

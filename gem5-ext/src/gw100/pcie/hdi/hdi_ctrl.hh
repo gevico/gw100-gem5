@@ -21,6 +21,7 @@
 #include <functional>
 
 #include "base/types.hh"
+#include "sim/serialize.hh"
 
 namespace gem5
 {
@@ -28,7 +29,7 @@ namespace gw100
 {
 
 /** HDI 控制器在 HIF 中的状态 */
-class HdiCtrl
+class HdiCtrl : public Serializable
 {
   public:
     /** doorbell 页数：管理队列 1 页加 16 个上下文 */
@@ -77,6 +78,10 @@ class HdiCtrl
 
     /** 复位：寄存器、HDI_WR_MAP、BUSY、doorbell 待发槽恢复复位值 */
     void reset();
+    /** 保存 HDI 影子寄存器、门控和有界 doorbell 槽。 */
+    void serialize(CheckpointOut &cp) const override;
+    /** 恢复 HDI 影子寄存器、门控和有界 doorbell 槽。 */
+    void unserialize(CheckpointIn &cp) override;
 
     /** 按顺序发出待发的 doorbell，直到 sendDb 不再接受 */
     void trySendDoorbells();

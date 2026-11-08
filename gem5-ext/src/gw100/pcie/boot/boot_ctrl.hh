@@ -34,7 +34,7 @@ namespace gw100
 {
 
 /** HIF 的启动与 FLR 控制 */
-class BootCtrl
+class BootCtrl : public Serializable
 {
   public:
     /** ERROR 编码：启动通路故障（spec-pcie §6.4） */
@@ -125,7 +125,9 @@ class BootCtrl
     /** 启动写入、启动命令和 FLR 握手已完成。 */
     bool quiescent() const;
     /** 保存稳定启动状态、窗口和错误锁存。 */
+    void serialize(CheckpointOut &cp) const override;
     /** 恢复稳定启动状态、窗口和错误锁存。 */
+    void unserialize(CheckpointIn &cp) override;
 
     /**
      * 置位 DEV_FATAL：硬件故障、固件经 DEV_CTRL_FW 请求，或看门狗第二级

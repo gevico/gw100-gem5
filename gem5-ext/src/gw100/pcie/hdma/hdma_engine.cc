@@ -1437,7 +1437,135 @@ HdmaEngine::quiescent() const
 }
 
 /** 保存已排空的寄存器、仲裁、tag LRU 与计数。 */
+void
+HdmaEngine::serialize(CheckpointOut &cp) const
+{
+    fatal_if(!quiescent(), "HDMA checkpoint requires completed work");
+    SERIALIZE_SCALAR(busMaster);
+    SERIALIZE_SCALAR(held);
+    SERIALIZE_SCALAR(gen);
+    SERIALIZE_SCALAR(nextSerial);
+    SERIALIZE_SCALAR(globalEn);
+    SERIALIZE_SCALAR(rrRead);
+    SERIALIZE_SCALAR(rrWrite);
+    SERIALIZE_SCALAR(rrDevRead);
+    SERIALIZE_SCALAR(rdFreeAt);
+    SERIALIZE_SCALAR(wrFreeAt);
+    SERIALIZE_SCALAR(devWrFreeAt);
+    SERIALIZE_SCALAR(devRdFreeAt);
+    SERIALIZE_SCALAR(bytesH2d);
+    SERIALIZE_SCALAR(bytesD2h);
+    SERIALIZE_SCALAR(stallAt);
+    SERIALIZE_CONTAINER(h2dHi);
+    SERIALIZE_CONTAINER(d2hHi);
+    SERIALIZE_CONTAINER(stall);
+    SERIALIZE_CONTAINER(stalled);
+    paramOut(cp, "pcie.mps", pcie.mps);
+    paramOut(cp, "pcie.mrrs", pcie.mrrs);
+    paramOut(cp, "pcie.extTag", pcie.extTag);
+    paramOut(cp, "pcie.relaxed", pcie.relaxed);
+    paramOut(cp, "pcie.noSnoop", pcie.noSnoop);
+    paramOut(cp, "pcie.cplTimeout", pcie.cplTimeout);
+    for (unsigned index = 0; index < tags.size(); ++index) {
+        paramOut(cp, "tagUse" + std::to_string(index), tags[index].use);
+        paramOut(cp, "tagLastUsed" + std::to_string(index),
+                 tags[index].lastUsed);
+    }
+    for (unsigned index = 0; index < chans.size(); ++index) {
+        ScopedCheckpointSection section(cp, "channel" + std::to_string(index));
+        const auto &channel = chans[index];
+        paramOut(cp, "ctrl", channel.ctrl);
+        paramOut(cp, "ringBase", channel.ringBase);
+        paramOut(cp, "log2", channel.log2);
+        paramOut(cp, "tail", channel.tail);
+        paramOut(cp, "head", channel.head);
+        paramOut(cp, "fetchIdx", channel.fetchIdx);
+        paramOut(cp, "errReg", channel.errReg);
+        paramOut(cp, "errAddr", channel.errAddr);
+        paramOut(cp, "descDone", channel.descDone);
+        paramOut(cp, "bytes", channel.bytes);
+        paramOut(cp, "bytesHiFw", channel.bytesHiFw);
+        paramOut(cp, "bytesHiMirror", channel.bytesHiMirror);
+        paramOut(cp, "stopping", channel.stopping);
+        paramOut(cp, "wbFailed", channel.wbFailed);
+        paramOut(cp, "state", unsigned(channel.state));
+        arrayParamOut(cp, "credit", channel.credit);
+        paramOut(cp, "pending.valid", channel.pending.valid);
+        paramOut(cp, "pending.code", unsigned(channel.pending.code));
+        paramOut(cp, "pending.phase", unsigned(channel.pending.phase));
+        paramOut(cp, "pending.idx", channel.pending.idx);
+        paramOut(cp, "pending.addr", channel.pending.addr);
+    }
+}
 
 /** 恢复已排空的寄存器、仲裁、tag LRU 与计数。 */
+void
+HdmaEngine::unserialize(CheckpointIn &cp)
+{
+    clearState();
+    UNSERIALIZE_SCALAR(busMaster);
+    UNSERIALIZE_SCALAR(held);
+    UNSERIALIZE_SCALAR(gen);
+    UNSERIALIZE_SCALAR(nextSerial);
+    UNSERIALIZE_SCALAR(globalEn);
+    UNSERIALIZE_SCALAR(rrRead);
+    UNSERIALIZE_SCALAR(rrWrite);
+    UNSERIALIZE_SCALAR(rrDevRead);
+    UNSERIALIZE_SCALAR(rdFreeAt);
+    UNSERIALIZE_SCALAR(wrFreeAt);
+    UNSERIALIZE_SCALAR(devWrFreeAt);
+    UNSERIALIZE_SCALAR(devRdFreeAt);
+    UNSERIALIZE_SCALAR(bytesH2d);
+    UNSERIALIZE_SCALAR(bytesD2h);
+    UNSERIALIZE_SCALAR(stallAt);
+    arrayParamIn(cp, "h2dHi", h2dHi.data(), h2dHi.size());
+    arrayParamIn(cp, "d2hHi", d2hHi.data(), d2hHi.size());
+    arrayParamIn(cp, "stall", stall.data(), stall.size());
+    arrayParamIn(cp, "stalled", stalled.data(), stalled.size());
+    paramIn(cp, "pcie.mps", pcie.mps);
+    paramIn(cp, "pcie.mrrs", pcie.mrrs);
+    paramIn(cp, "pcie.extTag", pcie.extTag);
+    paramIn(cp, "pcie.relaxed", pcie.relaxed);
+    paramIn(cp, "pcie.noSnoop", pcie.noSnoop);
+    paramIn(cp, "pcie.cplTimeout", pcie.cplTimeout);
+    for (unsigned index = 0; index < chans.size(); ++index) {
+        ScopedCheckpointSection section(cp, "channel" + std::to_string(index));
+        auto &channel = chans[index];
+        paramIn(cp, "ctrl", channel.ctrl);
+        paramIn(cp, "ringBase", channel.ringBase);
+        paramIn(cp, "log2", channel.log2);
+        paramIn(cp, "tail", channel.tail);
+        paramIn(cp, "head", channel.head);
+        paramIn(cp, "fetchIdx", channel.fetchIdx);
+        paramIn(cp, "errReg", channel.errReg);
+        paramIn(cp, "errAddr", channel.errAddr);
+        paramIn(cp, "descDone", channel.descDone);
+        paramIn(cp, "bytes", channel.bytes);
+        paramIn(cp, "bytesHiFw", channel.bytesHiFw);
+        paramIn(cp, "bytesHiMirror", channel.bytesHiMirror);
+        paramIn(cp, "stopping", channel.stopping);
+        paramIn(cp, "wbFailed", channel.wbFailed);
+        unsigned state, code, phase;
+        paramIn(cp, "state", state);
+        channel.state = State(state);
+        arrayParamIn(cp, "credit", channel.credit.data(),
+                     channel.credit.size());
+        paramIn(cp, "pending.valid", channel.pending.valid);
+        paramIn(cp, "pending.code", code);
+        paramIn(cp, "pending.phase", phase);
+        channel.pending.code = HdmaErr(code);
+        channel.pending.phase = Phase(phase);
+        paramIn(cp, "pending.idx", channel.pending.idx);
+        paramIn(cp, "pending.addr", channel.pending.addr);
+    }
+    for (unsigned index = 0; index < tags.size(); ++index) {
+        paramIn(cp, "tagUse" + std::to_string(index), tags[index].use);
+        paramIn(cp, "tagLastUsed" + std::to_string(index),
+                tags[index].lastUsed);
+    }
+    tagsInUse = tagsQuarantined = 0;
+    nextTagEvent = MaxTick;
+    wakePending = MaxTick;
+}
 
 } // namespace gem5::gw100

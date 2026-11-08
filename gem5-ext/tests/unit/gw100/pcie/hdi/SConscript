@@ -1,4 +1,5 @@
 # HdiCtrl（src/gw100/pcie/hdi/）的单元测试
 Import('*')
 
-GTest('hdi_ctrl.test', 'hdi_ctrl.test.cc', with_tag('gw100 pcie hdi'))
+GTest('hdi_ctrl.test', 'hdi_ctrl.test.cc', with_tag('gw100 pcie hdi'),
+      with_tag('gem5 serialize'))
