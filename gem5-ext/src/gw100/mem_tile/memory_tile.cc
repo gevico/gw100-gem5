@@ -312,7 +312,8 @@ Gw100MemoryTile::receive(PacketPtr pkt)
     txn->channel = ch;
     txn->epoch = control.epoch;
     txn->burst = pkt->getAddr() & ~(md::BURST_BYTES - 1);
-    txn->rmw = pkt->isWrite() && (pkt->getSize() != md::BURST_BYTES ||
+    txn->rmw = pkt->isWrite() && (pkt->isMaskedWrite() ||
+                                  pkt->getSize() != md::BURST_BYTES ||
                                   pkt->getAddr() != txn->burst);
     txn->item = std::make_shared<MemoryLink::Item>();
     txn->item->packet = pkt;
@@ -422,8 +423,7 @@ Gw100MemoryTile::mediaResponse(PacketPtr pkt)
     if (ok && st->rmwRead) {
         std::array<uint8_t, md::BURST_BYTES> data;
         std::memcpy(data.data(), pkt->getConstPtr<uint8_t>(), data.size());
-        std::memcpy(data.data() + orig->getAddr() - txn->burst,
-                    orig->getConstPtr<uint8_t>(), orig->getSize());
+        orig->writeData(data.data() + orig->getAddr() - txn->burst);
         issue(txn, false, data.data());
     } else {
         if (ok && orig->isRead()) {

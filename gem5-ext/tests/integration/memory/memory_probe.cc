@@ -178,7 +178,7 @@ Gw100MemoryProbe::process()
     if (kind == 5 && outstanding) {
         return;
     }
-    bool write = kind == 1 || kind == 4 || kind == 13 || kind == 16;
+    bool write = kind == 1 || kind == 4 || kind == 13 || kind == 16 || kind == 17;
     auto req = std::make_shared<Request>(address, size, 0, requestor);
     auto *pkt = new Packet(req, write ? MemCmd::WriteReq : MemCmd::ReadReq);
     if (kind == 16) {
@@ -189,6 +189,12 @@ Gw100MemoryProbe::process()
         for (unsigned i = 0; i < size; ++i) {
             pkt->getPtr<uint8_t>()[i] = value >> ((i % 8) * 8);
         }
+    }
+    if (kind == 17) {
+        std::vector<bool> mask(size);
+        for (unsigned i = 0; i < size; ++i)
+            mask[i] = (i % 2) == 0;
+        req->setByteEnable(mask);
     }
     auto *st = new State{};
     st->kind = kind;
@@ -227,10 +233,11 @@ Gw100MemoryProbe::response(PacketPtr pkt)
              st->address, pkt->isError());
     Tick delay = 0;
     if (!pkt->isError()) {
-        if ((st->kind == 1 || st->kind == 13) &&
+        if ((st->kind == 1 || st->kind == 13 || st->kind == 17) &&
             st->generation == generation) {
             for (unsigned i = 0; i < pkt->getSize(); ++i) {
-                expected[st->address + i] = st->value >> ((i % 8) * 8);
+                if (st->kind != 17 || (i % 2) == 0)
+                    expected[st->address + i] = st->value >> ((i % 8) * 8);
             }
         } else if (st->kind == 2) {
             for (unsigned i = 0; i < pkt->getSize(); ++i) {
