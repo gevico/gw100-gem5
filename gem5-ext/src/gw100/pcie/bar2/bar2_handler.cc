@@ -56,6 +56,14 @@ bool
 Bar2Handler::accessAsync(BarAccess a, std::function<void(Tick)> done,
                          std::function<bool()> valid)
 {
+    if (boot.windowOpen() && a.write) {
+        if (!boot.canWindowWrite()) {
+            return false;
+        }
+        boot.windowWrite(a.off, a.size, a.data,
+                         [this, done] { done(latency); });
+        return true;
+    }
     if (boot.windowOpen() || !boot.debugWin ||
         table.translate(a.off, a.size, a.write).fault !=
             WindowTable::Fault::None) {
