@@ -128,7 +128,17 @@ def main():
     sources.extend((ROOT / "firmware/common").glob("*.[ch]"))
     for folder in ("devices", "boards", "hosts"):
         sources.extend((ROOT / "gem5-ext/configs/gw100" / folder).glob("*.py"))
-    sources.extend((ROOT / "gem5-ext/patches").glob("*.patch"))
+    native_paths = subprocess.check_output(
+        [
+            "git", "-C", str(ROOT), "ls-files", "--cached", "--others",
+            "--exclude-standard", "-z", "--", "gem5",
+        ]
+    )
+    sources.extend(
+        ROOT / path.decode()
+        for path in native_paths.split(b"\0")
+        if path and (ROOT / path.decode()).is_file()
+    )
     sources.extend(
         ROOT / name
         for name in (
