@@ -1,0 +1,6 @@
+{
+  "repository": "https://github.com/gem5/gem5.git",
+  "revision": "f5c5a6e390f55dd5984977815bf9d0bd05da6945",
+  "branch": "stable",
+  "local_patch_archive": "../gem5-ext/patches/"
+}
