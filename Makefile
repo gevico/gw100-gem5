@@ -107,9 +107,9 @@ AARCH64_GDB ?= $(shell command -v aarch64-linux-gnu-gdb 2>/dev/null || command -
 .DEFAULT_GOAL := help
 .PHONY: all run test gem-build memory-spec-check FORCE
 .PHONY: memory-test
-.PHONY: sram-spec-check
-.PHONY: noc-spec-check noc-g0-test
 .PHONY: pcie-spec-check pcie-source-check pcie-test
+.PHONY: noc-spec-check noc-g0-test
+.PHONY: sram-spec-check sram-test
 .PHONY: baremetal-build firmware-build vscode-config commit-check
 .PHONY: clean check format help
 
@@ -126,9 +126,29 @@ memory-test: gem-build baremetal-build
 
 gem-build: memory-spec-check pcie-spec-check noc-spec-check sram-spec-check $(GEM5_BIN)
 
+sram-spec-check:
+	$(PYTHON) tools/sram_spec.py --check
+
+sram-test: gem-build baremetal-build firmware-build
+	$(PYTHON) tools/sram_spec_test.py
+	$(PYTHON) tools/gtest.py --jobs $(JOBS)
+	$(PYTHON) tools/sram_verify.py
+	$(PYTHON) tools/sram_system_verify.py
+	$(BMTEST) --hosts "timing atomic o3"
+
 memory-spec-check:
 	$(PYTHON) tools/memory_spec.py --check
 
+noc-spec-check:
+	$(PYTHON) tools/noc_spec.py --check
+
+noc-g0-test: memory-spec-check pcie-spec-check noc-spec-check
+	$(PYTHON) tools/memory_spec_test.py
+	$(PYTHON) tools/pcie_spec_test.py
+	$(PYTHON) tools/noc_spec_test.py
+	$(PYTHON) tools/noc_spec.py --check --gate G0 --report build/noc-g0/report.json
+
+# 档案一致性检查用于现有构建，来源关口决定数字链路的实施准入。
 pcie-spec-check:
 	$(PYTHON) tools/pcie_spec.py --check
 
@@ -286,6 +306,11 @@ help:
 	@echo "                   make -B gem-build 强制构建（改了构建选项时用）"
 	@echo "  baremetal-build  构建全部裸机测试（调用 baremetal/Makefile）"
 	@echo "  memory-test      验证八通道组件、checkpoint、独立时序和固件故障矩阵"
+	@echo "  pcie-spec-check  检查 PCIe 共享定义与来源矩阵是否一致"
+	@echo "  noc-spec-check   检查 NoC 共享定义、路由和预算"
+	@echo "  noc-g0-test      运行 NoC G0 与内存、PCIe 共享定义检查"
+	@echo "  pcie-source-check 验证 PCIe 数字链路 G0 来源关口"
+	@echo "  pcie-test       运行 PCIe 组件、性能、恢复和软件完整矩阵"
 	@echo "  firmware-build   构建管理 Tile 的启动 ROM（调用 firmware/Makefile，需要 riscv64-elf-gcc）"
 	@echo "  vscode-config    生成 .clangd、联合调试配置，关闭 cpptools IntelliSense（TEST= 指定 test）"
 	@echo "  commit-check     检查暂存文件头、最近提交信息和 DCO"
@@ -310,15 +335,3 @@ help:
 	@echo "  HOSTS=$(HOSTS)   每个 test 在这些 host 预设下各跑一遍"
 	@echo "  TEST_JOBS=$(TEST_JOBS)  TEST_TIMEOUT=$(TEST_TIMEOUT) 秒  TEST_MAX_TICKS=$(TEST_MAX_TICKS)"
 	@echo "  TEST_OUTDIR=$(TEST_OUTDIR)   每次运行的输出在 <TEST_OUTDIR>/<device>/<host>/<test>/"
-
-noc-spec-check:
-	$(PYTHON) tools/noc_spec.py --check
-
-noc-g0-test: memory-spec-check pcie-spec-check noc-spec-check
-	$(PYTHON) tools/memory_spec_test.py
-	$(PYTHON) tools/pcie_spec_test.py
-	$(PYTHON) tools/noc_spec_test.py
-	$(PYTHON) tools/noc_spec.py --check --gate G0 --report build/noc-g0/report.json
-
-sram-spec-check:
-	$(PYTHON) tools/sram_spec.py --check
