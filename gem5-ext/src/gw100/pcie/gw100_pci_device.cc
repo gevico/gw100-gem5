@@ -54,6 +54,33 @@ Gw100PciDevice::wakePio(Tick when)
 bool
 Gw100PciDevice::timingPio(PacketPtr pkt)
 {
+    if (pcieTransport) {
+        if (linkDraining || hostRequests >= pciedefs::HOST_PACKET_SLOTS) {
+            pioRequestRetry = true;
+            return false;
+        }
+        bool config_access =
+            upstreamInterface.configRange().contains(pkt->getAddr());
+        Addr address = config_access
+                           ? pkt->getAddr() & 4095
+                           : pkt->getAddr() - upstreamInterface.memAddr(0);
+        pcie::TlpKind kind =
+            config_access ? (pkt->isWrite() ? pcie::TlpKind::ConfigWrite
+                                            : pcie::TlpKind::ConfigRead)
+                          : (pkt->isWrite() ? pcie::TlpKind::MemoryWrite
+                                            : pcie::TlpKind::MemoryRead);
+        auto tlp = pcie::Tlp::request(
+            kind, address, pkt->getSize(), 0, 0,
+            pkt->isWrite() ? pkt->getConstPtr<uint8_t>() : nullptr);
+        tlp.destination = *parts->hostDma.requesterId;
+        Tick ready = curTick() + pkt->headerDelay + pkt->payloadDelay;
+        pkt->headerDelay = pkt->payloadDelay = 0;
+        hostIngress.push_back(
+            {pkt, tlp, ready, ready + pciedefs::RC_LINK_WAIT_PS});
+        ++hostRequests;
+        wakeAt(ready);
+        return true;
+    }
     if (pendingPio.size() >= 16) {
         pioRequestRetry = true;
         return false;
@@ -73,6 +100,10 @@ void
 Gw100PciDevice::timingPioRetry()
 {
     pioResponseBlocked = false;
+    if (pcieTransport) {
+        wakeAt(curTick());
+        return;
+    }
     wakePio(curTick() + 1);
 }
 
@@ -121,7 +152,10 @@ Gw100PciDevice::processPio()
         bool is_bar = getBAR(pkt->getAddr(), bar, off);
         if (is_bar && bar == 2 && !parts->shim.active()) {
             BarAccess a{off, unsigned(pkt->getSize()), pkt->isWrite(),
-                        pkt->getPtr<uint8_t>()};
+                        const_cast<uint8_t *>(pkt->getConstPtr<uint8_t>())};
+            if (pkt->isMaskedWrite()) {
+                a.byteEnable = &pkt->req->getByteEnable();
+            }
             auto done = [this, p](Tick latency) {
                 p->packet->makeResponse();
                 p->done = true;
@@ -155,6 +189,12 @@ Gw100PciDevice::processPio()
             wakePio(p->ready);
             break;
         }
+        if (p->linkDone) {
+            auto done = std::move(p->linkDone);
+            pendingPio.pop_front();
+            done(p->packet);
+            continue;
+        }
         if (!sendTimingPioResponse(p->packet)) {
             pioResponseBlocked = true;
             break;
@@ -179,7 +219,10 @@ Gw100PciDevice::Gw100PciDevice(const Params &p)
       funcResetPin(name() + ".func_reset"),
       asyncMemory(p.async_memory),
       memoryIngresses(p.memory_ingresses),
-      pioEvent([this] { processPio(); }, name() + ".asyncPio")
+      pioEvent([this] { processPio(); }, name() + ".asyncPio"),
+      linkStats(this),
+      linkEvent([this] { processLink(); }, name() + ".pcieLink", false,
+                EventBase::CPU_Tick_Pri + 1)
 {
     // TLP 携带的 Requester ID；gem5 的配置访问不带总线号，由参数给出
     parts->hostDma.requesterId = (uint32_t(p.pci_bus) << 8) |
@@ -194,6 +237,10 @@ Gw100PciDevice::Gw100PciDevice(const Params &p)
         parts->hdi.setGate(!d0);
     };
     parts->intCtrl.onIntx = [this](bool level) {
+        if (pcieTransport) {
+            pcieTransport->setIntx(level);
+            return;
+        }
         if (level) {
             intrPost();
         } else {
@@ -203,12 +250,106 @@ Gw100PciDevice::Gw100PciDevice(const Params &p)
     funcResetPin.onChange([this](const bool &v) { funcReset(v); });
     parts->bar2Devmem.onReady = [this] { wakePio(curTick() + 1); };
     resetConfig = config();
+    if (p.precise_link) {
+        pcie::LinkConfig config;
+        config.generation = p.link_speed;
+        config.width = p.link_width;
+        config.phyFeedbackPs = p.pcie_phy_feedback;
+        config.phyGeneration = p.pcie_phy_generation;
+        config.phyLaneMask = p.pcie_phy_lane_mask;
+        config.equalizationPs = p.pcie_phy_equalization;
+        if (!p.pcie_training_fail.empty()) {
+            bool found = false;
+            for (unsigned state = 1;
+                 state <= unsigned(pcie::LinkState::HotReset); ++state) {
+                if (p.pcie_training_fail ==
+                    pcie::linkStateName(pcie::LinkState(state))) {
+                    config.failTraining = pcie::LinkState(state);
+                    found = true;
+                    break;
+                }
+            }
+            fatal_if(!found, "%s: invalid PCIe failure state", name());
+        }
+        pcie::LinkServices services;
+        services.execute = [this](unsigned side, const pcie::Tlp &tlp,
+                                  pcie::TargetDone done) {
+            return executeLink(side, tlp, std::move(done));
+        };
+        services.intx = [this](bool asserted) {
+            if (asserted) {
+                intrPost();
+            } else {
+                intrClear();
+            }
+        };
+        services.ready = [this] {
+            if (parts->hostDma.onTxFree) {
+                parts->hostDma.onTxFree();
+            }
+            wakeAt(curTick());
+        };
+        services.stateChanged = [this] {
+            updateLinkStatus();
+            if (pcieTransport &&
+                pcieTransport->model().state() == pcie::LinkState::Down) {
+                updateHdmaPcie();
+            }
+        };
+        services.error = [this](unsigned side, pcie::LinkError error,
+                                const std::vector<uint8_t> &header) {
+            linkError(side, error, header);
+        };
+        services.observe = [this](const pcie::LinkTrace &trace) {
+            traceLink(trace);
+        };
+        services.drained = [this] {
+            if (linkDraining && !hostRequests && pendingPio.empty() &&
+                drainState() == DrainState::Draining) {
+                signalDrainDone();
+            }
+        };
+        pcieTransport = std::make_unique<pcie::LinkTransport>(
+            *this, config, *parts->hostDma.requesterId, p.pcie_cpl_timeout,
+            p.pcie_stale_tag_quarantine, p.pcie_rcb, p.pcie_completion_payload,
+            services);
+        parts->hostDma.transport = pcieTransport.get();
+        if (!p.pcie_fault.empty()) {
+            const char *names[] = {"tlp_crc",  "dllp_crc",    "drop_tlp",
+                                   "drop_ack", "drop_update", "framing",
+                                   "duplicate"};
+            auto fault =
+                std::find(std::begin(names), std::end(names), p.pcie_fault);
+            fatal_if(fault == std::end(names) || p.pcie_fault_side > 1,
+                     "%s: invalid PCIe fault", name());
+            pcieTransport->model().inject(
+                p.pcie_fault_side, pcie::LinkFault(fault - std::begin(names)),
+                p.pcie_fault_count);
+        }
+        if (!p.pcie_trace_path.empty()) {
+            linkTrace.open(p.pcie_trace_path);
+            fatal_if(!linkTrace, "%s: cannot open PCIe trace", name());
+        }
+    }
 }
 
-/** 冷复位或热复位时恢复配置头部并重建时间戳起点 */
+/** 按 PERST=2、Hot Reset=4、Link Down=8 重建配置和链路。 */
 void
-Gw100PciDevice::resetLink(Tick origin)
+Gw100PciDevice::resetLink(Tick origin, unsigned cause)
 {
+    if (pcieTransport) {
+        while (!hostIngress.empty()) {
+            finishHost(hostIngress.front().packet, HostStatus::Ca, nullptr);
+            hostIngress.pop_front();
+        }
+        if (cause == 4) {
+            pcieTransport->model().hotReset();
+        } else if (cause == 8) {
+            pcieTransport->model().linkDown();
+        } else {
+            pcieTransport->model().setPerst(true);
+        }
+    }
     config() = resetConfig;
     for (unsigned i = 0; i < BARs.size(); ++i) {
         BARs[i]->write(upstreamInterface, config().baseAddr[i]);
@@ -218,7 +359,12 @@ Gw100PciDevice::resetLink(Tick origin)
     lastBme = false;
     updateBusMaster();
     updateMsix();
-    updateHdmaPcie();
+    if (!pcieTransport || cause != 4) {
+        updateHdmaPcie();
+    }
+    if (pcieTransport && cause != 4 && cause != 8) {
+        pcieTransport->model().setPerst(false);
+    }
     pioPort.sendRangeChange();
 }
 
@@ -231,7 +377,6 @@ Gw100PciDevice::init()
     PioDevice::init();
     fatal_if(!parts->hostDma.isConnected(), "%s: dma 端口没有连接", name());
     parts->hostDma.toPhys = [this](Addr a) { return pciToDma(a); };
-    updateHdmaPcie();
     if (!link)
         return;
     ml = &link->attach(Gw100MgmtLink::Side::Hif, *this, parts->hif);
@@ -264,6 +409,13 @@ void
 Gw100PciDevice::startup()
 {
     PciEndpoint::startup();
+    if (pcieTransport &&
+        pcieTransport->model().state() == pcie::LinkState::Down) {
+        pcieTransport->model().setAspm(0, params().pcie_rc_aspm);
+        pcieTransport->model().start();
+    }
+    // loadState 完成后安排事件，避免构造期的 tick 0 留入恢复事件队列。
+    updateHdmaPcie();
     if (link)
         link->release(Gw100MgmtLink::Side::Hif);
 }
@@ -382,7 +534,10 @@ Gw100PciDevice::accessBar(PacketPtr pkt, bool is_write)
     BarHandler *h = parts->bars[bar];
     panic_if(!h, "%s: BAR%d 没有处理者", name(), bar);
     BarAccess a{off, unsigned(pkt->getSize()), is_write,
-                pkt->getPtr<uint8_t>()};
+                const_cast<uint8_t *>(pkt->getConstPtr<uint8_t>())};
+    if (pkt->isMaskedWrite()) {
+        a.byteEnable = &pkt->req->getByteEnable();
+    }
     const Tick lat =
         parts->shim.active() ? parts->shim.access(bar, a) : h->access(a);
     pkt->makeAtomicResponse();
@@ -407,6 +562,9 @@ Gw100PciDevice::writeDevice(PacketPtr pkt)
 Tick
 Gw100PciDevice::readConfig(PacketPtr pkt)
 {
+    if (pcieTransport) {
+        updateLinkStatus();
+    }
     const Addr off = pkt->getAddr() & (CfgSpaceSize - 1);
     if (off < ConfigSpace::OwnBase)
         return PciDevice::readConfig(pkt);
@@ -432,6 +590,20 @@ Tick
 Gw100PciDevice::writeConfig(PacketPtr pkt)
 {
     const Addr off = pkt->getAddr() & (CfgSpaceSize - 1);
+    if (pkt->isMaskedWrite() && off < ConfigSpace::OwnBase) {
+        // 原生 PCI 头部使用 DWORD 写入口，先按硬件 strobe 合并有效字节。
+        uint8_t data[4];
+        std::memcpy(data, reinterpret_cast<const uint8_t *>(&config()) + off,
+                    sizeof(data));
+        pkt->writeData(data);
+        auto request = std::make_shared<Request>(pkt->getAddr(), 4, 0,
+                                                 parts->devmem.id());
+        Packet merged(request, MemCmd::WriteReq);
+        merged.dataStatic(data);
+        Tick latency = writeConfig(&merged);
+        pkt->makeResponse();
+        return latency;
+    }
     if (off == PCI_COMMAND && pkt->getSize() == 2) {
         // gem5 的 PciDevice 对 16 位的 Command 写只取低 8 位，Interrupt
         // Disable（第 10 位）会丢失；按 32 位写转交（该路径只更新
@@ -457,11 +629,16 @@ Gw100PciDevice::writeConfig(PacketPtr pkt)
       default: panic("%s: 非法的配置空间访问宽度 %u", name(), size);
     }
 
-    const CfgEvent ev = parts->config.write(off, size, val);
+    const CfgEvent ev =
+        parts->config.writeMasked(off, size, val, pkt->req->getByteEnable());
     pkt->makeAtomicResponse();
     if (ev == CfgEvent::Flr) {
         functionReset("FLR");
     } else if (ev == CfgEvent::D0ToD3hot) {
+        if (pcieTransport) {
+            pcieTransport->setActive(false);
+            pcieTransport->model().setD3hot(true);
+        }
         invalidateMemory();
         parts->intCtrl.setFlrGate(true);
         parts->hdi.setGate(true);
@@ -474,6 +651,9 @@ Gw100PciDevice::writeConfig(PacketPtr pkt)
                                           ~0x100u);
         parts->bootCtrl.hostEvent(1u << 4);
     } else if (ev == CfgEvent::D3hotToD0) {
+        if (pcieTransport) {
+            pcieTransport->model().setD3hot(false);
+        }
         functionReset("D3hot→D0"); // No_Soft_Reset = 0
         parts->bootCtrl.hostEvent(1u << 4);
     }
@@ -511,7 +691,11 @@ Gw100PciDevice::functionReset(const char *why)
 {
     invalidateMemory();
     DPRINTF(Gw100Pcie, "%s：复位配置空间、BAR 和寄存器\n", why);
-    parts->config.reset();
+    if (pcieTransport) {
+        parts->config.resetFunction();
+    } else {
+        parts->config.reset();
+    }
     parts->resetRegisters();
     cfgWriteCommon(PCI_COMMAND, 2, 0);
     for (int i = 0; i < 6; i++)
@@ -519,6 +703,9 @@ Gw100PciDevice::functionReset(const char *why)
     // FLR 的门控、排空与通知固件（spec-pcie §13.2）；HDMA 已随寄存器
     // 复位，保持复位直到固件确认（spec-host-dma §8.4）
     parts->hdma.setHold(true);
+    if (pcieTransport) {
+        pcieTransport->setActive(false);
+    }
     parts->intCtrl.setFlrGate(true);
     parts->hdi.setGate(true);
     parts->hostDma.cancelQueued();
@@ -541,6 +728,24 @@ Gw100PciDevice::updateHdmaPcie()
     pp.mrrs = std::min(128u << ((dc >> 12) & 7),
                        unsigned(params().hdma_max_read_request));
     pp.extTag = (dc >> 8) & 1;
+    pp.relaxed = dc & (1u << 4);
+    pp.noSnoop = dc & (1u << 11);
+    constexpr Tick timeouts[] = {0,
+                                 pciedefs::CPL_TIMEOUT_A_SHORT_PS,
+                                 pciedefs::CPL_TIMEOUT_A_LONG_PS,
+                                 0,
+                                 0,
+                                 pciedefs::CPL_TIMEOUT_B_SHORT_PS,
+                                 pciedefs::CPL_TIMEOUT_B_LONG_PS};
+    unsigned timeout = parts->config.read(0x78, 2) & 15;
+    pp.cplTimeout = timeout < std::size(timeouts) ? timeouts[timeout] : 0;
+    if (pcieTransport) {
+        bool configured = pcieTransport->configure(
+            pp.mps, parts->config.read(0x60, 2) & 0x80);
+        warn_if(!configured, "%s: incompatible live PCIe MPS change", name());
+        pcieTransport->model().setAspm(1,
+                                       (parts->config.read(0x60, 2) & 3) == 2);
+    }
     parts->hdma.setPcie(pp);
 }
 
@@ -558,6 +763,9 @@ Gw100PciDevice::updateBusMaster()
         return;
     }
     bool enabled = bme && (parts->config.read(PmCsr, 2) & 3) == 0;
+    if (pcieTransport) {
+        pcieTransport->setActive(enabled);
+    }
     parts->intCtrl.setBusMaster(enabled);
     lastBme = bme;
     parts->hdma.setBusMaster(enabled);
@@ -581,6 +789,7 @@ Gw100PciDevice::serialize(CheckpointOut &cp) const
 {
     PciEndpoint::serialize(cp);
     parts->serialize(cp);
+    fatal_if(pcieTransport, "数字链路 checkpoint 尚未接入");
 }
 
 /** 从 checkpoint 恢复 serialize() 保存的状态 */
@@ -589,6 +798,7 @@ Gw100PciDevice::unserialize(CheckpointIn &cp)
 {
     PciEndpoint::unserialize(cp);
     parts->unserialize(cp);
+    fatal_if(pcieTransport, "数字链路 checkpoint 尚未接入");
 }
 
 } // namespace gw100

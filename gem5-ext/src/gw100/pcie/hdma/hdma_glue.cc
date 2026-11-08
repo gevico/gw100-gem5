@@ -49,7 +49,8 @@ HostDmaPort::HostDmaPort(const std::string &name, RequestorID id,
 /** 把 [addr, addr + len) 拆成内存包排队发出 */
 void
 HostDmaPort::split(const std::shared_ptr<Op> &op, MemCmd cmd, Addr addr,
-                   unsigned len, const uint8_t *data)
+                   unsigned len, const uint8_t *data,
+                   const std::vector<bool> &mask)
 {
     Addr pa = toPhys ? toPhys(addr) : addr;
     unsigned off = 0;
@@ -63,6 +64,10 @@ HostDmaPort::split(const std::shared_ptr<Op> &op, MemCmd cmd, Addr addr,
         pkt->allocate();
         if (data)
             pkt->setData(data + off);
+        if (!mask.empty()) {
+            req->setByteEnable(
+                std::vector<bool>(mask.begin() + off, mask.begin() + off + n));
+        }
         auto *st = new State;
         st->op = op;
         st->off = off;
@@ -78,6 +83,57 @@ HostDmaPort::split(const std::shared_ptr<Op> &op, MemCmd cmd, Addr addr,
 void
 HostDmaPort::read(Addr addr, unsigned len, HostReadDone done)
 {
+    if (transport) {
+        transport->read(addr, len, std::move(done));
+        return;
+    }
+    backendRead(addr, len, std::move(done));
+}
+
+/** 指定完整 MRd 当前能否被本地发送端接受。 */
+bool
+HostDmaPort::canRead(Addr addr, unsigned len) const
+{
+    return !transport || transport->canRead(addr, len);
+}
+
+/** 接受真实 tag 与 Attr[2:0]，在 DLL 提交时调用 committed。 */
+bool
+HostDmaPort::readTagged(Addr addr, unsigned len, uint8_t tag,
+                        std::function<void()> committed, HostReadDone done,
+                        uint8_t attributes)
+{
+    if (transport) {
+        return transport->readTagged(addr, len, tag, std::move(committed),
+                                     std::move(done), attributes);
+    }
+    committed();
+    backendRead(addr, len, std::move(done));
+    return true;
+}
+
+/** 撤销尚未提交到 DLL 的读，释放本地预留。 */
+void
+HostDmaPort::cancelRead(uint8_t tag)
+{
+    if (transport) {
+        transport->cancelRead(tag);
+    }
+}
+
+/** 已提交读进入隔离，保留匹配元数据并释放数据预留。 */
+void
+HostDmaPort::isolateRead(uint8_t tag)
+{
+    if (transport) {
+        transport->isolateRead(tag);
+    }
+}
+
+/** RC 收到完整 MRd 后才拆成 host cache line 请求。 */
+void
+HostDmaPort::backendRead(Addr addr, unsigned len, HostReadDone done)
+{
     auto op = std::make_shared<Op>();
     op->buf.assign(len, 0);
     op->done = done;
@@ -87,12 +143,28 @@ HostDmaPort::read(Addr addr, unsigned len, HostReadDone done)
 /** 发出一个 MWr */
 void
 HostDmaPort::write(Addr addr, unsigned len, const uint8_t *data,
-                   uint8_t)
+                   uint8_t attributes)
+{
+    if (transport) {
+        transport->write(addr, len, data, attributes);
+        return;
+    }
+    auto op = std::make_shared<Op>();
+    op->write = true;
+    op->counted = true;
+    txInFlight++;
+    split(op, MemCmd::WriteReq, addr, len, data);
+}
+
+/** RC 收到完整 MWr 后执行，并在 host 写响应后通知可见。 */
+void
+HostDmaPort::backendWrite(Addr addr, unsigned len, const uint8_t *data,
+                          HostReadDone done, const std::vector<bool> &mask)
 {
     auto op = std::make_shared<Op>();
     op->write = true;
-    txInFlight++;
-    split(op, MemCmd::WriteReq, addr, len, data);
+    op->done = std::move(done);
+    split(op, MemCmd::WriteReq, addr, len, data, mask);
 }
 
 /** 按顺序发出排队的内存包，直到被反压 */
@@ -139,11 +211,12 @@ HostDmaPort::completePiece(const std::shared_ptr<Op> &op)
 {
     if (--op->remaining > 0)
         return;
-    if (op->write) {
+    if (op->counted) {
         txInFlight--;
         if (onTxFree)
             onTxFree();
-    } else if (op->done) {
+    }
+    if (op->done) {
         op->done(op->err ? HostStatus::Ur : HostStatus::Ok, op->buf.data());
     }
 }
@@ -152,6 +225,10 @@ HostDmaPort::completePiece(const std::shared_ptr<Op> &op)
 void
 HostDmaPort::cancelQueued()
 {
+    if (transport) {
+        transport->cancelPending();
+        return;
+    }
     while (!sendQ.empty()) {
         PacketPtr pkt = sendQ.front();
         sendQ.pop_front();
