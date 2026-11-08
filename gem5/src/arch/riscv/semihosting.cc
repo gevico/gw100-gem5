@@ -41,6 +41,8 @@
 
 #include <cerrno>
 #include <cstdio>
+#include <memory>
+#include <unordered_map>
 
 #include "arch/riscv/isa.hh"
 #include "arch/riscv/page_size.hh"
@@ -151,10 +153,18 @@ RiscvSemihosting::call(ThreadContext *tc)
 PortProxy &
 RiscvSemihosting::portProxyImpl(ThreadContext *tc)
 {
-    static std::unique_ptr<PortProxy> port_proxy([=]() {
-        return FullSystem ? new TranslatingPortProxy(tc) :
-                            new SETranslatingPortProxy(tc);
-    }());
+    // One proxy per thread context: a proxy accesses memory through the
+    // context it was created for, so a single shared proxy would make every
+    // hart (or every RISC-V system in the simulation) read and write the
+    // memory of whichever hart issued the first semihosting call.
+    static std::unordered_map<ThreadContext *, std::unique_ptr<PortProxy>>
+        port_proxies;
+    std::unique_ptr<PortProxy> &port_proxy = port_proxies[tc];
+    if (!port_proxy) {
+        port_proxy.reset(FullSystem ?
+            static_cast<PortProxy *>(new TranslatingPortProxy(tc)) :
+            static_cast<PortProxy *>(new SETranslatingPortProxy(tc)));
+    }
     return *port_proxy;
 }
 
