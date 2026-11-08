@@ -4,7 +4,7 @@
  *
  * 本类负责与 gem5 的对接：pio 端口的时序、功能访问（加载 ROM 镜像），
  * 以及 PLIC 中断源的电平。各项行为由组件实现：
- * - ROM 与 SRAM：MgmtSram；
+ * - 启动 ROM 由 MgmtRom 持有，SRAM 由 MgmtSram 持有。
  * - 看门狗的状态机：MgmtWdt；本类按 mtime 安排到期事件，第二级超时时
  *   停住管理 CPU 并置位 wdt_fatal 信号；
  * - 管理 CPU 的停机与复位：经中断控制器 MgmtInterrupts 让 CPU 在指令
@@ -42,6 +42,7 @@
 #include "src/gw100/mgmt/mailbox/mgmt_mailbox.hh"
 #include "src/gw100/mgmt/regs/mgmt_local_regs.hh"
 #include "src/gw100/mgmt/sram/mgmt_sram.hh"
+#include "src/gw100/mgmt/rom/mgmt_rom.hh"
 #include "src/gw100/mgmt/wdt/mgmt_wdt.hh"
 #include "src/gw100/ml/mgmt_link.hh"
 
@@ -224,7 +225,9 @@ class Gw100MgmtTile : public ClockedObject, public MlTargetIf
     /** ML 请求处理完毕的时刻到达：调用保存的 respond */
     void mlFinish();
 
-    /** ROM 与 SRAM */
+    /** 独立启动 ROM。 */
+    MgmtRom rom;
+    /** 管理 SRAM 存储和参考调度。 */
     MgmtSram sram;
     /** doorbell 信箱与事件寄存器 */
     MgmtMailbox mailbox;
