@@ -1,0 +1,4 @@
+# ML 核心逻辑（src/gw100/ml/）的单元测试
+Import('*')
+
+GTest('ml_endpoint.test', 'ml_endpoint.test.cc', with_tag('gw100 ml'))

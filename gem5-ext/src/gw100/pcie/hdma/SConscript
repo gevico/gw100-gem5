@@ -1,0 +1,6 @@
+# hdma/：Host DMA 引擎（spec-host-dma）
+Import('*')
+
+# 标签供 gem5-ext/tests/unit/ 下的单元测试按组件引用源文件
+Source('hdma_engine.cc', add_tags='gw100 pcie hdma')
+Source('hdma_glue.cc')

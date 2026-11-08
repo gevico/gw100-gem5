@@ -1,0 +1,4 @@
+# 通用内存参数类复用上游 DRAMInterface 的 C++ 实现。
+Import('*')
+
+SimObject('LPDDR5.py', sim_objects=[])

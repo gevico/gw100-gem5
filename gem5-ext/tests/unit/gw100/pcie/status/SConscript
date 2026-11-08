@@ -1,0 +1,5 @@
+# StatusUnit（src/gw100/pcie/status/）的单元测试
+Import('*')
+
+GTest('status_unit.test', 'status_unit.test.cc',
+      with_tag('gw100 pcie status'), with_tag('gem5 serialize'))

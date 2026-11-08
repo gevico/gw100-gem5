@@ -1,0 +1,5 @@
+# IntCtrl（src/gw100/pcie/intr/）的单元测试
+Import('*')
+
+GTest('int_ctrl.test', 'int_ctrl.test.cc', with_tag('gw100 pcie intr'),
+      with_tag('gw100 pcie status'), with_tag('gem5 serialize'))

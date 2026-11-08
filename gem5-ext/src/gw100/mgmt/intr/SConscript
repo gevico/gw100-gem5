@@ -1,0 +1,6 @@
+# intr/：管理 CPU 的中断控制器，加上停机请求（spec-mgmt-tile §7.4）
+Import('*')
+
+SimObject('Gw100MgmtInterrupts.py', sim_objects=['Gw100MgmtInterrupts'])
+
+Source('mgmt_interrupts.cc')

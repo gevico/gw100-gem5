@@ -1,0 +1,4 @@
+# MgmtCrc（src/gw100/mgmt/crc/）的单元测试
+Import('*')
+
+GTest('mgmt_crc.test', 'mgmt_crc.test.cc', with_tag('gw100 mgmt crc'))

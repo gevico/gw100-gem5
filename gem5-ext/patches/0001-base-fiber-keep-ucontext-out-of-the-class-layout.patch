@@ -1,0 +1,150 @@
+gem5 补丁：Fiber 的 ucontext_t 不再嵌在类里
+
+原因：macOS 上 ucontext_t 的布局取决于一个编译单元第一次包含
+<ucontext.h> 之前是否定义了 _XOPEN_SOURCE（定义时内嵌完整的 mcontext，
+arm64 上为 880 B，否则为 56 B）。base/fiber.hh 先定义 _XOPEN_SOURCE
+再包含 <ucontext.h>，但在此之前已经（经 <signal.h> 等）包含过它的编译
+单元会得到较短的定义，Fiber 的成员偏移在不同的编译单元之间不一致
+（ODR 违例）。后果：gem5 自带的 fiber.test 失败、coroutine.test 段错误，
+GICv3 ITS 处理第一条命令即崩溃。
+
+修改：fiber.hh 不再包含 <ucontext.h>，Fiber 改为持有指向 fiber.cc 中
+定义的 Context 的指针；fiber.cc 在最开头包含 <ucontext.h>，保证
+_XOPEN_SOURCE 生效。各平台都仍用 ucontext，Linux 上的行为不变。
+
+验证：macOS 15（arm64）上 base/fiber.test 3/3、base/coroutine.test
+8/8 通过（修改前分别失败、段错误）。
+
+由仓库根目录的 Makefile 在构建 gem5 之前应用，见 gem5-ext/patches/README.md。
+
+diff --git a/src/base/fiber.cc b/src/base/fiber.cc
+index 0b7a6e2..cae6ce6 100644
+--- a/src/base/fiber.cc
++++ b/src/base/fiber.cc
+@@ -25,6 +25,17 @@
+  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+  */
+ 
++// <ucontext.h> must be included before any other header here, so that
++// _XOPEN_SOURCE takes effect: macOS hides the deprecated ucontext functions
++// and the full ucontext_t layout without it.
++#if defined(__APPLE__) && defined(__MACH__)
++#define _XOPEN_SOURCE 600
++#include <ucontext.h>
++#undef _XOPEN_SOURCE
++#else
++#include <ucontext.h>
++#endif
++
+ #include "base/fiber.hh"
+ 
+ #if HAVE_VALGRIND
+@@ -33,8 +44,7 @@
+ 
+ // Mac OS requires _DARWIN_C_SOURCE if _POSIX_C_SOURCE is defined,
+ // otherwise it will mask the definition of MAP_ANONYMOUS.
+-// _POSIX_C_SOURCE is already defined by including <ucontext.h> in
+-// base/fiber.hh
++// _POSIX_C_SOURCE is already defined by including <ucontext.h> above
+ #if defined(__APPLE__) && defined(__MACH__)
+ #define _DARWIN_C_SOURCE
+ #endif
+@@ -51,6 +61,11 @@
+ namespace gem5
+ {
+ 
++struct Fiber::Context
++{
++    ucontext_t uc;
++};
++
+ namespace
+ {
+ 
+@@ -86,7 +101,7 @@ Fiber::Fiber(size_t stack_size) : Fiber(primaryFiber(), stack_size)
+ {}
+ 
+ Fiber::Fiber(Fiber *link, size_t stack_size) :
+-    link(link), stack(nullptr), stackSize(stack_size), guardPage(nullptr),
++    ctx(std::make_unique<Context>()), link(link), stack(nullptr), stackSize(stack_size), guardPage(nullptr),
+     guardPageSize(sysconf(_SC_PAGE_SIZE)), _started(false), _finished(false)
+ {
+     if (stack_size) {
+@@ -123,17 +138,17 @@ void
+ Fiber::createContext()
+ {
+     // Set up a context for the new fiber, starting it in the trampoline.
+-    getcontext(&ctx);
+-    ctx.uc_stack.ss_sp = stack;
+-    ctx.uc_stack.ss_size = stackSize;
+-    ctx.uc_link = nullptr;
+-    makecontext(&ctx, &entryTrampoline, 0);
++    getcontext(&ctx->uc);
++    ctx->uc.uc_stack.ss_sp = stack;
++    ctx->uc.uc_stack.ss_size = stackSize;
++    ctx->uc.uc_link = nullptr;
++    makecontext(&ctx->uc, &entryTrampoline, 0);
+ 
+     // Swap to the new context so it can enter its start() function. It
+     // will then swap itself back out and return here.
+     startingFiber = this;
+     panic_if(!_currentFiber, "No active Fiber object.");
+-    swapcontext(&_currentFiber->ctx, &ctx);
++    swapcontext(&_currentFiber->ctx->uc, &ctx->uc);
+ 
+     // The new context is now ready and about to call main().
+ }
+@@ -149,7 +164,7 @@ Fiber::start()
+     if (_setjmp(jmp) == 0) {
+         // Swap back to the parent context which is still considered "current",
+         // now that we're ready to go.
+-        int ret = swapcontext(&ctx, &_currentFiber->ctx);
++        int ret = swapcontext(&ctx->uc, &_currentFiber->ctx->uc);
+         panic_if(ret == -1, strerror(errno));
+     }
+ 
+diff --git a/src/base/fiber.hh b/src/base/fiber.hh
+index 5a9acf2..5e22ab5 100644
+--- a/src/base/fiber.hh
++++ b/src/base/fiber.hh
+@@ -28,16 +28,11 @@
+ #ifndef __BASE_FIBER_HH__
+ #define __BASE_FIBER_HH__
+ 
+-// ucontext functions (like getcontext, setcontext etc) have been marked
+-// as deprecated and are hence hidden in latest macOS releases.
+-// By defining _XOPEN_SOURCE we make them available at compilation time.
+-#if defined(__APPLE__) && defined(__MACH__)
+-#define _XOPEN_SOURCE 600
+-#include <ucontext.h>
+-#undef _XOPEN_SOURCE
+-#else
+-#include <ucontext.h>
+-#endif
++// The ucontext state lives in fiber.cc only. On macOS the layout of
++// ucontext_t depends on whether _XOPEN_SOURCE was defined before
++// <ucontext.h> was first included in a translation unit, so embedding it
++// in Fiber would give the class different layouts (an ODR violation) in
++// files that happened to include <ucontext.h> or <signal.h> earlier.
+ 
+ // Avoid fortify source for longjmp to work between ucontext stacks.
+ #pragma push_macro("__USE_FORTIFY_LEVEL")
+@@ -47,6 +42,7 @@
+ 
+ #include <cstddef>
+ #include <cstdint>
++#include <memory>
+ 
+ #include "config/have_valgrind.hh"
+ 
+@@ -145,7 +141,9 @@ class Fiber
+     static void entryTrampoline();
+     void start();
+ 
+-    ucontext_t ctx;
++    // The ucontext_t of this fiber, defined in fiber.cc (see above).
++    struct Context;
++    std::unique_ptr<Context> ctx;
+     // ucontext is slow in swapcontext. Here we use _setjmp/_longjmp to avoid
+     // the additional signals for speed up.
+     jmp_buf jmp;

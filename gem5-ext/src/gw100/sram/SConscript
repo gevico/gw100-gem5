@@ -1,0 +1,5 @@
+# sram/：共享周期状态机与端口外壳
+Import('*')
+Source('sram_model.cc', add_tags='gw100 sram')
+SimObject('Gw100Sram.py', sim_objects=['Gw100Sram'])
+Source('gw100_sram.cc')

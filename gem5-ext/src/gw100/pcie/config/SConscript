@@ -1,0 +1,5 @@
+# config/：ConfigSpace（配置空间 0x40 起）；capability 在子目录
+Import('*')
+
+# 标签供 gem5-ext/tests/unit/ 下的单元测试按组件引用源文件
+Source('config_space.cc', add_tags='gw100 pcie config')

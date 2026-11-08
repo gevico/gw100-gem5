@@ -1,0 +1,9 @@
+# mgmt/：管理 Tile 的外壳 Gw100MgmtTile（spec-mgmt-tile）。
+# 子目录是它的组件：sram/、mailbox/、regs/、crc/、wdt/、intr/。
+Import('*')
+
+SimObject('Gw100MgmtTile.py', sim_objects=['Gw100MgmtTile'])
+
+Source('mgmt_tile.cc')
+
+DebugFlag('Gw100Mgmt', '管理 Tile：设备完全复位、CPU 停机与重新开始')

@@ -1,0 +1,5 @@
+# window/：WindowTable（BAR2 窗口的配置与地址转换），bar0、bar2 共用
+Import('*')
+
+# 标签供 gem5-ext/tests/unit/ 下的单元测试按组件引用源文件
+Source('window_table.cc', add_tags='gw100 pcie window')

@@ -1,0 +1,10 @@
+# 通用 Memory Tile 及跨域入口。
+Import('*')
+
+SimObject('Gw100Memory.py',
+          sim_objects=['Gw100MemoryTile', 'Gw100MemoryIngress'])
+Source('memory_control.cc', add_tags='gw100 memory control')
+Source('memory_link.cc')
+Source('memory_tile.cc')
+Source('memory_ingress.cc')
+DebugFlag('Gw100Memory')

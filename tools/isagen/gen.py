@@ -1,14 +1,15 @@
 """
 @file  gen.py
-@brief 根据 ISA YAML 生成 C++ 头文件和 Python 定义模块
+@brief 根据 ISA YAML 生成 C++ 头文件
 
-输入是 spec-src/isa/*.yaml，输出供 gem5 侧译码和 Python 汇编器使用。
+输入是 ISA YAML（原 spec-src/isa/*.yaml）。原 spec-src/ 已删除，
+重建前本脚本不可用。输出路径指向的 func-core 也已删除，重建时一并调整。
 
-用法（在仓库根目录执行）：
-    .venv/bin/python tools/isagen/gen.py              # 默认使用 spec-src/isa/isa-v0.yaml
-    .venv/bin/python tools/isagen/gen.py --check      # 只检查生成结果是否最新，不写文件
+用法（源重建后，在仓库根目录执行）：
+    .venv/bin/python tools/isagen/gen.py <isa.yaml>
+    .venv/bin/python tools/isagen/gen.py <isa.yaml> --check
 
-@see SPEC-230
+@see spec-isa
 """
 
 import argparse
@@ -18,9 +19,8 @@ from pathlib import Path
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_SPEC = REPO_ROOT / "spec-src" / "isa" / "isa-v0.yaml"
+DEFAULT_SPEC = None
 CPP_OUT = REPO_ROOT / "gem5-ext" / "func-core" / "include" / "gw100" / "isa_defs.hh"
-PY_OUT = REPO_ROOT / "tools" / "gw100_testkit" / "isa_defs.py"
 
 UNITS = {"ctrl": "Ctrl", "dma": "Dma", "me": "Me", "ve": "Ve"}
 CPP_TYPES = {"u8": "uint8_t", "u16": "uint16_t", "u32": "uint32_t", "u64": "uint64_t",
@@ -120,57 +120,20 @@ def gen_cpp(spec, src_name):
     return "\n".join(lines)
 
 
-def gen_py(spec, src_name):
-    out = [
-        f'"""由 tools/isagen/gen.py 根据 {src_name} 生成，请勿手改。"""',
-        "",
-        f"VERSION = {spec['version']!r}",
-        f"INST_BYTES = {spec['instruction_bytes']}",
-        f"LOCAL_TILE = {spec['local_tile']:#x}",
-        "",
-        "DTYPES = {",
-    ]
-    for name, d in spec["dtypes"].items():
-        out.append(f"    {name!r}: {{'code': {d['code']}, 'bits': {d['bits']}}},")
-    out += ["}", "", "OPCODES = {"]
-    for op in spec["opcodes"]:
-        out.append(f"    {op['name']!r}: {{'code': {op['code']:#04x}, 'unit': {op['unit']!r}, "
-                   f"'status': {op['status']!r}}},")
-    out += ["}", "", "SUBOPS = {"]
-    for op_name, subs in spec["subops"].items():
-        out.append(f"    {op_name!r}: {dict(subs)!r},")
-    out += ["}", "", f"FLAGS = {dict(spec['flags'])!r}", "",
-            "HEADER = {"]
-    for f in spec["header"]:
-        out.append(f"    {f['name']!r}: ({f['offset']}, {f['type']!r}),")
-    opnd = spec["operand"]
-    out += ["}", "",
-            f"OPERAND = {{'count': {opnd['count']}, 'base': {opnd['base_offset']}, "
-            f"'bytes': {opnd['bytes']}, 'dims': 4}}",
-            "OPERAND_FIELDS = {"]
-    for f in opnd["fields"]:
-        out.append(f"    {f['name']!r}: ({f['offset']}, {f['type']!r}, {f.get('count', 1)}),")
-    prog = spec["program"]
-    out += ["}", "",
-            f"PROGRAM = {{'magic': {prog['magic']:#010x}, 'header_bytes': {prog['header_bytes']}, "
-            f"'entry_bytes': {prog['entry_bytes']}}}",
-            "MGMT_REGS = {" + ", ".join(f"{k!r}: {v['offset']:#04x}" for k, v in spec["mgmt_regs"].items()) + "}"]
-    for rec in ("command_record", "completion_record"):
-        name = rec.upper()
-        out.append(f"{name} = {{" + ", ".join(f"{f['name']!r}: ({f['offset']}, {f['type']!r})" for f in spec[rec]) + "}")
-    out.append("")
-    return "\n".join(out)
-
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("spec", nargs="?", type=Path, default=DEFAULT_SPEC)
     parser.add_argument("--check", action="store_true", help="只检查生成结果是否最新")
     args = parser.parse_args()
 
+    if args.spec is None:
+        sys.exit("spec-src/ 已删除；请显式传入 ISA YAML 路径，或先重建单一真源。")
+    if not args.spec.exists():
+        sys.exit(f"ISA 源文件 {args.spec} 不存在；单一真源待重建。")
+
     spec = yaml.safe_load(args.spec.read_text(encoding="utf-8"))
     src_name = args.spec.resolve().relative_to(REPO_ROOT).as_posix()
-    outputs = {CPP_OUT: gen_cpp(spec, src_name), PY_OUT: gen_py(spec, src_name)}
+    outputs = {CPP_OUT: gen_cpp(spec, src_name)}
 
     stale = [p for p, text in outputs.items() if not p.exists() or p.read_text(encoding="utf-8") != text]
     if args.check:

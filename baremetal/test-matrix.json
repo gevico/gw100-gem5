@@ -1,0 +1,161 @@
+{
+  "boot_errors": {
+    "requires": []
+  },
+  "boot_flr": {
+    "requires": []
+  },
+  "boot_ok": {
+    "requires": []
+  },
+  "dev_reset": {
+    "requires": []
+  },
+  "dram_access": {
+    "requires": [
+      "dram"
+    ]
+  },
+  "dram_boot_events": {
+    "requires": [
+      "dram"
+    ]
+  },
+  "dram_error": {
+    "requires": [
+      "dram"
+    ],
+    "config_args": [
+      "--dram-fail-mask",
+      "1"
+    ]
+  },
+  "dram_lifecycle": {
+    "requires": [
+      "dram"
+    ]
+  },
+  "dram_link_reset": {
+    "requires": [
+      "dram"
+    ],
+    "config_args": [
+      "--hardware-reset-test"
+    ]
+  },
+  "hdi_copy": {
+    "requires": []
+  },
+  "hdi_errors": {
+    "requires": []
+  },
+  "hdma_basic": {
+    "requires": []
+  },
+  "hello": {
+    "requires": []
+  },
+  "int_fw": {
+    "requires": []
+  },
+  "lib_selftest": {
+    "requires": []
+  },
+  "msix_intx": {
+    "requires": []
+  },
+  "msix_its": {
+    "requires": []
+  },
+  "pcie_bar2": {
+    "requires": []
+  },
+  "pcie_checkpoint": {
+    "requires": [
+      "pcie_link"
+    ],
+    "config_args": [
+      "--pcie-rc-aspm"
+    ]
+  },
+  "pcie_config": {
+    "requires": []
+  },
+  "pcie_flr": {
+    "requires": []
+  },
+  "pcie_link": {
+    "requires": [
+      "dram",
+      "pcie_link"
+    ],
+    "config_args": [
+      "--pcie-trace"
+    ]
+  },
+  "pcie_link_error": {
+    "requires": [
+      "pcie_link"
+    ],
+    "config_args": [
+      "--pcie-fault",
+      "tlp_crc",
+      "--pcie-trace"
+    ]
+  },
+  "pcie_regs": {
+    "requires": []
+  },
+  "sram": {
+    "requires": [
+      "sram_timing"
+    ]
+  },
+  "sram_ce": {
+    "requires": [
+      "sram_timing"
+    ],
+    "config_args": [
+      "--sram-fault",
+      "ce"
+    ]
+  },
+  "sram_ml_read": {
+    "requires": ["sram_timing"],
+    "config_args": ["--sram-fault", "ml-ue-read"]
+  },
+  "sram_ml_write": {
+    "requires": ["sram_timing"],
+    "config_args": ["--sram-fault", "ml-ue-write"]
+  },
+  "sram_ue": {
+    "requires": [
+      "sram_timing"
+    ],
+    "config_args": [
+      "--sram-fault",
+      "ue"
+    ]
+  },
+  "sram_ue_fetch": {
+    "requires": [
+      "sram_timing"
+    ],
+    "config_args": [
+      "--sram-fault",
+      "ue-fetch"
+    ]
+  },
+  "sram_ue_store": {
+    "requires": [
+      "sram_timing"
+    ],
+    "config_args": [
+      "--sram-fault",
+      "ue-store"
+    ]
+  },
+  "wdt_fatal": {
+    "requires": []
+  }
+}

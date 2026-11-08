@@ -1,4 +1,0 @@
-Import('*')
-
-SimObject('BankedSram.py', sim_objects=['Gw100BankedSram'])
-Source('banked_sram.cc')

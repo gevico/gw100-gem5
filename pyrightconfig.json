@@ -1,0 +1,18 @@
+{
+    "include": ["gem5-ext", "tools"],
+    "exclude": ["**/__pycache__"],
+    "extraPaths": [
+        "gem5/src/python",
+        "gem5-ext/configs",
+        "gem5-ext/src",
+        "tools"
+    ],
+    "venvPath": ".",
+    "venv": ".venv",
+    "typeCheckingMode": "basic",
+    "reportMissingImports": "none",
+    "reportMissingModuleSource": "none",
+    "reportAttributeAccessIssue": "none",
+    "reportOptionalMemberAccess": "none",
+    "reportUnsupportedDunderAll": "none"
+}

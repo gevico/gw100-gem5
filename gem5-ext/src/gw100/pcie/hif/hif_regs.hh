@@ -1,0 +1,85 @@
+/**
+ * @file  hif_regs.hh
+ * @brief 固件可见的 HIF 寄存器区：ML 的 HIF 侧目标
+ *
+ * 管理 CPU 经 ML 的 REG_RD、REG_WR 访问本区（spec-pcie §6.5），偏移
+ * 相对于本地地址 0x3000_0000。只接受 32 位访问；未分配或尚未实现的
+ * 偏移，读以 REJECT 结束，写被拒绝并由 ML 记录 WR_REJECT。
+ *
+ * @see spec-pcie, spec-mgmt-link
+ */
+
+#ifndef __GW100_PCIE_HIF_HIF_REGS_HH__
+#define __GW100_PCIE_HIF_HIF_REGS_HH__
+
+#include <cstdint>
+#include <functional>
+
+#include "src/gw100/ml/ml_endpoint.hh"
+#include "src/gw100/pcie/bar0/boot_regs.hh"
+#include "src/gw100/pcie/boot/boot_ctrl.hh"
+#include "src/gw100/pcie/hdi/hdi_ctrl.hh"
+#include "src/gw100/pcie/hdma/hdma_engine.hh"
+#include "src/gw100/pcie/intr/int_ctrl.hh"
+#include "src/gw100/pcie/status/status_unit.hh"
+
+namespace gem5
+{
+namespace gw100
+{
+
+/** 固件可见的 HIF 寄存器区 */
+class HifRegs : public MlTargetIf
+{
+  public:
+    /** 构造：boot 为 BAR0 的启动寄存器块，ctrl 为启动与 FLR 控制 */
+    HifRegs(BootRegs &boot, BootCtrl &ctrl);
+
+    /** 接入 ML 的 HIF 侧适配器，ML 错误寄存器经它读写 */
+    void bindMl(MlEndpoint *ep) { ml = ep; }
+
+    /** 接入 HDMA：HIF 区 0x0000 – 0x0FFF 是它的寄存器（HDMA_BASE） */
+    void bindHdma(HdmaEngine *h) { hdma = h; }
+
+    /** 接入中断控制器：INT_REQ、INT_LEVEL、CTX_VECTOR（spec-pcie §6.5） */
+    void bindInt(IntCtrl *ic) { intCtrl = ic; }
+
+    /**
+     * 接入 HDI：HIF 区 0x1_1000 起是它的固件视角；ERR_REQ 置位 status 中
+     * 固件检测到的错误（spec-pcie §6.5）
+     */
+    void bindHdi(HdiCtrl *h, StatusUnit *st) { hdi = h; status = st; }
+
+    /** 读取配置空间中固件需要的状态（PCI_STATE）的回调 */
+    std::function<uint32_t()> pciState;
+
+    /** 处理管理 CPU 经 ML 发来的 REG_RD、REG_WR */
+    void mlRequest(const MlTxnPtr &txn, MlRespond respond) override;
+
+  private:
+    /** 读偏移 off 的 32 位寄存器；未实现时返回 false */
+    bool read(Addr off, uint32_t &v) const;
+
+    /** 写偏移 off 的 32 位寄存器；未实现时返回 false */
+    bool write(Addr off, uint32_t v);
+
+    /** BAR0 的启动寄存器块 */
+    BootRegs &boot;
+    /** 启动与 FLR 控制 */
+    BootCtrl &ctrl;
+    /** ML 的 HIF 侧适配器 */
+    MlEndpoint *ml = nullptr;
+    /** HDMA */
+    HdmaEngine *hdma = nullptr;
+    /** 中断控制器 */
+    IntCtrl *intCtrl = nullptr;
+    /** HDI 控制器在 HIF 中的状态 */
+    HdiCtrl *hdi = nullptr;
+    /** ERR_STATUS（ERR_REQ 置位它） */
+    StatusUnit *status = nullptr;
+};
+
+} // namespace gw100
+} // namespace gem5
+
+#endif // __GW100_PCIE_HIF_HIF_REGS_HH__
