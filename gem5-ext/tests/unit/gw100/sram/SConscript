@@ -1,0 +1,3 @@
+# 共享 SRAM 的纯状态机测试
+Import('*')
+GTest('sram_model.test', 'sram_model.test.cc', with_tag('gw100 sram'))
