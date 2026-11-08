@@ -1,6 +1,9 @@
 # 文本文件统一用 LF
 * text=auto eol=lf
 
+# 内置 gem5 保留上游文件字节和行尾，包含使用 CRLF 的测试夹具
+gem5/** -text
+
 # 二进制资料
 *.pdf binary
 *.png binary
