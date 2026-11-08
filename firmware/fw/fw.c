@@ -97,6 +97,10 @@ int hdma_selftest(struct gw_hdma_chan *c);
 #ifdef GW_FW_INT_TEST
 int int_selftest(void);
 #endif
+#ifdef GW_FW_SRAM_TEST
+/** 数字阵列、CPU 异常与 ML 的真实访问路径。 */
+int sram_selftest(struct gw_hdma_chan *c);
+#endif
 #endif
 
 /** 看门狗的超时周期：10 ms，以 mtime 计 */
@@ -372,6 +376,10 @@ fw_main(uint64_t hartid, const struct gw_boot_info *info)
 #elif defined(GW_FW_INT_TEST)
     (void)h;
     gw_write32(GW_FW_VERSION_FW, 0x1A700000u | (uint32_t)int_selftest());
+#elif defined(GW_FW_SRAM_TEST)
+    (void)h;
+    gw_write32(GW_FW_VERSION_FW,
+               0x5A4D0000u | (uint32_t)sram_selftest(&chans[1]));
 #else
     gw_write32(GW_FW_VERSION_FW, h->fw_version);
 #endif
