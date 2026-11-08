@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "basis": "GW100 通用数字参考微架构，物理参数待具体 SRAM 宏校准",
+  "limits": {"max_request_bytes": 64, "ecc_data_bytes": 8, "ecc_check_bits": 8, "max_bank_wait_cycles": 16},
+  "profiles": {
+    "management": {"size": 2097152, "banks": 8, "word_bytes": 8, "interleaved": false, "split_ports": false, "sources": 3, "slots": 8, "read_cycles": 1, "write_cycles": 1, "interval_cycles": 1, "mask_bytes": 8, "ecc": true, "period_ps": 2000, "boot_period_ps": 40000},
+    "compute_1rw": {"size": 2097152, "banks": 16, "word_bytes": 16, "interleaved": true, "split_ports": false, "sources": 5, "slots": 8, "read_cycles": 1, "write_cycles": 1, "interval_cycles": 1, "mask_bytes": 8, "ecc": true, "period_ps": 1000, "boot_period_ps": 1000},
+    "compute_1r1w": {"size": 2097152, "banks": 16, "word_bytes": 16, "interleaved": true, "split_ports": true, "sources": 5, "slots": 8, "read_cycles": 1, "write_cycles": 1, "interval_cycles": 1, "mask_bytes": 8, "ecc": true, "period_ps": 1000, "boot_period_ps": 1000}
+  }
+}

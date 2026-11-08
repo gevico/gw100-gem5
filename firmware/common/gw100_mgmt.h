@@ -11,13 +11,14 @@
 #define GW100_MGMT_H
 
 #include <stdint.h>
+#include "generated/gw100_sram_defs.h"
 
 /** 启动 ROM 的本地地址 */
 #define GW_ROM_BASE         0x00000000UL
 /** SRAM 的本地地址 */
 #define GW_SRAM_BASE        0x10000000UL
 /** SRAM 的大小（mgmt.sram_size） */
-#define GW_SRAM_SIZE        (2UL << 20)
+#define GW_SRAM_SIZE        GW_SRAM_MANAGEMENT_SIZE
 /** 装载区的大小（mgmt.fw_load_max） */
 #define GW_FW_LOAD_MAX      (1UL << 20)
 /** ROM 保留区的大小（mgmt.rom_reserved） */
