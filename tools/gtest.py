@@ -7,7 +7,7 @@
 .test.cc 文件数对照）、构建出的程序数、运行的程序数，以及用例的通过数 /
 总数。任一程序构建或运行失败、用例失败，或者各项数目不一致时，退出码为 1。
 
-在仓库根目录运行（先 make gem-build，构建前会确认 gem5 补丁已应用）：
+在仓库根目录运行（先 make gem-build）：
     .venv/bin/python tools/gtest.py [--jobs N] [--no-build]
 
 scons 与 PYTHON_CONFIG 的取法与顶层 Makefile 相同。用法见 gem5-ext/README.md
@@ -52,9 +52,7 @@ def python_config() -> str | None:
 
 
 def build(targets: list[str], jobs: int) -> bool:
-    """应用 gem5 补丁后用一次 scons 构建全部目标；成功返回 True。"""
-    subprocess.run(["make", "--no-print-directory", "gem5-patch"],
-                   cwd=REPO, check=True)
+    """用一次 scons 构建全部目标，成功返回 True。"""
     env = dict(os.environ)
     pc = python_config()
     if pc:
