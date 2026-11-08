@@ -636,6 +636,7 @@ DRAMInterface::addRankToRankDelay(Tick cmd_at)
 DRAMInterface::DRAMInterface(const DRAMInterfaceParams &_p)
     : MemInterface(_p),
       bankGroupsPerRank(_p.bank_groups_per_rank),
+      deferStartup(_p.defer_startup),
       bankGroupArch(_p.bank_groups_per_rank > 0),
       tRL(_p.tCL),
       tWL(_p.tCWL),
@@ -783,14 +784,113 @@ DRAMInterface::init()
 void
 DRAMInterface::startup()
 {
-    if (system()->isTimingMode()) {
-        // timestamp offset should be in clock cycles for DRAMPower
-        timeStampOffset = divCeil(curTick(), tCK);
+    if (!deferStartup)
+        startMedia();
+}
 
-        for (auto r : ranks) {
+void
+DRAMInterface::startMedia()
+{
+    if (!system()->isTimingMode() || mediaRunning)
+        return;
+    if (!mediaEverStarted)
+        timeStampOffset = divCeil(curTick(), tCK);
+    mediaEverStarted = true;
+    mediaRunning = true;
+    holdAfterRefresh = false;
+    for (auto r : ranks)
+        r->startup(curTick() + tREFI - tRP);
+}
+
+bool
+DRAMInterface::mediaIdle() const
+{
+    for (auto r : ranks) {
+        if (r->outstandingEvents || r->readEntries || r->writeEntries ||
+            r->refreshState != REF_IDLE || r->inLowPowerState ||
+            r->powerEvent.scheduled() || r->wakeUpEvent.scheduled() ||
+            r->activateEvent.scheduled() || r->prechargeEvent.scheduled())
+            return false;
+    }
+    return true;
+}
+
+void
+DRAMInterface::holdMedia()
+{
+    panic_if(!mediaIdle(), "Media must be idle before explicit hold");
+    holdAfterRefresh = true;
+    for (auto r : ranks) {
+        if (r->refreshEvent.scheduled())
+            deschedule(r->refreshEvent);
+        schedule(r->refreshEvent, curTick());
+    }
+}
+
+bool
+DRAMInterface::mediaHeld() const
+{
+    if (!holdAfterRefresh || !mediaIdle())
+        return false;
+    for (auto r : ranks) {
+        if (r->numBanksActive || r->refreshEvent.scheduled())
+            return false;
+    }
+    return true;
+}
+
+void
+DRAMInterface::enterSelfRefresh()
+{
+    panic_if(!mediaHeld(), "Self-refresh requires a completed media hold");
+    for (auto r : ranks) {
+        r->pwrStatePostRefresh = PWR_PRE_PDN;
+        r->powerDownSleep(PWR_SREF, curTick() + tCK);
+    }
+}
+
+bool
+DRAMInterface::selfRefreshing() const
+{
+    for (auto r : ranks) {
+        if (r->pwrState != PWR_SREF || r->powerEvent.scheduled())
+            return false;
+    }
+    return mediaRunning && holdAfterRefresh;
+}
+
+void
+DRAMInterface::resumeMedia()
+{
+    panic_if(!mediaHeld() && !selfRefreshing(), "Media is not held");
+    holdAfterRefresh = false;
+    for (auto r : ranks) {
+        if (r->pwrState == PWR_SREF)
+            r->scheduleWakeUpEvent(tXS);
+        else
             r->startup(curTick() + tREFI - tRP);
+    }
+}
+
+void
+DRAMInterface::stopMedia()
+{
+    panic_if(mediaRunning && !mediaHeld(), "Stop requires media hold");
+    for (auto r : ranks) {
+        if (r->refreshEvent.scheduled())
+            deschedule(r->refreshEvent);
+        r->flushCmdList();
+        r->actTicks.assign(activationLimit, 0);
+        r->pwrStatePostRefresh = PWR_IDLE;
+        r->lastBurstTick = 0;
+        for (auto &b : r->banks) {
+            b.rdAllowedAt = b.wrAllowedAt = curTick();
+            b.preAllowedAt = b.actAllowedAt = curTick();
         }
     }
+    mediaRunning = false;
+    holdAfterRefresh = false;
+    nextBurstAt = curTick() + commandOffset();
 }
 
 bool
@@ -990,6 +1090,8 @@ DRAMInterface::checkRefreshState(uint8_t rank)
 void
 DRAMInterface::drainRanks()
 {
+    if (deferStartup && selfRefreshing())
+        return;
     // also need to kick off events to exit self-refresh
     for (auto r : ranks) {
         // force self-refresh exit, which in turn will issue auto-refresh
@@ -1004,6 +1106,8 @@ DRAMInterface::drainRanks()
 bool
 DRAMInterface::allRanksDrained() const
 {
+    if (deferStartup && selfRefreshing())
+        return true;
     // true until proven false
     bool all_ranks_drained = true;
     for (auto r : ranks) {
@@ -1441,6 +1545,11 @@ DRAMInterface::Rank::processRefreshEvent()
         assert(pwrState == PWR_REF);
 
         assert(!powerEvent.scheduled());
+
+        if (dram.holdAfterRefresh) {
+            schedulePowerEvent(PWR_IDLE, curTick());
+            return;
+        }
 
         if ((dram.ctrl->drainState() == DrainState::Draining) ||
             (dram.ctrl->drainState() == DrainState::Drained)) {
