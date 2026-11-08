@@ -318,10 +318,12 @@ SRAM 有三个 initiator：
 | NoC 目标端口 | 其他 Tile 访问固件开放的区间 |
 
 - SRAM 由单口 bank 组成，不要求双口宏单元。不同 initiator 访问不同 bank 时并行进行；访问同一 bank 时仲裁。
-- 仲裁必须保证每个 initiator 的等待时间有上限 `mgmt.sram_max_wait` = 16 个 SRAM 周期：ML 的访问要服务 host 写入和 HDMA，不能被 CPU 的连续访问饿死。
+- bank 仲裁等待上限 `mgmt.sram_max_wait` 为 16 个 SRAM 周期，按 spec-sram §3.1 的队首、依赖和返回预留边界计量。跨来源宏字锁占用计入仲裁等待。同来源依赖、入口排队和返回阻塞分别统计。管理参考档案采用保守六周期仲裁界。
 - 固件应把描述符环放在与代码不同的 bank 中，减少 HDMA 读取描述符对取指的干扰。
 
 ### 4.3 ECC
+
+共享存储器的 SECDED 位序、RMW 时序和错误事件由 spec-sram §4 定义。
 
 - 每 64 位数据带 8 位 SECDED 校验。
 - 复位后 SRAM 由硬件清零并写入正确的校验位，完成后置 `SRAM_INIT_DONE`。启动 ROM 必须等它置位后才使用 SRAM。
@@ -633,7 +635,7 @@ D3hot 到达时完成有界初始化，再排空并进入自刷新，D0 恢复�
 | 编号 | 要求 |
 |---|---|
 | P1 | host 写 doorbell，从 HIF 接收到该写，到管理 Tile 的 `DB_PENDING` 置位并向 CPU 发出中断，应不超过 100 ns（TBD） |
-| P2 | CPU 访问 SRAM（无 bank 冲突）应为单周期 |
+| P2 | 无竞争的单宏字普通读，从 bank 发出到响应就绪应为一个 `clk_mgmt` 周期。入口传输、准入及返回接受等待分别计量，部分写的 RMW 按实际读写阶段计量，采用 `spec-sram` 的事件边界 |
 
 经 ML 的 `REG_RD`、HDMA 的 `DESC_RD` 的延迟和启动写入的带宽见 `spec-mgmt-link` §9。
 

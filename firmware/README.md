@@ -22,6 +22,13 @@ make firmware-build     # 同时生成正常和兼容固件，各自使用独立
 
 `fw_wdt.img` 是看门狗的测试固件：初始化中自检第一级超时，置位 `FW_READY` 后不再喂狗，只写心跳，等第二级超时停住 CPU。`baremetal/lib/fw_image.S` 同样把它嵌入，只有 `wdt_fatal` 测试加载它。`fw_hdma.img` 是 HDMA 的测试固件（`fw/hdma_test.c`）：不经命令协议，按与 host 约定的地址（`baremetal` 的 `BM_DMA_BUF_BASE`）做传输，结果写入 `FW_VERSION`，只有 `hdma_basic` 加载它。`fw_int.img`（`fw/int_test.c`）设置 `CTX_VECTOR`、`INT_LEVEL` 后发出 `INT_REQ`，只有 `int_fw` 加载它。
 
+`fw_sram.img` 共用 ROM、时钟切换、DRAM 与 HDMA 初始化。
+`fw/sram_test.c` 检查八个 bank、部分写和 SRAM 压缩指令取指，并通过
+描述符读写检查 ML 的真实访问路径。正常结果为 FW_VERSION 0x5A4D0000，
+CE 为 0x5A4D0006，ML UE 读取及回写为 0x5A4D0008、0x5A4D0009。
+CPU UE 异常检查 mcause、mtval、错误地址和 PLIC 后发布 STAGE 0xF，
+FW_VERSION 为 0x5A4DF000 加异常原因。七个 SRAM 裸机用例使用此镜像。
+
 当前的 `fw.img` 是测试用固件：以 `GW_FW_DEBUG_WIN` 编译，初始化和每次 FLR 之后开启 BAR2 调试窗口，供 `pcie_bar2` 等测试使用。正式固件只在 host 经 SET_FEATURE 请求时开启（`spec-pcie` §7.3）；固件已实现 SET_FEATURE(DEBUG_WINDOW)，正式镜像不定义 `GW_FW_DEBUG_WIN` 即可。
 
 启动 ROM 在 25 MHz 下校验镜像的 SHA-256，校验时间随镜像大小线性增长：约 10 KB 的 `fw.img` 从写入到 `FW_READY` 约 170 ms 仿真时间。

@@ -66,10 +66,15 @@ dram_lifecycle 在实际 COPY 已传输部分数据时注入 FLR 或 D3hot，验
 PERST、Hot Reset 和 Link Down，随后重新枚举并由 ROM、固件重新训练。
 
 PCIe 数字链路用例归属 `pcie_link` 能力，G0–G3 的状态由
-`tools/pcie_spec.py --status` 查询。当前共 25 个裸机用例，timing/O3
-各运行 25 项，atomic 兼容配置运行原有 17 项，显式跳过 8 项能力测试。
+`tools/pcie_spec.py --status` 查询。当前共 32 个裸机用例，timing/O3
+各运行 32 项，atomic 兼容配置运行 24 项，显式跳过 8 项能力测试。
 `pcie_checkpoint` 的普通回归检查访问与电源标记，三个独立进程的文件
 保存和恢复由 `tools/pcie_system_verify.py --suite checkpoint` 验收。
+
+SRAM 用例声明 `sram_timing` 能力。三种 Host 预设都使用 timing 管理 CPU
+和共享 SRAM，atomic Host 继续使用匹配的兼容 DRAM 与 PCIe 档案。
+`--sram-fault` 按能力矩阵选择 CE、CPU 的 UE 读取、RMW 写入、字内偏移
+取指，或 ML 的描述符 UE 读取与回写。故障由硬件入口绑定并在指定事件注入。
 
 ## 现有 test
 
@@ -89,6 +94,13 @@ PCIe 数字链路用例归属 `pcie_link` 能力，G0–G3 的状态由
 | `dram_error` | 指定训练失败的启动错误 |
 | `dram_lifecycle` | 在途 COPY 中 FLR、电源切换与重复数据保持 |
 | `dram_link_reset` | PERST、Hot Reset、Link Down 后重新枚举与固件启动 |
+| `sram` | 真实固件逐 bank 的 64 B、部分写与可执行 SRAM 自检，ML 描述符往返 |
+| `sram_ce` | 单比特纠正数据、饱和 CE 计数与阈值 PLIC 状态 |
+| `sram_ue` | CPU UE 读取的 mcause、mtval、UE 地址及 PLIC 状态 |
+| `sram_ue_store` | CPU RMW 写 UE 访问错误与异常地址 |
+| `sram_ue_fetch` | 从宏字内 +2 B 执行压缩指令，验证 UE 取指错误地址 |
+| `sram_ml_read` | ML 的描述符 UE 读取以 REJECT 结束，HDMA PHASE 为 1 |
+| `sram_ml_write` | ML 的描述符 RMW 回写 UE 以 REJECT 结束，HDMA PHASE 为 2 |
 | `boot_ok` | 上电初始化：经启动窗口加载固件，ROM 校验并跳转，固件置位 `FW_READY`（F10） |
 | `boot_errors` | 启动失败：镜像校验失败、`FW_SIZE` 非法、启动窗口的非法写入，各自回到 STAGE 2 后可重新加载（F10） |
 | `boot_flr` | 启动期间和固件运行期间的 FLR：门控、回到 STAGE 2 或重新就绪（F11） |
@@ -101,7 +113,9 @@ PCIe 数字链路用例归属 `pcie_link` 能力，G0–G3 的状态由
 | `hdi_errors` | HDI 的其余路径：FILL、TIMESTAMP，跨上下文的 SIGNAL_EVENT 与 WAIT_EVENT（满足、超时、无权限），ABORT，中断合并的 THR、TIME 与错误完成，doorbell 写入不存在的上下文与越界、上下文的错误状态、GET_LOG，管理队列 doorbell 越界的致命错误与控制器复位，正常关闭（`spec-hdi` F2、F5、F11 – F14 的一部分） |
 | `dev_reset` | 设备完全复位：BAR 保留、寄存器恢复复位值，100 ms 内回到 STAGE 2，可以重新加载固件（`spec-pcie` §13.1，`spec-clock-reset-power` T3） |
 
-**已知限制**：gem5 的 Simple CPU（timing、atomic）在访存收到错误响应时直接 panic，不会产生 data abort。因此测试无法验证"访问未解码地址会出错"这类行为，例如关闭 Memory Space 后再访问 BAR；这类检查只能验证配置寄存器本身。
+Host Simple CPU 访问错误仍触发 gem5 panic，例如 MSE 关闭后的未解码 BAR
+访问。管理 RISC-V CPU 已安装可选错误转换接口，通过 SRAM UE 测试验证
+ISA 访问错误和异常地址。
 
 ## 运行
 
