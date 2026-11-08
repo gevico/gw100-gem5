@@ -30,7 +30,7 @@ namespace gw100
 {
 
 /** 中断控制器 */
-class IntCtrl
+class IntCtrl : public Serializable
 {
   public:
     /** 表项个数的上限 */
@@ -93,6 +93,10 @@ class IntCtrl
      * 设备随后经 setMsix() 告知
      */
     void reset();
+    /** 保存 MSI-X 表、来源、Pending 和功能门控。 */
+    void serialize(CheckpointOut &cp) const override;
+    /** 恢复 MSI-X 表、来源、Pending 和功能门控。 */
+    void unserialize(CheckpointIn &cp) override;
 
     /** 发出可以发出的消息（发送通路空闲、条件变化时调用） */
     void trySend();

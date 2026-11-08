@@ -460,7 +460,48 @@ BootCtrl::quiescent() const
 }
 
 /** 保存稳定启动状态、窗口和错误锁存。 */
+void
+BootCtrl::serialize(CheckpointOut &cp) const
+{
+    fatal_if(!quiescent(), "%s: boot checkpoint requires stable lifecycle",
+             name());
+    SERIALIZE_SCALAR(fatal);
+    SERIALIZE_SCALAR(stage);
+    SERIALIZE_SCALAR(fwReady);
+    SERIALIZE_SCALAR(error);
+    SERIALIZE_SCALAR(size);
+    SERIALIZE_SCALAR(winWrite);
+    SERIALIZE_SCALAR(lastWindowOpen);
+    SERIALIZE_SCALAR(linkFault);
+    SERIALIZE_SCALAR(delivered);
+    SERIALIZE_SCALAR(flrFailed);
+    SERIALIZE_SCALAR(pendingEvt);
+    SERIALIZE_SCALAR(flrRemaining);
+    SERIALIZE_SCALAR(debugWin);
+}
 
 /** 恢复稳定启动状态、窗口和错误锁存。 */
+void
+BootCtrl::unserialize(CheckpointIn &cp)
+{
+    UNSERIALIZE_SCALAR(fatal);
+    UNSERIALIZE_SCALAR(stage);
+    UNSERIALIZE_SCALAR(fwReady);
+    UNSERIALIZE_SCALAR(error);
+    UNSERIALIZE_SCALAR(size);
+    UNSERIALIZE_SCALAR(winWrite);
+    UNSERIALIZE_SCALAR(lastWindowOpen);
+    UNSERIALIZE_SCALAR(linkFault);
+    UNSERIALIZE_SCALAR(delivered);
+    UNSERIALIZE_SCALAR(flrFailed);
+    UNSERIALIZE_SCALAR(pendingEvt);
+    UNSERIALIZE_SCALAR(flrRemaining);
+    UNSERIALIZE_SCALAR(debugWin);
+    commitCount = barriersOut = 0;
+    fwStartPending = flrInProgress = flrNeedSend = false;
+    if (flrTimer.scheduled()) {
+        em.deschedule(flrTimer);
+    }
+}
 
 } // namespace gem5::gw100

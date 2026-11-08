@@ -66,7 +66,7 @@ enum class HdmaErr : uint8_t
 };
 
 /** Host DMA 引擎 */
-class HdmaEngine
+class HdmaEngine : public Serializable
 {
   public:
     /** 架构参数与实现参数 */
@@ -162,7 +162,9 @@ class HdmaEngine
     /** 在途事务、描述符与隔离资源是否已全部结算。 */
     bool quiescent() const;
     /** 保存已排空的寄存器、仲裁、tag LRU 与计数。 */
+    void serialize(CheckpointOut &cp) const override;
     /** 恢复已排空的寄存器、仲裁、tag LRU 与计数。 */
+    void unserialize(CheckpointIn &cp) override;
 
     /** FLR 进行中保持复位：寄存器读返回复位值，写被忽略，不做任何访问 */
     void setHold(bool h);

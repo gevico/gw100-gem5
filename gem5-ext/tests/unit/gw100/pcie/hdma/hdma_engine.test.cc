@@ -1012,6 +1012,27 @@ class HdmaSnapshotTest : public SerializationFixture
 };
 
 /** 父字段和各通道子区段均能从实际 INI 文件恢复。 */
+TEST_F(HdmaSnapshotTest, RegisterAndTagRoundTrip)
+{
+    Rig original;
+    original.setup(1);
+    original.putDesc(1, 0, {1, false, false, false, 0, 64, 0x1000, 0});
+    original.submit(1, 1);
+    ASSERT_TRUE(original.eng->quiescent());
+    {
+        std::ofstream checkpoint(getCptPath());
+        original.eng->serializeSection(checkpoint, "hdma");
+    }
+    CheckpointIn checkpoint(getDirName());
+    Rig restored;
+    restored.sim.now = original.sim.now;
+    restored.ml.sram = original.ml.sram;
+    restored.eng->unserializeSection(checkpoint, "hdma");
+    EXPECT_EQ(restored.rd(Rig::ch(1, 0x18)), original.rd(Rig::ch(1, 0x18)));
+    restored.putDesc(1, 1, {1, false, false, false, 0, 64, 0x2000, 64});
+    restored.submit(1, 2);
+    EXPECT_EQ(restored.dw7(1, 1), 1u);
+}
 
 /** 软件选择的完成超时在 DLL 提交后实际生效。 */
 TEST(HdmaEngine, ProgrammableCompletionTimeout)
