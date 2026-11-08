@@ -240,3 +240,56 @@ IntCtrl::updateIntx()
 
 } // namespace gw100
 } // namespace gem5
+
+namespace gem5::gw100
+{
+
+/** 保存MSI-X 表、来源、Pending 和功能门控。 */
+void
+IntCtrl::serialize(CheckpointOut &cp) const
+{
+    SERIALIZE_SCALAR(want);
+    SERIALIZE_SCALAR(pend);
+    SERIALIZE_SCALAR(rr);
+    SERIALIZE_SCALAR(msixEn);
+    SERIALIZE_SCALAR(funcMask);
+    SERIALIZE_SCALAR(bme);
+    SERIALIZE_SCALAR(intxDis);
+    SERIALIZE_SCALAR(flrGate);
+    SERIALIZE_SCALAR(inta);
+    SERIALIZE_CONTAINER(src);
+    SERIALIZE_CONTAINER(ctxVec);
+    for (unsigned index = 0; index < table.size(); ++index) {
+        ScopedCheckpointSection section(cp, "vector" + std::to_string(index));
+        paramOut(cp, "addrLo", table[index].addrLo);
+        paramOut(cp, "addrHi", table[index].addrHi);
+        paramOut(cp, "data", table[index].data);
+        paramOut(cp, "ctrl", table[index].ctrl);
+    }
+}
+
+/** 恢复MSI-X 表、来源、Pending 和功能门控。 */
+void
+IntCtrl::unserialize(CheckpointIn &cp)
+{
+    UNSERIALIZE_SCALAR(want);
+    UNSERIALIZE_SCALAR(pend);
+    UNSERIALIZE_SCALAR(rr);
+    UNSERIALIZE_SCALAR(msixEn);
+    UNSERIALIZE_SCALAR(funcMask);
+    UNSERIALIZE_SCALAR(bme);
+    UNSERIALIZE_SCALAR(intxDis);
+    UNSERIALIZE_SCALAR(flrGate);
+    UNSERIALIZE_SCALAR(inta);
+    arrayParamIn(cp, "src", src.data(), src.size());
+    arrayParamIn(cp, "ctxVec", ctxVec.data(), ctxVec.size());
+    for (unsigned index = 0; index < table.size(); ++index) {
+        ScopedCheckpointSection section(cp, "vector" + std::to_string(index));
+        paramIn(cp, "addrLo", table[index].addrLo);
+        paramIn(cp, "addrHi", table[index].addrHi);
+        paramIn(cp, "data", table[index].data);
+        paramIn(cp, "ctrl", table[index].ctrl);
+    }
+}
+
+} // namespace gem5::gw100
