@@ -1,0 +1,4 @@
+# SRAM 组件的多入口 timing 夹具
+Import('*')
+SimObject('SramProbe.py', sim_objects=['SramProbe'])
+Source('sram_probe.cc')
