@@ -47,7 +47,7 @@ class TestHost : public HdmaHostIf
 
     /** 记录一条消息 */
     void
-    write(Addr a, unsigned len, const uint8_t *d) override
+    write(Addr a, unsigned len, const uint8_t *d, uint8_t = 0) override
     {
         uint32_t v = 0;
         std::memcpy(&v, d, len);
