@@ -127,15 +127,22 @@
 
 `clk_core` 和 `clk_mgmt` 的切换必须无毛刺（§3.4）。
 
+PCIe 数字链路的参考 RC/EP 均采用 250 MHz 控制器时钟，每侧适配流水为
+两个周期，单向传播基线为 5 ns。数值由 PCIe 共享档案拥有，并标为参考
+微架构参数。串行链路以 1 ps tick 和相位余数累计计时，具体编码、维护包、
+训练和低功耗等待按 spec-pcie 的 G0 冻结规则执行，来源为 BASE4-CB。
+FLR/D3hot 的请求门控以 DLL_COMMIT 区分提交前取消与提交后结算。
+Link Down、Hot Reset、PERST 的状态与信用重建列入数字链路生命周期验收。
+
 ### 3.3 CDC 的边界
 
 设备中只允许以下 CDC 的地方，每一处都必须使用本表列出的同步方式：
 
 | 边界 | 信号 | 同步方式 | 定义 |
 |---|---|---|---|
-| `clk_pcie` ↔ `clk_core` | PCIe Tile 的 NI | 异步 FIFO | `spec-noc`（待写） |
+| `clk_pcie` ↔ `clk_core` | PCIe Tile 的 NI | 异步 FIFO | `spec-noc` |
 | `clk_pcie` ↔ `clk_mgmt` | ML | 每个通道一个异步 FIFO；两端的就绪和故障状态经同步器，按链路的建立握手重新建立 | `spec-mgmt-link` §3.3、§7.2 |
-| `clk_mgmt` ↔ `clk_core` | 管理 Tile 的 NI、指令通道的发送端 | 异步 FIFO | `spec-noc`（待写） |
+| `clk_mgmt` ↔ `clk_core` | 管理 Tile 的 NI、指令通道的发送端 | 异步 FIFO | `spec-noc` |
 | `clk_core` ↔ `clk_ddr` | Memory Tile 内部 | 异步 FIFO | `spec-dram`（待写） |
 | `clk_mgmt` ↔ `clk_ao` | 管理 CPU 读写 CRC 的寄存器 | 请求/应答握手：数据在请求期间保持稳定，应答经同步器返回 | 本文档 §6 |
 | `clk_ao` → `clk_core`、`clk_mgmt` | 时钟选择、PLL 使能 | 由无毛刺时钟选择器内部的握手完成；PLL 锁定状态经两级同步器送回 `clk_mgmt` | 本文档 §3.4 |
@@ -222,7 +229,7 @@
 3. 管理 CPU 从启动 ROM 开始执行（`spec-mgmt-tile` §8.1）。
 4. 固件运行后，按以下顺序释放 Mesh（与 `spec-mgmt-tile` §8.5 对应）：
    1. 按 §3.4 配置 `PLL_CORE` 并切换 `clk_core`、`clk_mgmt`；
-   2. 清零 `CRC_MESH_RST.NOC`，释放 NoC。NoC 复位后的默认配置必须足以让管理 CPU 访问全部 Memory Tile 的寄存器区并收到响应，不需要任何软件配置（将由 `spec-noc`（待写）定义）；
+   2. 清零 `CRC_MESH_RST.NOC`，释放 NoC。默认 XY 路由及 NI 配置使管理 CPU 可访问全部 Memory Tile 寄存器。数据就绪、保护快照同步及 ENABLE 屏障见 `spec-noc` §4。
    3. 配置 `PLL_DDR`，清零 `CRC_MESH_RST.MEM[k]`，释放 Memory Tile，完成 DRAM 训练；
    4. 置位 `CRC_CT_CLK_EN`，清零 `CRC_CT_RST`，释放 Compute Tile，再解除各 Tile 的 NI 隔离（`CRC_CT_ISO`）。
 5. v0.1 中，`CRC_MESH_RST` 的各位只在第 4 步清零一次，之后不得再置位。需要重新复位 NoC 或 Memory Tile 时，使用设备完全复位。
@@ -251,7 +258,11 @@ PCIe 控制器检测到 Hot Reset 或 Link Down 后，通知 CRC。CRC 复位矩
 
 FLR 不经过 CRC：PCIe Tile 复位 host 可见的功能状态（`spec-pcie` §13.2），固件随后清理（`spec-mgmt-tile` §9），清理中需要复位 Compute Tile 时按 §4.5 进行。
 
-FLR 开始时，入站完成器同样对此前已经交给功能逻辑的读做复位排空。FLR 清零配置空间的 Command 寄存器和 BAR，驱动重新设置它们之前，新的 BAR 访问不会到达设备（Memory Space Enable 为 0 时按 PCIe 规范返回 UR，`spec-pcie` §12.1），因此 FLR 不需要 reset shim。PCIe 规范对 FLR 前已接受的请求如何完成、Command 与 BAR 的复位时刻的具体要求，待回原文核对，并按所选 IP 确认（§9）。
+FLR 开始时，入站完成器对此前已经交给功能逻辑的读执行复位排空。
+Command 和 BAR 恢复默认值。MPS、链路电源控制、信用、序号和 sticky
+状态按 spec-pcie §13.2 保留。提交前取消与提交后收尾按 DLL_COMMIT
+区分。驱动重新设置 Command 和 BAR 之前，MSE 门控按 spec-pcie §12.1
+返回 UR。该边界以 BASE4-CB pp.587–588 为依据。
 
 **复位排空**（设备完全复位和 FLR 共用）
 
@@ -276,10 +287,10 @@ Compute Tile 的 NI 有隔离状态，由 `CRC_CT_ISO` 的对应位控制。NI �
 2. 固件置位 `CRC_CT_ISO[n]`。NI 随即：
    - 不再接受来自 NoC 的新请求，对之后到达的请求以 REJECT 响应返回（报告方式见 `spec-address-map` §5.4）；
    - 已经接受、尚未交给 Tile 的请求：以 REJECT 响应返回，不交给 Tile；
-   - 已经交给 Tile 的请求：等待 Tile 响应后正常返回。Tile 在 `clock.tile_txn_timeout` 内没有响应时，以 **FAULT** 响应返回给 initiator（`spec-address-map` §6.3 规则 0：这个请求之后仍可能生效），并判定**NI 隔离失败**；
-   - 不再接受 Tile 发出的新请求；Tile 已经发出的请求，必须等到每一个都收到响应（响应送回 Tile 或在 NI 隔离后丢弃）。不按超时提前结束：只要还有请求未得到响应，就可能仍在网络中、稍后在 target 处生效。收到的响应中只要有一个是 FAULT（`spec-address-map` §6.3 规则 0），就判定 NI 隔离失败；
+   - 已经交给 Tile 的请求等待真实响应。`clock.tile_txn_timeout` 从 TARGET_ACCEPT 计到 TARGET_COMPLETE，隔离时从该原始接受时刻核算已用时间。超过 5 µs 仍未完成则返回 FAULT、记录 NI 隔离失败，效果保持未知。
+   - 关闭 Tile 的新父请求准入，继续收尾已接受父请求的分片并等待所有真实响应。响应送回 Tile，或在上游关闭业务并确认取消接收后由 NI 消费预留槽中的返回。未得到响应的请求仍可能在目标生效，不能提前删除，任一 FAULT 使隔离失败。
    - 多播请求中以该 Tile 为目的地的部分以错误结束，多播的发起方按 `spec-address-map` §6.3 规则 7 得到整体结果。
-3. 上述动作全部完成、全部响应都是 OK 或 REJECT、且没有判定 NI 隔离失败时，NI 置位 `CRC_CT_ISO_ACK[n]`。此时该 Tile 发出的请求都已得到 OK 或 REJECT 的响应，交给它的请求都已执行完毕，不会再有任何旧请求生效。判定 NI 隔离失败时置位 `CRC_CT_ISO_FAIL[n]`，`CRC_CT_ISO_ACK[n]` 保持为 0。固件轮询该位，超时 `clock.tile_iso_timeout` = 50 µs；它必须大于 `clock.tile_txn_timeout` = 5 µs 加上错误响应经 NoC 返回和 CDC 同步的时间。
+3. 排空涵盖已接受父事务、全部分片、分支副本及返回反压。上游关闭业务并确认取消接收后，NI 可以消费其预留槽中的旧返回，规则见 `spec-noc` §6。全部相关结果为 OK/REJECT、且无潜在旧写继续生效时置位 ACK。FAULT 或排空失败置位 FAIL 并保持隔离。`clock.tile_iso_timeout=50 µs` 从隔离请求计到 ACK/FAIL，包含控制传播、目标服务、NoC 返回及 CDC，参考期限的适用流量由后续压力矩阵核验。
 
 **复位或门控**
 
@@ -290,9 +301,9 @@ Compute Tile 的 NI 有隔离状态，由 `CRC_CT_ISO` 的对应位控制。NI �
 
 **NI 隔离失败**
 
-- `CRC_CT_ISO_FAIL[n]` 置位，或固件轮询 `CRC_CT_ISO_ACK[n]` 超时，说明 Tile、NI 或路由器出现故障。固件不得强行复位该 Tile 或解除 NI 隔离，而应置位致命错误（`DEV_STATUS.DEV_FATAL`，`spec-pcie` §6.2），由 host 使用设备完全复位恢复。设备完全复位后设备内存和 SRAM 的内容按"不保证"处理（§4.2），NI 隔离失败时可能迟到生效的写因此不影响恢复后的正确性。
-- 本协议依赖 `spec-address-map` §6.3 规则 0：每个请求最终恰好得到一个响应，OK 或 REJECT 的响应之后请求不再生效，并且正常情况下响应在 `noc.max_response_time` 之内到达。`spec-noc`（待写）必须实现这些保证。
-- `clock.tile_txn_timeout` 和 `clock.tile_iso_timeout` 都按 `noc.max_response_time` 的若干倍设置，正常的拥塞不会触发它们；触发即表示硬件已无法在设计上限内前进。
+- `CRC_CT_ISO_FAIL[n]` 置位或等待 ACK 超时表示参考期限内未完成安全隔离。固件保持隔离并置位致命错误，由 host 使用设备完全复位恢复。设备完全复位后的内容按 §4.2 处理，隔离失败期间潜在迟到写的效果保持未知。
+- 本协议依赖恰好一次完成、目标可见性和成功隔离后的无旧效果保证。分层计时按 `spec-noc` §7 记录，条件性 1 µs 性能目标的流量条件独立于隔离期限。
+- 5 µs 目标期限与 50 µs 隔离期限属于参考故障策略。持续拥塞或接收阻塞可能耗尽隔离期限，此时按隔离失败处理。当前原生 FR-FCFS 的最坏服务上界保持未证明，拥塞场景的适用条件由后续验收给出。
 - 由于第 2 步要等全部请求得到响应，`CRC_CT_ISO_ACK[n]` 置位后不存在复位前发出、尚未结束的请求，不需要纪元号区分新旧请求。
 
 ### 4.6 RDC 的隔离

@@ -42,8 +42,8 @@
 | HIF | Host Interface | 设备中直接面向 host 的部分：PCIe 子系统（`spec-pcie` §1.4）、HDMA，以及 ML 在 PCIe Tile 一侧的适配器。PCIe Tile 的路由器和 NI 不属于 HIF |
 | HDMA | Host DMA | Host DMA 引擎，见 `spec-host-dma` §1.3 |
 | Mesh | — | Tile 排成的二维网格，路由器只与上下左右相邻的路由器相连 |
-| NoC | Network on Chip | 连接所有路由器的数据网络，正文中的"数据 NoC"指同一网络（§4、`spec-noc`（待写）） |
-| XY 路由 | XY routing | 先沿 x 方向、再沿 y 方向转发的维序路由（`spec-noc`（待写）） |
+| NoC | Network on Chip | 连接所有路由器的数据网络，正文中的"数据 NoC"指同一网络（§4、`spec-noc`） |
+| XY 路由 | XY routing | 先沿 x 方向、再沿 y 方向转发的维序路由（`spec-noc`） |
 | 指令通道 | instruction channel | 管理 Tile 向 FU 派发张量级指令的逻辑通道，复用 NoC 的物理链路（§4） |
 | ML | Management Link | 见 `spec-mgmt-link` §1.3 |
 | 张量级指令 | tensor instruction | 一条指令完成一个张量运算或一次数据搬运；格式将由 `spec-isa`（待写）定义 |
@@ -80,7 +80,7 @@
 - **决定**：管理 Tile 上的固件把程序展开成张量级指令，经指令通道发往各 Compute Tile 的 FU；同一条指令可以多播给多个 Tile。
 - **理由**：
   - 张量级指令一条就是成千上万次运算，集中派发的指令带宽足够，Compute Tile 内不需要通用处理器。
-  - 多播让多个 Tile 以 SPMD 方式执行同一段程序，管理 Tile 注入的指令流量不随目标 Tile 数增长（复制后经过各段链路的流量仍随目标增加，将由 `spec-noc`（待写） 评估）。
+  - 多播让多个 Tile 以 SPMD 方式执行同一段程序，管理 Tile 注入的指令流量不随目标 Tile 数增长（复制后经过各段链路的流量仍随目标增加，将由 `spec-noc` 评估）。
   - 集中派发也让命令协议、上下文隔离和错误处理集中在一处（`spec-mgmt-tile`）。
 
 ### 2.4 HIF：PCIe EP，设备内存只经 DMA 访问
@@ -133,7 +133,7 @@ flowchart LR
 | Memory Tile | 4 | 每个连接 2 条 LPDDR5X 通道；DRAM 控制器、受保护区域检查 | `spec-dram`（待写） |
 | PCIe Tile | 1 | PCIe EP、BAR、MSI-X、HDMA | `spec-pcie`、`spec-host-dma` |
 | 管理 Tile | 1 | RISC-V 管理 CPU、启动 ROM、SRAM；运行固件：启动、命令协议、指令派发、错误处理 | `spec-mgmt-tile` |
-| NoC | 24 个路由器（6 × 4） | 连接所有 Tile 的数据网络 | `spec-noc`（待写） |
+| NoC | 24 个路由器（6 × 4） | 连接所有 Tile 的数据网络 | `spec-noc` |
 | CRC | 1 | 时钟、复位和电源域的控制 | `spec-clock-reset-power` |
 
 ### 3.3 设备内存
@@ -149,12 +149,16 @@ flowchart LR
 
 | 互连 | 连接 | 承载 | 定义 |
 |---|---|---|---|
-| 数据 NoC | 所有 Tile 的路由器，2D Mesh，XY 路由 | 设备内存与 Tile SRAM 之间的数据、Tile 之间的数据、寄存器访问、同步消息、事件 | `spec-noc`（待写） |
-| 指令通道 | 管理 Tile → 各 Compute Tile 的 FU | 张量级指令，可多播。复用数据 NoC 的物理链路，使用独立的报文类别和逻辑队列；与数据请求共享链路带宽、允许暂时的竞争和反压，但不会因数据拥塞而死锁或无限期等待 | `spec-noc`（待写）、`spec-isa`（待写） |
+| 数据 NoC | 所有 Tile 的路由器，2D Mesh，XY 路由 | 设备内存与 Tile SRAM 之间的数据、Tile 之间的数据、寄存器访问、同步消息、事件 | `spec-noc` |
+| 指令通道 | 管理 Tile → 各 Compute Tile 的 FU | 张量级指令，可多播。复用数据 NoC 的物理链路，使用独立的报文类别和逻辑队列；与数据请求共享链路带宽、允许暂时的竞争和反压，但不会因数据拥塞而死锁或无限期等待 | `spec-noc`、`spec-isa`（待写） |
 | ML | PCIe Tile ↔ 管理 Tile，点对点 | 启动写入、doorbell、事件、寄存器访问、描述符读取 | `spec-mgmt-link` |
 | PCIe 链路 | PCIe Tile ↔ host | Gen4 x4 | `spec-pcie` |
 
-NoC 的链路宽度 `noc.link_bytes_per_cycle` = 64 B/周期。依据：Memory Tile 出口的一跳平均要承载约 34 GB/s（136.5 GB/s ÷ 4，推算），64 B × 1 GHz = 64 GB/s（推算）。这只是按平均带宽的估算；各段链路在实际路由和多种流量叠加下的最坏负载，将由 `spec-noc`（待写） 评估。
+NoC 的 512 位链路每方向每周期传 64 B，报头、字节使能和填充占用这些字节。
+完整 64 B 数据占两拍，1 GHz 下单链路有效载荷上界为 32 GB/s，四个 Memory
+Tile 本地边界合计 128 GB/s，均为包格式推算。当前 DRAM 引脚理想值为
+134.928 GB/s，端到端带宽还受路由竞争、事务驻留和目标服务限制。
+链路参数、资源、分层时延及验收条件由 `spec-noc` 和共享 NoC 档案拥有。
 
 ---
 
@@ -176,7 +180,7 @@ NoC 的链路宽度 `noc.link_bytes_per_cycle` = 64 B/周期。依据：Memory T
 | 指标 | 数值 | 算法 |
 |---|---|---|
 | 矩阵引擎的峰值乘加 | 每个 Compute Tile 2048 次乘加/周期，16 个 Tile 共 32 768 次/周期；1 GHz 下约 32.8 T 次乘加/s | 8 × 64 阵列、每个单元 4 元素点积（`spec-matrix-engine`（待写），参数待重建） |
-| LLaMA2-7B（INT4 权重约 3.5 GB）decode 的上限 | 约 39 token/s | 每个 token 要读一遍全部权重：136.5 GB/s ÷ 3.5 GB；未计 KV cache 和激活的流量 |
+| LLaMA2-7B（INT4 权重约 3.5 GB）权重流量上限 | 约 36.6 token/s | 按四个 Memory Tile 的 128 GB/s 载荷边界除以 3.5 GB 推算，KV cache、激活、实际路由与计算服务另计 |
 | PCIe 有效带宽 | 约 6–7 GB/s | `spec-pcie` §11.1 |
 
 decode 阶段受设备内存带宽限制，矩阵引擎的算力远未用满；prefill 阶段受算力限制。这一判断决定了设计的优先级：先保证设备内存带宽能被用满，再提高算力利用率。
@@ -227,7 +231,7 @@ decode 阶段受设备内存带宽限制，矩阵引擎的算力远未用满；p
 | `dram.type` | 通用 LPDDR5-8433 | |
 | `dram.channels` | 8 | 每个 Memory Tile 2 条，每条 x16 |
 | `dram.size` | 32 GiB | §3.3 |
-| `noc.link_bytes_per_cycle` | 64 | §4；`spec-noc`（待写） 写成后移交 |
+| `noc.link_bytes_per_cycle` | 见 `spec-noc` 的 FLIT_BYTES | §4，报头包含在 64 B 中 |
 | `addr.device_pa_bits` | 见 `spec-address-map` §10 | |
 | `workload.primary` | LLaMA2-7B | |
 | `workload.secondary` | Llama-3.2-1B | |
@@ -238,5 +242,5 @@ decode 阶段受设备内存带宽限制，矩阵引擎的算力远未用满；p
 
 | 事项 | 当前默认 | 影响 |
 |---|---|---|
-| NoC 链路宽度 | v0.1 已定为 64 B/周期 | §4；`spec-noc`（待写） 按最坏链路负载验证不通过时修改本规格 |
+| NoC 实现验收 | G0 固定 64 B 含报头，四个 VN | `spec-noc`，G1 周期实现、G2 接入和 G3 性能分开验收 |
 | 矩阵引擎与向量引擎的参数 | 沿用旧参数草案 | §5.2；单一真源重建时确认 |

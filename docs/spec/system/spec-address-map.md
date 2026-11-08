@@ -25,7 +25,7 @@
 - 各 Tile 寄存器区内部的布局，由各部件的规格定义：`spec-compute-tile`（待写）、`spec-dram`（待写）、`spec-mgmt-tile`；
 - 管理 CPU 的本地地址空间，见 `spec-mgmt-tile` §3.3；本文档只定义它看到的 DPA 部分；
 - host 侧的地址：BAR 的划分见 `spec-pcie` §5，host 内存的总线地址由驱动交给设备，不进入 DPA 空间；
-- NoC 的报文格式、路由、流控和死锁避免，将由 `spec-noc`（待写）定义；同步原语将由 `spec-tile-sync`（待写）定义。
+- NoC 的报文格式、路由、流控和分层时延由 `spec-noc` 定义，同步原语由后续 `spec-tile-sync` 定义。
 
 ### 1.2 约定
 
@@ -222,7 +222,7 @@ PCIe Tile 不是 NoC 的访问 target。HDMA 的寄存器文件和 HIF 的其他
 - 每个 Memory Tile 各保存一份完整的受保护区域表，按全局 DPA 检查到达本 Memory Tile 的请求。由于请求不跨 256 B 边界（§6.1）而区域按 4 KiB 对齐，一个请求要么整个落在受保护区域内，要么整个落在外面。
 - 大小为 0 的区域不起作用；区域可以重叠，效果为各区域的并集。
 - 受保护区域只有管理 CPU 能访问；其他 initiator 访问时，Memory Tile 以错误响应返回，并记录出错地址和 initiator。
-- **设置与锁定**：固件在初始化期间、启用 HDMA 和 Compute Tile 之前（`spec-mgmt-tile` §8.5），把同一份区域表写入全部 4 个 Memory Tile，读回确认，再依次锁定。锁定后直到设备复位都不能修改。由于设置在其他 initiator 启用之前完成，各 Memory Tile 的表短暂不一致不会造成保护缺口。寄存器的布局将由 `spec-dram`（待写）定义。
+- **设置与锁定**。固件在初始化期间、启用 HDMA 和 Compute Tile 之前，把同一份区域表写入全部四个 Memory Tile，读回确认并锁定。锁定后保持到设备复位，寄存器见 `spec-dram`。完整 Mesh 接入时，每个 Memory Tile 通过 CONTROL 消息把四项表及通道状态同步到 18 个请求者物理 NI，收齐全部成功确认后 ENABLE 完成。源端使用镜像预检完整父请求，目标继续独立检查。传播协议与快照布局见 `spec-noc` §3.2、§4。
 - 描述符环、固件代码已经放在管理 Tile 的 SRAM 中（`spec-host-dma` §3.1、`spec-mgmt-tile` §4.1）。固件在设备内存中没有必须保护的数据时，可以不设置受保护区域。
 
 ### 5.4 违例与保留地址的处理
@@ -249,7 +249,7 @@ initiator 收到 FAULT 时，按上表的方式报告，并且无论 initiator �
 | 层次 | 规定 |
 |---|---|
 | 单次访问 | 管理 CPU 的 load/store、对寄存器的访问：1、2、4、8 B，必须自然对齐 |
-| 请求 | NoC 上的一次读或写：单次访问，或长度不超过 `noc.max_request_bytes` = 64 B 的突发。突发可以带字节使能。任何请求都**不得跨越 256 B 对齐的边界**，也不得跨越 §3.1、§4.2 的区域边界；initiator 负责拆分 |
+| 请求 | NoC 子请求最多 64 B，写携带字节使能。源 NI 先预检完整父请求，再按 64 B burst 和 256 B 通道边界拆分。线上子请求不得跨越这些边界及区域边界，完整父请求中的保留或非法部分使整个父请求拒绝 |
 | 不支持的大小或对齐 | 按违例处理（§5.4） |
 
 - 自然对齐、不超过 8 B 的单次访问**不可撕裂**：target 把它作为一个不可分割的操作执行。一次读返回的各个字节都取自同一时刻 target 处的内容，不会与其他写交错；一次写的各个字节同时生效，其他读不会只看到其中一部分。不同大小的访问范围重叠时（例如 8 B 读与其中某 1 B 的写），按 target 执行它们的先后整体排序：8 B 读要么看到这 1 B 写之前的全部 8 字节，要么看到之后的全部 8 字节。
@@ -272,7 +272,9 @@ initiator 收到 FAULT 时，按上表的方式报告，并且无论 initiator �
    - **REJECT**：请求没有产生任何效果，之后也不会产生（违例、保留地址、NI 隔离中的 target，§5.4、`spec-clock-reset-power` §4.5）；
    - **FAULT**：请求的效果未知，之后仍可能生效。FAULT 只在硬件故障时出现（例如 Tile 在 NI 隔离时停止响应，`spec-clock-reset-power` §4.5），收到 FAULT 的部件必须报告致命错误，设备只能经设备完全复位恢复。
 
-   正常运行和受控的 NI 隔离过程中只出现 OK 和 REJECT。NoC 和每个 target 都不得丢弃请求或响应，并且必须保证前进：仲裁公平、缓冲有限、没有协议死锁。正常运行中，任何请求从发出到收到响应不超过 `noc.max_response_time` = 1 µs（设计目标，`spec-noc`（待写）必须以最坏拥塞下的分析或仿真证明；具体机制由它定义，不得弱化本条）。唯一的例外是冷复位、热复位和设备完全复位：Mesh 的全部端点同时复位，在途的请求和响应一并作废，没有未复位的一方在等待它们（`spec-clock-reset-power` §4.3）。
+   正常运行和受控隔离中保持请求与响应的恰好一次完成，仲裁公平、缓冲有限，并验证协议进展。源端等待、CDC、NoC 请求传输、目标排队与服务、响应传输和上游接收等待分别计量。`noc.end_to_end_goal=1 µs` 适用于无竞争、正常时钟稳定、目标已就绪且服务不超过 250 ns、上游持续接收的场景。持续拥塞、行冲突、刷新及返回阻塞按明确流量条件验收分布，硬上界须独立证明。当前原生 FR-FCFS 的最坏服务时间保持未证明。冷复位、热复位和设备完全复位由全部 Mesh 端点共同撤销在途工作，边界见 `spec-clock-reset-power` §4.3。
+
+   以上 REJECT 的无效果保证作用于单个子请求及父请求的执行前预检。多片父请求执行中若某片拒绝，停止未发片并收尾全部在途片，父结果携带 partial、完成字节数及逐片结果。多播另含完成、拒绝和故障位图，已完成部分的效果保留。汇总优先级为 FAULT、部分 REJECT、全部 OK，见 `spec-noc` §5。
 
 1. **写入序**：所有 initiator 对同一地址的写，在 target 处按一个唯一的全序生效，称为该地址的写入序。
 2. **读**：读返回该地址的写入序中，在 target 处理这次读之前最后一个生效的写的值。
@@ -316,7 +318,7 @@ initiator 收到 FAULT 时，按上表的方式报告，并且无论 initiator �
 | F2 | §4.1 中每个 Tile 的窗口基址正确；SRAM 区超出实际容量的部分和 PCIe Tile、预留位置的窗口按保留地址处理 |
 | F3 | 设备内存的交织符合 §3.2：2 KiB 对齐的 2 KiB 地址恰好覆盖 8 条通道各一次 |
 | F4 | Tile 本地窗口：Compute Tile 内的访问指向本 Tile；本地窗口的地址不出现在 NoC 上；其他 initiator 访问时报错 |
-| F5 | §5.2 中每个"—"格的访问都整个以 REJECT 结束，且不改变 target 的状态；跨 256 B 边界或跨区域边界的请求以 REJECT 结束 |
+| F5 | 权限拒绝及包含保留地址的父请求整个以 REJECT 结束且无效果，合法父请求按 64 B、256 B 边界拆分，子请求跨边界拒绝 |
 | F6 | 受保护区域：管理 CPU 可以访问，其他 initiator 以 REJECT 结束并记录；4 个 Memory Tile 的检查结果一致；锁定后不可修改 |
 | F7 | 顺序：同一地址的写后读读到新值；多个 initiator 并发覆盖写同一地址时，所有读者看到的值都符合同一个写入序；fence 之后的访问看到 fence 之前本 initiator 全部写的结果 |
 | F8 | 同步：生产者写数据后不执行 fence 就通知时，可以构造出消费者读到旧数据的情形（证明 fence 不可省略）；按 §6.3 规则 8 的释放与获取，消费者在任何乱序下都读到新数据 |
@@ -349,8 +351,8 @@ initiator 收到 FAULT 时，按上表的方式报告，并且无论 initiator �
 | `dram.interleave_bytes` | 256 | §3.2 |
 | `dram.protected_regions` | 4 | §5.3；`spec-dram`（待写） 写成后移交 |
 | `ct.exec_regions` | 8 | §5.2 |
-| `noc.max_request_bytes` | 64 B | §6.1；`spec-noc`（待写） 写成后移交 |
-| `noc.max_response_time` | 1 µs | §6.3 规则 0；设计目标，`spec-noc`（待写） 写成后移交 |
+| `noc.max_request_bytes` | 见 `spec-noc` 的 MAX_DATA_BYTES | §6.1，线上子请求 64 B |
+| `noc.end_to_end_goal` | 见 `spec-noc` 的 END_TO_END_GOAL_PS | §6.3，条件性 1 µs 性能目标 |
 | `dram.size`、`dram.channels`、`ct.sram_size` | 见 `spec-arch` §8 | |
 
 ---

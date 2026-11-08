@@ -24,7 +24,7 @@ Host DMA 引擎（HDMA）负责在 host 内存和设备侧存储之间搬运数�
 - 寄存器；
 - 错误处理、复位、性能要求和验收标准。
 
-下列内容不在本文档范围内：PCIe 链路和配置空间（`spec-pcie`）；命令协议（命令队列、命令格式、上下文，`spec-hdi`）；设备内部的同步机制和 NoC 的协议（将由 `spec-tile-sync`（待写）、`spec-noc`（待写） 定义）。本文档只在需要时说明 HDMA 与它们的接口。
+下列内容不在本文档范围内：PCIe 链路和配置空间（`spec-pcie`）；命令协议（命令队列、命令格式、上下文，`spec-hdi`）；设备内部的同步机制和 NoC 的协议（将由 `spec-tile-sync`（待写）、`spec-noc` 定义）。本文档只在需要时说明 HDMA 与它们的接口。
 
 ### 1.2 使用模型
 
@@ -145,6 +145,23 @@ H2D 和 D2H 使用 PCIe 的两个方向，互不占用带宽。HDMA 必须让两
 SGL 段的读取与 H2D 数据读取同属读方向，算在所属通道的配额内。
 
 ---
+
+### 2.4 数字链路接入契约
+
+本节为 spec-pcie v0.2 的 G2 接入定义，实现状态见其来源覆盖矩阵。
+
+- Host 接口提交完整 TLP，并返回接受或反压。请求携带 Requester ID、
+  tag、Byte Enable、RO、No Snoop 和用途，供链路与完成账本共同使用。
+- tag、LRU、隔离和完成数据预留由同一账本拥有。生成一个请求之前，
+  为其最坏合法完成拆分预留头部与数据资源。
+- DLL_COMMIT 回调启动 completion timeout。提交前取消释放未发送资源，
+  提交后的请求按完成、超时及隔离规则结算。
+- completion 逐段提供状态、Byte Count、Lower Address 和数据，完成全部
+  协议校验后推进描述符。内部回调代次用于管理仿真对象寿命。
+- RC 收到 TLP 后将 Host 内存操作拆成 cache line timing 请求。链路包边界
+  由 MPS、MRRS、Byte Enable 和 4 KiB 规则决定。
+- 数据写、完成记录和 MSI-X 共享规定的发送顺序，链路确认、Host 可见和
+  描述符完成分别观测。
 
 ## 3. 描述符环
 
