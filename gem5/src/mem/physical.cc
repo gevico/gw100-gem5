@@ -463,11 +463,15 @@ PhysicalMemory::unserializeStore(CheckpointIn &cp)
               range_size, range.size());
 
     uint64_t curr_size = 0;
-    uint32_t bytes_read;
+    uint8_t buffer[chunk_size];
     while (curr_size < range.size()) {
-        bytes_read = gzread(compressed_mem, pmem, chunk_size);
-        if (bytes_read == 0)
-            break;
+        int bytes_read = gzread(compressed_mem, buffer, chunk_size);
+        fatal_if(bytes_read <= 0 || bytes_read > range.size() - curr_size,
+                 "Invalid physical memory checkpoint file '%s'", filename);
+        // Preserve demand-zero pages when restoring sparse large memories.
+        // Compare first so pre-populated or shared backing is also correct.
+        if (std::memcmp(pmem, buffer, bytes_read) != 0)
+            std::memcpy(pmem, buffer, bytes_read);
         curr_size += bytes_read;
         pmem += bytes_read;
     }
