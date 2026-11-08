@@ -1,0 +1,5 @@
+# ct/: 管理 Compute Tile
+# 子目录是Compute TIle的组件： sram/ sync/
+Import('*')
+
+Source('gw100_ct_device.cc',add_tags='gw100 compute tile')

@@ -41,7 +41,7 @@ namespace gw100{
         Reject, /** 被拒绝（访问越界等等） */
     };
 
-    constexpr Addr 
+
     VisitSingleCt(int x, int y){
         return CtBase + (y * 8 + x)* CtWindowSize;
     }
