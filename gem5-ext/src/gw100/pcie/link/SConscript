@@ -1,5 +1,6 @@
-# PCIe 包、串行、资源和数字链路组件
+# PCIe 独立链路内核及其纯逻辑测试共用标签。
 Import('*')
+
 Source('packet.cc', add_tags='gw100 pcie link')
 Source('serializer.cc', add_tags='gw100 pcie link')
 Source('flow_control.cc', add_tags='gw100 pcie link')
@@ -7,3 +8,4 @@ Source('replay.cc', add_tags='gw100 pcie link')
 Source('link_model.cc', add_tags='gw100 pcie link')
 Source('link_training.cc', add_tags='gw100 pcie link')
 Source('link_checkpoint.cc', add_tags='gw100 pcie link')
+Source('link_transport.cc', add_tags='gw100 pcie transport')
