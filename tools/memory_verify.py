@@ -157,10 +157,13 @@ def main():
         "input_sha256": digest.hexdigest(),
         "binary_sha256": hashlib.sha256(GEM5.read_bytes()).hexdigest(),
         "seed": 5489,
-        "gem5_revision": subprocess.check_output(
-            ["git", "-C", str(ROOT / "gem5"), "rev-parse", "HEAD"],
+        "repository_revision": subprocess.check_output(
+            ["git", "-C", str(ROOT), "rev-parse", "HEAD"],
             text=True,
         ).strip(),
+        "gem5_upstream_revision": json.loads(
+            (ROOT / "gem5/UPSTREAM.json").read_text()
+        )["revision"],
     }
 
     def run(name, config, arguments, trace=False):
