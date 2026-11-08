@@ -101,6 +101,7 @@ class Gw100Config:
             devmem_size=self.devmem.size,
             device_pa_bits=self.addr.device_pa_bits,
             async_memory=self.precise_memory,
+            precise_link=self.precise_memory,
             bar2_latency="8ns" if self.precise_memory else "200ns",
             devmem_max_outstanding=16 if self.precise_memory else 32,
         )

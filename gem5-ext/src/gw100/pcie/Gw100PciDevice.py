@@ -13,6 +13,7 @@ BAR2 窗口（经 mem_port 访问设备内存）、FLR。中断投递、DMA 和�
 from m5.objects.PciDevice import PciEndpoint, PciMemBar, PciMemUpperBar
 from m5.params import *
 from m5.proxy import *
+from m5.SimObject import PyBindMethod
 
 
 class Gw100PrefetchMemBar(PciMemBar):
@@ -29,6 +30,7 @@ class Gw100PciDevice(PciEndpoint):
     type = "Gw100PciDevice"
     cxx_header = "src/gw100/pcie/gw100_pci_device.hh"
     cxx_class = "gem5::gw100::Gw100PciDevice"
+    cxx_exports = [PyBindMethod("pcieReport")]
 
     # 配置空间头部（spec-pcie §4.1）。Vendor/Device ID 为仿真用占位值。
     VendorID = 0x1234
@@ -68,6 +70,22 @@ class Gw100PciDevice(PciEndpoint):
     timestamp_hz = Param.UInt32(100000000, "设备时间戳频率，Hz")
     link_speed = Param.UInt8(4, "当前链路速率：1 = Gen1 … 4 = Gen4")
     link_width = Param.UInt8(4, "当前链路宽度")
+    precise_link = Param.Bool(False, "Host、HDMA 和中断经过共享数字链路")
+    pcie_rcb = Param.Unsigned(64, "Root Complex 的完成拆包边界，单位 B")
+    pcie_completion_payload = Param.Unsigned(256, "最大完成载荷，受 MPS 约束")
+    pcie_phy_feedback = Param.Latency("100ns", "数字 PHY 检查点反馈等待")
+    pcie_phy_generation = Param.Unsigned(4, "数字 PHY 可达到的最高代际")
+    pcie_phy_lane_mask = Param.Unsigned(15, "数字 PHY 检测到的四 lane 位图")
+    pcie_phy_equalization = Param.Latency("1us", "数字 PHY 均衡评估等待")
+    pcie_training_fail = Param.String("", "指定 LTSSM 状态不返回成功反馈")
+    pcie_host_service = Param.Latency("0ns", "RC 目标附加服务等待")
+    pcie_rc_aspm = Param.Bool(False, "参考 RC 软件策略允许 ASPM L1")
+    pcie_fault = Param.String("", "数字链路单次或有限次数故障类型")
+    pcie_fault_side = Param.Unsigned(0, "故障发送方向，RC 为 0，EP 为 1")
+    pcie_fault_count = Param.Unsigned(1, "注入的有限故障次数")
+    pcie_trace_path = Param.String("", "可选的原始链路事件 JSONL 路径")
+    pcie_host_ranges = VectorParam.AddrRange([], "RC 可访问的 Host DRAM 范围")
+    pcie_interrupt_ranges = VectorParam.AddrRange([], "RC 的 MSI timing 目标范围")
 
     mem_port = RequestPort("接设备内存，BAR2 窗口和 HDMA 经它访问")
     bar2_mem_port = RequestPort("精确配置的独立 BAR2 timing 内存端口")

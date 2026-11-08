@@ -145,6 +145,10 @@ PcieParts::serialize(CheckpointOut &cp) const
     windows.serializeSection(cp, "windows");
     global.serializeSection(cp, "global");
     boot.serializeSection(cp, "boot");
+    bootCtrl.serializeSection(cp, "boot_control");
+    hdma.serializeSection(cp, "hdma");
+    intCtrl.serializeSection(cp, "interrupts");
+    hdi.serializeSection(cp, "hdi");
 }
 
 /** 按组件分节恢复 serialize() 保存的状态 */
@@ -156,6 +160,10 @@ PcieParts::unserialize(CheckpointIn &cp)
     windows.unserializeSection(cp, "windows");
     global.unserializeSection(cp, "global");
     boot.unserializeSection(cp, "boot");
+    bootCtrl.unserializeSection(cp, "boot_control");
+    hdma.unserializeSection(cp, "hdma");
+    intCtrl.unserializeSection(cp, "interrupts");
+    hdi.unserializeSection(cp, "hdi");
 }
 
 /**
@@ -188,6 +196,9 @@ Gw100PcieFactory::build(const Gw100PciDeviceParams &p, ClockedObject &owner)
         MsixCapBase,
         std::make_unique<MsixCapability>(p.msix_table_size, MsixTable::Base,
                                          MsixPba::Base));
+    if (p.precise_link) {
+        parts->config.enableLinkExtensions();
+    }
     parts->config.finalize();
 
     // BAR0 的寄存器块（spec-pcie §5.1）；其余块在后续阶段登记

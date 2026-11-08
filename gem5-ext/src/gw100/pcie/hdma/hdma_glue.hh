@@ -80,12 +80,33 @@ class HostDmaPort : public RequestPort, public HdmaHostIf
 
     /** 在途写请求减少、可以再写时调用 */
     std::function<void()> onTxFree;
+    /** 精确配置的共享事务链路，空值使用旧兼容后端。 */
+    HdmaHostIf *transport = nullptr;
 
     /** 发出一个 MRd */
     void read(Addr addr, unsigned len, HostReadDone done) override;
+    /** 指定完整 MRd 当前能否被本地发送端接受。 */
+    bool canRead(Addr addr, unsigned len) const override;
+    /** 接受真实 tag 与 Attr[2:0]，在 DLL 提交时调用 committed。 */
+    bool readTagged(Addr addr, unsigned len, uint8_t tag,
+                    std::function<void()> committed, HostReadDone done,
+                    uint8_t attributes = 0) override;
+    /** 撤销尚未提交到 DLL 的读，释放本地预留。 */
+    void cancelRead(uint8_t tag) override;
+    /** 已提交读进入隔离，保留匹配元数据并释放数据预留。 */
+    void isolateRead(uint8_t tag) override;
+    /** RC 收到完整 MRd 后才拆成 host cache line 请求。 */
+    void backendRead(Addr addr, unsigned len, HostReadDone done);
+    /** RC 收到完整 MWr 后执行，并在 host 写响应后通知可见。 */
+    void backendWrite(Addr addr, unsigned len, const uint8_t *data,
+                      HostReadDone done, const std::vector<bool> &mask = {});
 
     /** 发送通路能否再接受一个写请求 */
-    bool canWrite() const override { return txInFlight < txCredits; }
+    bool
+    canWrite() const override
+    {
+        return transport ? transport->canWrite() : txInFlight < txCredits;
+    }
 
     /** 发出一个 MWr */
     void write(Addr addr, unsigned len, const uint8_t *data,
@@ -106,6 +127,8 @@ class HostDmaPort : public RequestPort, public HdmaHostIf
     {
         /** 是否为写 */
         bool write = false;
+        /** 是否消耗旧兼容模型的在途写额度。 */
+        bool counted = false;
         /** 读的数据 */
         std::vector<uint8_t> buf;
         /** 尚未收到响应的内存包数 */
@@ -129,7 +152,8 @@ class HostDmaPort : public RequestPort, public HdmaHostIf
 
     /** 把 [addr, addr + len) 拆成内存包排队发出 */
     void split(const std::shared_ptr<Op> &op, MemCmd cmd, Addr addr,
-               unsigned len, const uint8_t *data);
+               unsigned len, const uint8_t *data,
+               const std::vector<bool> &mask = {});
 
     /** 按顺序发出排队的内存包，直到被反压 */
     void trySend();

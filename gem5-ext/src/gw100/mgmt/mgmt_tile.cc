@@ -354,7 +354,8 @@ Gw100MgmtTile::devResetAssert()
             timestampReset.set(true);
         }
         if (params().reset_endpoint) {
-            params().reset_endpoint->resetLink(timestampOrigin);
+            params().reset_endpoint->resetLink(timestampOrigin,
+                                               pendingResetCause & 0xf);
         }
     }
     link->reset(Gw100MgmtLink::Side::Mgmt);
