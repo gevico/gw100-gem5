@@ -26,6 +26,26 @@ PYTHON_CONFIG=/opt/homebrew/bin/python3.12-config ../.venv/bin/scons \
 
 Linux（以 Ubuntu 24.04 为例）：先装好 `build-essential m4 scons python3-dev`，这是 gem5 上游列出的最小依赖（`gem5/util/dockerfiles/ubuntu-24.04_min-dependencies/Dockerfile`），裸机程序另需 `gcc-aarch64-linux-gnu`，然后同样执行 `make gem-build`。
 
+## NoC 规格与预算关口
+
+NoC G0 的共享档案位于 `spec-src/noc/gw100-noc.json`，
+`tools/noc_spec.py` 生成 C、C++、Python 定义及覆盖和预算表。
+基线为 6×4 XY Mesh、四 VN、64 B 含报头链路、完整包存储转发及有限资源。
+NoC 规格定义普通写可见性、分片、保护传播、多播和生命周期边界。
+每端两周期 NI、描述符与状态容量及 CDC 等成本为参考微架构选择。
+
+```sh
+make noc-spec-check
+make noc-g0-test
+```
+
+报告保存至 `build/noc-g0/report.json`，包含档案、工具、测试和依赖文件摘要。
+G0 验收静态映射、576 条路由、四个通道依赖图、报文和资源、相位和预算。
+G1 的周期模型、G2 的运行接入与 G3 的系统验证各自验收。
+当前设备内存仍经过 #10b 的临时适配器。1 µs 目标采用无竞争、正常时钟、
+上游就绪和目标服务≤250 ns 的条件，原生 FR-FCFS 的最坏服务上界保持未证明。
+相关预算和验证记录见 `docs/spec/interconnect/spec-noc/`。
+
 ## PCIe 数字链路实施关口
 
 通用 Gen1–Gen4 数字链路按 G0 来源、G1 独立模型、G2 系统接入、
@@ -173,7 +193,7 @@ scons --ignore-style EXTRAS=<仓库根目录>/gem5-ext \
 | 2c | PCIe 兼容配置的流控 | gw100_compat 保留旧 tx_credits 近似。gw100 使用六类信用、4 KiB replay 和有限元数据 | 兼容配置乐观 | 中 | 精确配置通过耗尽、回绕、ACK/NAK、重放与反压验证 |
 | 9 | BAR2 兼容配置 | gw100_compat 使用功能访问和固定 200 ns。gw100 的 BAR2 经独立 timing 入口，参与 CDC、队列和原生 DRAM 竞争 | 兼容配置乐观 | 中 | 兼容配置保留本项，精确配置已由 BAR2 与 HDI COPY 验证 |
 | 10a | DRAM 兼容配置 | gw100_compat 使用 SimpleMemory。gw100 已接入四 Tile、八通道、双 rank 和 32 GiB 原生 LPDDR5-8433 | 兼容配置乐观 | 高 | 通用模型的原生时序近似见 #26，兼容配置保留本项 |
-| 10b | 设备内存互连 | 使用 32 B、1 GHz 临时交叉开关，包含来源和通道 CDC，深度与时延由共享内存档案规定 | 多跳与竞争偏乐观 | 高 | M6 接入 Mesh NoC，单独报告临时适配器耗时 |
+| 10b | 设备内存互连 | 使用 32 B、1 GHz 临时交叉开关，包含来源和通道 CDC。NoC G0 已定义 64 B 含报头 Mesh 与 128 B 源 CDC | 多跳与竞争偏乐观 | 高 | G1 周期模型、G2 Mesh 接入、G3 压力验收，单列临时适配器耗时 |
 | 10c | 兼容配置的在途上限 | gw100_compat 使用假定的 32 项。gw100 使用共享规格中的每来源 16 项、每通道 64 项前端和 64/64 原生读写槽 | 兼容配置未知 | 中 | 新资源参数属于 GW100 设计，未来 NoC 接入时核算端口成本 |
 | 10d | 兼容配置的保护区域 | gw100_compat 继续采用原有行为。gw100 检查完整原始请求的四项全局 DPA 区域，只准管理来源访问，并实现锁定 | 兼容配置乐观 | 高 | 精确配置通过保护边界、整请求拒绝和锁定验证 |
 | 12a | 功能复位内部流水 | 配置请求到达后执行寄存器复位，固件确认和链路传输均计时。具体门级复位传播采用寄存器操作抽象 | 相对具体实现未知 | 低 | 有硬件实现后校准内部复位周期 |

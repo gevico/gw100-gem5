@@ -82,11 +82,12 @@ G0 已完成。G1 周期模型、G2 系统接入、G3 生命周期与性能验�
 | 项 | SHA-256 |
 |---|---|
 | NoC 档案 | `84bb0b9c82f183d001381c17d85c5ef924dd52365c3b2cd41c8caa090be66b77` |
-| 生成与分析工具 | `c84d45b6533e71921b81c81255ecb28dbcf9a403f856ed88251a43e3f78974a6` |
+| 生成与分析工具 | `e2333744241172a5db2ce904511f7ccfe0cd4173bbf3e1fe9e4f756a6380357d` |
 | NoC 测试 | `36c9d0f5c970083f224be3b0aa6f852bb1b02e5305a9e55a68e385fc7d1f10f6` |
-| 分析报告 | `8bbb6e8020a1a94ef812e79aaa83da8f04c30d4739566239e87c7e082aa1253a` |
-| 本次 gem5 构建产物 | `95f05a589e4b9847a8f8ed64d528077b609815d2cb15d26fe2adaab7d998d5dc` |
+| 分析报告 | `6aadfa7421f02a4bb976c08faa3c596bc5e2bc86fb47a270c4e4d1368469013f` |
+| 本次 gem5 构建产物 | `a3cdaf341692c5665037dee0ec98e4dd69f2adffbf0ae748de8af6c3a9c2683a` |
 
 其余依赖文件的摘要逐项保存于分析报告。工具测试日志为
-`build/noc-g0/check.log`，构建日志为 `build/noc-g0/build.log`，
-组件回归日志为 `build/noc-g0/gtest.log`。
+`build/commit-split/noc-g0.log`，构建日志为
+`build/commit-split/noc-closure.log`，组件回归日志为
+`build/commit-split/pcie-complete-gtest.log`。
