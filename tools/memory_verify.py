@@ -191,7 +191,10 @@ def main():
             "command": cmd,
             "exit_code": process.returncode,
             "wall_seconds": time.monotonic() - started,
-            "measurement_ticks": int(stats(out / "stats.txt")["simTicks"]),
+            "measurement_ticks": (
+                int(stats(out / "stats.txt")["simTicks"])
+                if process.returncode == 0 else None
+            ),
         }
         records.append(record)
         if process.returncode:
