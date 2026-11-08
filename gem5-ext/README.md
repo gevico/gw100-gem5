@@ -1,6 +1,6 @@
 # gem5-ext：GW100 的 gem5 模型
 
-通过 `EXTRAS` 编译进上游 gem5 的 ARM 构建（host 为 AArch64），不修改 `gem5/`。完整的开发者指南将写成 `man-gem5-dev`。
+通过 `EXTRAS` 编译进内置 gem5 的 ARM 构建（host 为 AArch64）。`gem5/` 源码由主仓库直接跟踪，上游来源见 `gem5/UPSTREAM.json`。完整的开发者指南将写成 `man-gem5-dev`。
 
 ## 构建
 
@@ -30,7 +30,7 @@ Linux（以 Ubuntu 24.04 为例）：先装好 `build-essential m4 scons python3
 
 建模的最高原则见 [CONTRIBUTING.md](../CONTRIBUTING.md) §5：模型是在模拟硬件，不能为了软件或测试的方便脱离实际。在此之下：
 
-- 代码全部放在 `gem5-ext/`，通过 `EXTRAS` 编进 gem5，不改 gem5 本体。确实绕不开的本体改动，做成补丁放进 `gem5-ext/patches/`，并注明原因。
+- GW100 组件放在 `gem5-ext/`，通过 `EXTRAS` 编进 gem5。需要修改通用模拟器接口或修复本体问题时，直接修改 `gem5/` 源码，并说明原因和验证结果。
 - **目录树即组件树**：一个目录是组件树上的一个节点，放这个节点自己的类；只有一个类的叶子组件作为文件放在父目录中，自身还有子组件的建子目录；被多个子树共用的组件放在它们的最近公共祖先下。组件之间的接口放在共同父节点的 `*_types.hh` 中。每个目录一个 `SConscript`，只声明本目录的源文件；单元测试不放在 `src/` 中（见"测试"）。目录关系因此就是组成关系；跨子树的引用（例如 `bar0/window_regs` 使用 `window/window_table`）只经头文件，并在类注释中写明。
 - 按张量指令粒度建模，不逐个 MAC 仿真。
 - ISA 不放进 `gem5/src/arch`：张量指令由 Tile 的 SimObject 自己译码；编码将由重建后的单一真源生成（旧的 `isa_defs.hh` 已随 func-core 删除）。
