@@ -80,6 +80,23 @@ class PioPort : public SimpleTimingPort
         return delay + receive_delay;
     }
 
+    bool
+    recvTimingReq(PacketPtr pkt) override
+    {
+        if (device->usesTimingPio())
+            return device->timingPio(pkt);
+        return SimpleTimingPort::recvTimingReq(pkt);
+    }
+
+    void
+    recvRespRetry() override
+    {
+        if (device->usesTimingPio())
+            device->timingPioRetry();
+        else
+            QueuedResponsePort::recvRespRetry();
+    }
+
     AddrRangeList
     getAddrRanges() const override
     {
@@ -134,6 +151,18 @@ class PioDevice : public ClockedObject
     using Params = PioDeviceParams;
     PioDevice(const Params &p);
     virtual ~PioDevice();
+
+    /** Optional asynchronous PIO, using the existing range-change port. */
+    virtual bool usesTimingPio() const { return false; }
+    /** Accept a timing PIO request, or apply request backpressure. */
+    virtual bool timingPio(PacketPtr pkt) { return false; }
+    /** Retry an asynchronous response. */
+    virtual void timingPioRetry() {}
+    /** Send an asynchronous PIO response. */
+    bool sendTimingPioResponse(PacketPtr pkt)
+    { return pioPort.sendTimingResp(pkt); }
+    /** Wake a requestor previously rejected by timingPio(). */
+    void retryTimingPioRequest() { pioPort.sendRetryReq(); }
 
     void init() override;
 
