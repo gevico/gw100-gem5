@@ -39,17 +39,18 @@ GEM5_KCONFIG := gem5/$(GEM5_BUILD)/gem5.build/config
 GEM5_EXTRAS := $(abspath gem5-ext)
 GEM5_BIN := gem5/$(GEM5_TARGET)
 
-# 只有这些输入比 gem5.opt 新时才调用 scons。scons 即使没有任何改动也会重新链接
+# 只有这些输入比 gem5.opt 新或输入清单变化时才调用 scons。
+# scons 即使没有任何改动也会重新链接
 # gem5.opt（耗时一两分钟），所以不能每次都交给它判断。配置脚本 gem5-ext/configs/
 # 在运行时加载，不需要重新构建。
-GEM5_INPUTS := $(shell find gem5-ext/SConscript gem5-ext/src \
-	gem5-ext/tests/integration -type f \
-	\( -name '*.cc' -o -name '*.hh' -o -name '*.py' -o -name SConscript \) 2>/dev/null)
-# gem5 本体的补丁（gem5-ext/patches/README.md），按文件名顺序在构建前应用
-GEM5_PATCHES := $(sort $(wildcard gem5-ext/patches/*.patch))
-GEM5_INPUTS += $(GEM5_PATCHES)
-GEM5_HEAD := $(shell git -C gem5 rev-parse HEAD 2>/dev/null)
-GEM5_HEAD_STAMP := gem5/$(GEM5_BUILD)/.gw100-gem5-head
+GEM5_SOURCE_DIRS := gem5/build_opts gem5/build_tools gem5/site_scons \
+	gem5/src gem5/include gem5/ext gem5-ext/src gem5-ext/tests/integration
+GEM5_INPUT_FIND = find gem5/SConstruct gem5-ext/SConscript \
+	$(GEM5_SOURCE_DIRS) \
+	-type d \( -name __pycache__ -o -name build -o -name .git \) -prune -o \
+	-type f ! -name '*.py[co]' ! -name '*~' ! -name '*.sw[op]' -print
+GEM5_INPUTS := $(shell $(GEM5_INPUT_FIND))
+GEM5_INPUT_STAMP := gem5/$(GEM5_BUILD)/.gw100-gem5-inputs
 GEM5_SCONS = cd gem5 && $(if $(PYTHON_CONFIG),PYTHON_CONFIG=$(PYTHON_CONFIG) )$(SCONS) \
 	--ignore-style $(GEM5_TARGET) $(GEM5_CDB) \
 	EXTRAS="$(GEM5_EXTRAS)" \
@@ -104,7 +105,7 @@ VSCODE_CDB := gem5/$(GEM5_CDB)
 AARCH64_GDB ?= $(shell command -v aarch64-linux-gnu-gdb 2>/dev/null || command -v gdb-multiarch 2>/dev/null)
 
 .DEFAULT_GOAL := help
-.PHONY: all run test gem-build gem5-patch memory-spec-check FORCE
+.PHONY: all run test gem-build memory-spec-check FORCE
 .PHONY: memory-test
 .PHONY: baremetal-build firmware-build vscode-config commit-check
 .PHONY: clean check format help
@@ -126,23 +127,9 @@ memory-spec-check:
 	$(PYTHON) tools/memory_spec.py --check
 
 # 改了 PYTHON_CONFIG 等构建选项、或怀疑构建状态不一致时，用 make -B gem-build 强制构建
-$(GEM5_BIN): $(GEM5_INPUTS) $(GEM5_HEAD_STAMP) $(GEM5_KCONFIG)
-	@$(MAKE) --no-print-directory gem5-patch
+$(GEM5_BIN): $(GEM5_INPUTS) $(GEM5_INPUT_STAMP) $(GEM5_KCONFIG)
 	$(GEM5_SCONS)
 	@touch $@
-
-# 应用 gem5 本体的补丁：能反向应用的说明已经打过，跳过；能正向应用的就
-# 应用；两者都不行（例如 gem5 升级后补丁失效）时报错停止
-gem5-patch:
-	@for p in $(abspath $(GEM5_PATCHES)); do \
-		if git -C gem5 apply --reverse --check "$$p" 2>/dev/null; then \
-			:; \
-		elif git -C gem5 apply --check "$$p" 2>/dev/null; then \
-			git -C gem5 apply "$$p" && echo "[PATCH] 已应用 $$(basename $$p)"; \
-		else \
-			echo "[FAIL] gem5 补丁无法应用：$$(basename $$p)" >&2; exit 1; \
-		fi; \
-	done
 
 # 第一次构建时生成构建配置：以 build_opts/ARM 为基础，再打开 RISC-V
 $(GEM5_KCONFIG):
@@ -151,10 +138,12 @@ $(GEM5_KCONFIG):
 	cd gem5 && $(if $(PYTHON_CONFIG),PYTHON_CONFIG=$(PYTHON_CONFIG) )$(SCONS) \
 		setconfig $(GEM5_BUILD) USE_RISCV_ISA=y
 
-# 记录 gem5 子模块的提交号；内容不变时不改写，文件时间也就不变
-$(GEM5_HEAD_STAMP): FORCE
+# 记录源码文件清单，让新增和删除文件也能触发构建。
+# 清单相同时保留时间戳，日常提交不会触发重新链接。
+$(GEM5_INPUT_STAMP): FORCE
 	@mkdir -p $(@D)
-	@echo '$(GEM5_HEAD)' | cmp -s - $@ || echo '$(GEM5_HEAD)' > $@
+	@$(GEM5_INPUT_FIND) | LC_ALL=C sort > $@.tmp
+	@cmp -s $@.tmp $@ && rm -f $@.tmp || mv -f $@.tmp $@
 
 vscode-config:
 	@printf '%s\n' \
@@ -274,7 +263,7 @@ help:
 	@echo "  all              构建 gem5 和 baremetal"
 	@echo "  run              构建 gem5 和裸机测试，在 gem5 中运行 TEST 指定的一个"
 	@echo "  test             构建 gem5 和裸机测试，批量运行 TESTS × HOSTS 并汇总"
-	@echo "  gem-build        gem5-ext 源码或 gem5 子模块有变化时，构建 gem5/$(GEM5_TARGET) 和编译数据库；"
+	@echo "  gem-build        gem5 或 gem5-ext 源码有变化时，构建 gem5/$(GEM5_TARGET) 和编译数据库"
 	@echo "                   make -B gem-build 强制构建（改了构建选项时用）"
 	@echo "  baremetal-build  构建全部裸机测试（调用 baremetal/Makefile）"
 	@echo "  memory-test      验证八通道组件、checkpoint、独立时序和固件故障矩阵"
