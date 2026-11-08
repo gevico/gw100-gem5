@@ -77,7 +77,11 @@ Bar2Handler::accessAsync(BarAccess a, std::function<void(Tick)> done,
         done(latency);
     };
     if (a.write) {
-        devmem.write(target, a.size, a.data, finish);
+        if (a.byteEnable) {
+            devmem.writeMasked(target, a.size, a.data, *a.byteEnable, finish);
+        } else {
+            devmem.write(target, a.size, a.data, finish);
+        }
     } else {
         devmem.read(target, a.size, [a, finish](bool ok, const uint8_t *data) {
             if (ok) {

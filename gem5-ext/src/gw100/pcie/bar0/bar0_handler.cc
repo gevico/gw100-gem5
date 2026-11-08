@@ -7,6 +7,7 @@
 
 #include "src/gw100/pcie/bar0/bar0_handler.hh"
 
+#include <algorithm>
 #include <cstring>
 
 #include "base/logging.hh"
@@ -54,9 +55,15 @@ Tick
 Bar0Handler::access(BarAccess &a)
 {
     const bool aligned = (a.off % a.size) == 0;
-    const bool width_ok = a.write ? (a.size == 4 || a.size == 8) && aligned
-                                  : (a.size == 1 || a.size == 2 ||
-                                     a.size == 4 || a.size == 8) && aligned;
+    const bool enables_ok =
+        !a.byteEnable ||
+        (a.byteEnable->size() == a.size &&
+         std::all_of(a.byteEnable->begin(), a.byteEnable->end(),
+                     [](bool enabled) { return enabled; }));
+    const bool width_ok =
+        a.write ? (a.size == 4 || a.size == 8) && aligned && enables_ok
+                : (a.size == 1 || a.size == 2 || a.size == 4 || a.size == 8) &&
+                      aligned;
 
     if (!width_ok || !implemented(a.off, a.size)) {
         status.logError(width_ok ? StatusUnit::ErrRsvdAccess

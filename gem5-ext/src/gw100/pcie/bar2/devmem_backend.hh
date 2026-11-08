@@ -65,6 +65,9 @@ class DevmemBackend : public HdmaDevIf
     /** timing 写 DPA 起的 len 字节 */
     void write(Addr dpa, unsigned len, const uint8_t *data,
                DevWriteDone done) override;
+    /** 按逐字节使能发出 timing 写，mask 长度等于 len。 */
+    void writeMasked(Addr dpa, unsigned len, const uint8_t *data,
+                     const std::vector<bool> &mask, DevWriteDone done);
 
     /** 被反压或在途已满之后又可以发请求时调用 */
     std::function<void()> onReady;
