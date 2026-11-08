@@ -66,10 +66,21 @@ void
 DevmemBackend::write(Addr dpa, unsigned len, const uint8_t *data,
                      DevWriteDone done)
 {
+    writeMasked(dpa, len, data, {}, std::move(done));
+}
+
+/** 按逐字节使能发出 timing 写，mask 长度等于 len。 */
+void
+DevmemBackend::writeMasked(Addr dpa, unsigned len, const uint8_t *data,
+                           const std::vector<bool> &mask, DevWriteDone done)
+{
     auto req = std::make_shared<Request>(dpa, len, 0, requestorId);
     PacketPtr pkt = new Packet(req, MemCmd::WriteReq);
     pkt->allocate();
     pkt->setData(data);
+    if (!mask.empty()) {
+        req->setByteEnable(mask);
+    }
     auto *st = new State;
     st->wr = done;
     pkt->pushSenderState(st);

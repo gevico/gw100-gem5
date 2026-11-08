@@ -15,6 +15,7 @@
 
 #include <array>
 #include <cstdint>
+#include <vector>
 
 #include "base/types.hh"
 #include "sim/serialize.hh"
@@ -35,6 +36,8 @@ struct BarAccess
     bool write;
     /** 数据缓冲：写时为待写入的数据，读时由处理者填入读到的数据 */
     uint8_t *data;
+    /** 可选的逐字节写使能，空值表示全部使能。 */
+    const std::vector<bool> *byteEnable = nullptr;
 };
 
 /** 一个 BAR 的处理者：负责这个 BAR 内全部地址的读和写 */
