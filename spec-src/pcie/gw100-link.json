@@ -1,0 +1,2048 @@
+{
+  "schema_version": 1,
+  "profile": "gw100-pcie-link",
+  "model_version": "0.1",
+  "scope": {
+    "generations": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "widths": [
+      1,
+      2,
+      4
+    ],
+    "mps_bytes": [
+      128,
+      256
+    ],
+    "mrrs_bytes": [
+      128,
+      256,
+      512
+    ],
+    "rcb_bytes": [
+      64,
+      128
+    ],
+    "completion_payload_bytes": [
+      64,
+      128,
+      256
+    ],
+    "pf_count": 1,
+    "vc_count": 1,
+    "acceptance": "baremetal timing/O3 with a controlled RC/EP fixture",
+    "performance_contract": "正常链路、空队列、单请求且目标就绪。拥塞与故障单列服务时间。"
+  },
+  "sources": [
+    {
+      "id": "SIG-CATALOG",
+      "title": "PCI-SIG Specifications",
+      "version": "online catalogue",
+      "published": null,
+      "url": "https://pcisig.com/specifications",
+      "locator": "Purchasing Specifications",
+      "reviewed_on": "2026-11-07",
+      "review": "公开目录说明规范获取方式，目录本身提供书目信息。"
+    },
+    {
+      "id": "PG213-STATUS",
+      "title": "UltraScale+ Devices Integrated Block for PCI Express",
+      "version": "PG213 v1.3",
+      "published": "2026-07-31",
+      "url": "https://docs.amd.com/r/en-US/pg213-pcie4-ultrascale-plus/Configuration-Status-Interface",
+      "locator": "Configuration Status Interface",
+      "reviewed_on": "2026-11-07",
+      "review": "核对四代速率、MPS/MRRS 编码、RCB 和 LTSSM 状态观测接口。"
+    },
+    {
+      "id": "PG213-FC",
+      "title": "UltraScale+ Devices Integrated Block for PCI Express",
+      "version": "PG213 v1.3",
+      "published": "2026-07-31",
+      "url": "https://docs.amd.com/r/en-US/pg213-pcie4-ultrascale-plus/Configuration-Flow-Control-Interface",
+      "locator": "Configuration Flow Control Interface",
+      "reviewed_on": "2026-11-07",
+      "review": "核对六类信用的观测字段及不同观测模式的无限信用表示。"
+    },
+    {
+      "id": "ALTERA-FC",
+      "title": "AXI Streaming IP for PCI Express User Guide",
+      "version": "26.1",
+      "published": "2026-10-23",
+      "url": "https://docs.altera.com/r/docs/790711/26.1/axi-streaming-ip-for-pci-express-user-guide/flow-control-credit-handling",
+      "locator": "6.3.8 Flow Control Credit Handling",
+      "reviewed_on": "2026-11-07",
+      "review": "核对 P/NP/CPL 头与数据分别计量，数据信用的单位为 16 B。"
+    },
+    {
+      "id": "PG213-RCB",
+      "title": "UltraScale+ Devices Integrated Block for PCI Express",
+      "version": "PG213 v1.3",
+      "published": "2026-07-31",
+      "url": "https://docs.amd.com/r/en-US/pg213-pcie4-ultrascale-plus/Read-Completion-Boundary",
+      "locator": "Read Completion Boundary",
+      "reviewed_on": "2026-11-07",
+      "review": "核对 RCB 64/128 B、完成拆分边界和最坏完成头资源预留。"
+    },
+    {
+      "id": "PG213-CPL",
+      "title": "UltraScale+ Devices Integrated Block for PCI Express",
+      "version": "PG213 v1.3",
+      "published": "2026-07-31",
+      "url": "https://docs.amd.com/r/en-US/pg213-pcie4-ultrascale-plus/Completer-Completion-Descriptor-Format",
+      "locator": "Completer Completion Descriptor Fields",
+      "reviewed_on": "2026-11-07",
+      "review": "核对 Lower Address 与请求地址和 Byte Enable 的对应关系。描述符为厂商内部接口表示。"
+    },
+    {
+      "id": "AM012-LL",
+      "title": "Versal Adaptive SoC Register Reference",
+      "version": "AM012 revision 1.6",
+      "published": "2026-08-24",
+      "url": "https://docs.amd.com/r/en-US/am012-versal-register-reference/CPM4_PCIE0_ATTR-Module?contentId=NawJTqKe66M8AtL47rdLZQ",
+      "locator": "LL_ACK_TIMEOUT, LL_REPLAY_TIMEOUT, LL_REPLAY_TIMER40_ENABLE",
+      "reviewed_on": "2026-11-07",
+      "review": "核对超时覆盖接口及单位。Gen4 replay 定时使用独立规则，具体默认值仍指向内置表。"
+    },
+    {
+      "id": "PG054-LL",
+      "title": "7 Series FPGAs Integrated Block for PCI Express",
+      "version": "PG054 v3.3",
+      "published": "2024-12-06",
+      "url": "https://docs.amd.com/r/en-US/pg054-7series-pcie/Link-Layer-Module",
+      "locator": "ACK Latency Timer and Replay Timer",
+      "reviewed_on": "2026-11-07",
+      "review": "核对早期 IP 的内置表依赖链路宽度和 MPS，作用范围为该 IP 支持的代际。"
+    },
+    {
+      "id": "SIG-SKP",
+      "title": "PCI-SIG Technical FAQ",
+      "version": "PCI Express 3.0 category",
+      "published": null,
+      "url": "https://pcisig.com/faq?keys=3.0&page=1",
+      "locator": "Section 4.2.7.3",
+      "reviewed_on": "2026-11-07",
+      "review": "核对 Gen3 SKP 调度周期与包边界推迟，调度周期和实际发送间隔分别计算。"
+    },
+    {
+      "id": "SIG-REPLAY",
+      "title": "PCI-SIG Technical FAQ",
+      "version": "PCI Express 3.0 category",
+      "published": null,
+      "url": "https://pcisig.com/section-3521-if-you-can-receive-tlps-and-flow-control-dllps-normally-do-not-receive-any-ack-or-nak",
+      "locator": "Section 3.5.2.1",
+      "reviewed_on": "2026-11-07",
+      "review": "核对 replay 超时后的重传与错误报告，该条 FAQ 提供行为说明。"
+    },
+    {
+      "id": "LATTICE-X4",
+      "title": "PCIe x4 IP Core User Guide",
+      "version": "FPGA-IPUG-02126-2.5, IP v4.1.0",
+      "published": "2026-06",
+      "url": "https://www.latticesemi.com/view_document?document_id=53091",
+      "locator": "p.122 Table 3.4, p.212 Tables 5.87 and 5.88",
+      "reviewed_on": "2026-11-07",
+      "review": "已核对 PDF 原页。该 IP 的简化 replay 默认选项分别对应 24×1024 和 80×1024 符号时间。ACK 与 FC 推荐定时仍回指规范。该实例的配置值适用范围单独记录。",
+      "artifact_sha256": "af417fffed9aad5717a7dfd9254041cc547acfaae5b135abeb85445ce6bc9fed"
+    },
+    {
+      "id": "BASE4-CB",
+      "kind": "original_spec_mirror",
+      "publisher": "PCI-SIG",
+      "title": "PCI Express Base Specification Revision 4.0 Version 1.0",
+      "version": "1.0-c, showing changes, cover 2017-09-27, history 2017-09-29",
+      "published": "2017-10-05",
+      "document_date": "2017-09-27",
+      "url": "https://raw.githubusercontent.com/WeitaoZhu/PCI_Express/273a7a47f0e1eb1df60bf5f711f6c4ec5cb94172/PCI_Express_Base_Specification/PCI_Express_Base_Specification_Revision4.0r1.0.pdf",
+      "mirror_commit": "273a7a47f0e1eb1df60bf5f711f6c4ec5cb94172",
+      "artifact_sha256": "7d5c27b38f119459158c2b337052d4298ec53e12e89f11280b139726b830abdf",
+      "artifact_bytes": 23330966,
+      "artifact_pages": 1354,
+      "official_catalog_url": "https://pcisig.com/PCIExpress/Specs/Base/_4.0_1.0",
+      "mirror_authorization": "user-2026-11-07",
+      "revision_check": "已检查封面和 p.6 版本历史。此件为修订标记稿，渲染页中蓝色删除文字须排除，红色新增文字纳入。摘要用于固定所读原件，官方未提供可供比对的公开摘要。",
+      "locator": "§2.2–2.8, §3.2–3.6, §4.2, §5.4, §6.2/6.6, §7.5/7.8",
+      "reviewed_on": "2026-11-07",
+      "review": "用户允许核验第三方托管的原版规范副本。正文与书目版本分别记录，参数按本副本页码引用。后续勘误单独列入核验范围。"
+    }
+  ],
+  "definitions": [
+    {
+      "name": "DEFAULT_GENERATION",
+      "value": 4,
+      "unit": "generation",
+      "basis": "用户批准的首版链路档案",
+      "fact": "RATE"
+    },
+    {
+      "name": "DEFAULT_WIDTH",
+      "value": 4,
+      "unit": "lanes",
+      "basis": "用户批准的首版链路档案",
+      "fact": "RESOURCES"
+    },
+    {
+      "name": "CONTROLLER_PERIOD_PS",
+      "value": 4000,
+      "unit": "ps",
+      "basis": "250 MHz 参考 RC/EP 时钟",
+      "fact": "RESOURCES"
+    },
+    {
+      "name": "CONTROLLER_DATAPATH_BYTES",
+      "value": 32,
+      "unit": "B/cycle",
+      "basis": "spec-clock-reset-power 的 256 位控制器数据通路",
+      "fact": "RESOURCES"
+    },
+    {
+      "name": "REFERENCE_CLOCK_HZ",
+      "value": 100000000,
+      "unit": "Hz",
+      "basis": "spec-pcie 的公共参考时钟设计",
+      "fact": "RESOURCES"
+    },
+    {
+      "name": "TICK_PS",
+      "value": 1,
+      "unit": "ps",
+      "basis": "用户批准的全局 tick",
+      "fact": "RESOURCES"
+    },
+    {
+      "name": "ADAPTER_CYCLES",
+      "value": 2,
+      "unit": "cycles",
+      "basis": "用户批准的每侧适配流水",
+      "fact": "RESOURCES"
+    },
+    {
+      "name": "ONE_WAY_PROPAGATION_PS",
+      "value": 5000,
+      "unit": "ps",
+      "basis": "用户批准的参考传播时延",
+      "fact": "RESOURCES"
+    },
+    {
+      "name": "MAX_PAYLOAD_BYTES",
+      "value": 256,
+      "unit": "B",
+      "basis": "首版 EP 能力预算",
+      "fact": "RESOURCES"
+    },
+    {
+      "name": "MAX_READ_REQUEST_BYTES",
+      "value": 512,
+      "unit": "B",
+      "basis": "首版 EP 请求上限",
+      "fact": "RESOURCES"
+    },
+    {
+      "name": "MAX_OUTSTANDING_READS",
+      "value": 64,
+      "unit": "requests",
+      "basis": "首版请求账本容量",
+      "fact": "RESOURCES"
+    },
+    {
+      "name": "COMPLETION_DATA_BYTES",
+      "value": 32768,
+      "unit": "B",
+      "basis": "64 × 512 B 完成数据预留",
+      "fact": "RESOURCES"
+    },
+    {
+      "name": "MIN_RCB_BYTES",
+      "value": 64,
+      "unit": "B",
+      "basis": "首版支持的最小 RCB",
+      "fact": "RCB"
+    },
+    {
+      "name": "MAX_RCB_BYTES",
+      "value": 128,
+      "unit": "B",
+      "basis": "首版支持的最大 RCB",
+      "fact": "RCB"
+    },
+    {
+      "name": "COMPLETION_HEADER_SLOTS",
+      "value": 576,
+      "unit": "headers",
+      "basis": "64 × ceil((63 + 512) / 64) 的保守头部预留",
+      "fact": "RCB"
+    },
+    {
+      "name": "DATA_CREDIT_BYTES",
+      "value": 16,
+      "unit": "B/credit",
+      "basis": "Altera 26.1 §6.3.8",
+      "fact": "CREDIT_UNIT"
+    },
+    {
+      "name": "RX_PH",
+      "value": 32,
+      "unit": "headers",
+      "basis": "首版 posted 接收头预算",
+      "fact": "RESOURCES"
+    },
+    {
+      "name": "RX_PD_BYTES",
+      "value": 2048,
+      "unit": "B",
+      "basis": "首版 posted 接收数据预算",
+      "fact": "RESOURCES"
+    },
+    {
+      "name": "RX_NPH",
+      "value": 16,
+      "unit": "headers",
+      "basis": "首版 non-posted 接收头预算",
+      "fact": "RESOURCES"
+    },
+    {
+      "name": "RX_NPD_BYTES",
+      "value": 256,
+      "unit": "B",
+      "basis": "16 项配置写的对齐数据信用预算",
+      "fact": "RESOURCES"
+    },
+    {
+      "name": "REPLAY_DATA_BYTES",
+      "value": 4096,
+      "unit": "B",
+      "basis": "首版每侧 replay 数据预算",
+      "fact": "RESOURCES"
+    },
+    {
+      "name": "REPLAY_ALIGNMENT_BYTES",
+      "value": 16,
+      "unit": "B",
+      "basis": "参考 replay 存储分配粒度",
+      "fact": "RESOURCES"
+    },
+    {
+      "name": "REPLAY_DESCRIPTOR_SLOTS",
+      "value": 128,
+      "unit": "descriptors",
+      "basis": "参考 replay 元数据项数",
+      "fact": "RESOURCES"
+    },
+    {
+      "name": "REPLAY_DESCRIPTOR_BYTES",
+      "value": 16,
+      "unit": "B",
+      "basis": "参考 replay 每项元数据预算",
+      "fact": "RESOURCES"
+    },
+    {
+      "name": "TX_PH",
+      "value": 32,
+      "unit": "headers",
+      "basis": "参考待发 posted 头预算",
+      "fact": "RESOURCES"
+    },
+    {
+      "name": "TX_PD_BYTES",
+      "value": 2048,
+      "unit": "B",
+      "basis": "参考待发 posted 数据预算",
+      "fact": "RESOURCES"
+    },
+    {
+      "name": "TX_NPH",
+      "value": 16,
+      "unit": "headers",
+      "basis": "参考待发 non-posted 头预算",
+      "fact": "RESOURCES"
+    },
+    {
+      "name": "TX_NPD_BYTES",
+      "value": 256,
+      "unit": "B",
+      "basis": "参考待发 non-posted 数据预算",
+      "fact": "RESOURCES"
+    },
+    {
+      "name": "TX_CPLH",
+      "value": 16,
+      "unit": "headers",
+      "basis": "参考待发 completion 头预算",
+      "fact": "RESOURCES"
+    },
+    {
+      "name": "TX_CPLD_BYTES",
+      "value": 4096,
+      "unit": "B",
+      "basis": "参考待发 completion 数据预算",
+      "fact": "RESOURCES"
+    },
+    {
+      "name": "TX_DLLP_SLOTS",
+      "value": 16,
+      "unit": "packets",
+      "basis": "参考有限 DLLP 待发预算",
+      "fact": "RESOURCES"
+    },
+    {
+      "name": "BACKEND_SLOTS",
+      "value": 64,
+      "unit": "operations",
+      "basis": "参考 RC/EP 后端操作预算",
+      "fact": "RESOURCES"
+    },
+    {
+      "name": "RC_POSTED_RESERVED_SLOTS",
+      "value": 16,
+      "unit": "operations",
+      "basis": "参考 RC 在总计 64 槽中为 posted 保留 16 槽，NP 最多占 48 槽",
+      "fact": "RESOURCES"
+    },
+    {
+      "name": "HOST_PACKET_SLOTS",
+      "value": 64,
+      "unit": "packets",
+      "basis": "参考 RC Host 内存包在途预算",
+      "fact": "RESOURCES"
+    },
+    {
+      "name": "CREDIT_RELEASE_CYCLES",
+      "value": 2,
+      "unit": "cycles",
+      "basis": "用户批准的信用释放流水",
+      "fact": "RESOURCES"
+    },
+    {
+      "name": "ACK_BATCH_TLPS",
+      "value": 8,
+      "unit": "TLPs",
+      "basis": "用户批准的累计 ACK 策略，协议期限由资料关口核验",
+      "fact": "RESOURCES"
+    },
+    {
+      "name": "ASPM_L1_SUPPORTED",
+      "value": 1,
+      "unit": "boolean",
+      "basis": "用户批准的数字 L1 能力",
+      "fact": "RESOURCES"
+    },
+    {
+      "name": "ASPM_L1_DEFAULT_ENABLED",
+      "value": 0,
+      "unit": "boolean",
+      "basis": "用户批准的默认 ASPM 策略",
+      "fact": "RESOURCES"
+    },
+    {
+      "name": "BENCH_WARMUP_PS",
+      "value": 20000000,
+      "unit": "ps",
+      "basis": "参考流量预热 20 µs",
+      "fact": "BOUNDARIES"
+    },
+    {
+      "name": "BENCH_WINDOW_PS",
+      "value": 100000000,
+      "unit": "ps",
+      "basis": "用户批准的 100 µs 测量窗口",
+      "fact": "BOUNDARIES"
+    },
+    {
+      "name": "BAR0_TARGET_PS",
+      "value": 500000,
+      "unit": "ps",
+      "basis": "用户批准的空队列单请求条件目标",
+      "fact": "BOUNDARIES"
+    },
+    {
+      "name": "BAR2_TARGET_PS",
+      "value": 1000000,
+      "unit": "ps",
+      "basis": "用户批准的目标就绪单请求条件目标",
+      "fact": "BOUNDARIES"
+    },
+    {
+      "name": "GEN1_BIT_HALF_PS",
+      "value": 800,
+      "unit": "0.5 ps",
+      "fact": "FRAMING",
+      "basis": "BASE4-CB §4.2 编码速率，推算"
+    },
+    {
+      "name": "GEN1_SYMBOL_PS",
+      "value": 4000,
+      "unit": "ps",
+      "fact": "TIMERS",
+      "basis": "BASE4-CB §3.6 符号时间单位"
+    },
+    {
+      "name": "GEN1_MPS128_X1_ACK_SYMBOLS",
+      "value": 237,
+      "unit": "symbols",
+      "fact": "TIMERS",
+      "basis": "BASE4-CB pp.231–233 Tables 3-7–3-10"
+    },
+    {
+      "name": "GEN1_MPS128_X2_ACK_SYMBOLS",
+      "value": 128,
+      "unit": "symbols",
+      "fact": "TIMERS",
+      "basis": "BASE4-CB pp.231–233 Tables 3-7–3-10"
+    },
+    {
+      "name": "GEN1_MPS128_X4_ACK_SYMBOLS",
+      "value": 73,
+      "unit": "symbols",
+      "fact": "TIMERS",
+      "basis": "BASE4-CB pp.231–233 Tables 3-7–3-10"
+    },
+    {
+      "name": "GEN1_MPS256_X1_ACK_SYMBOLS",
+      "value": 416,
+      "unit": "symbols",
+      "fact": "TIMERS",
+      "basis": "BASE4-CB pp.231–233 Tables 3-7–3-10"
+    },
+    {
+      "name": "GEN1_MPS256_X2_ACK_SYMBOLS",
+      "value": 217,
+      "unit": "symbols",
+      "fact": "TIMERS",
+      "basis": "BASE4-CB pp.231–233 Tables 3-7–3-10"
+    },
+    {
+      "name": "GEN1_MPS256_X4_ACK_SYMBOLS",
+      "value": 118,
+      "unit": "symbols",
+      "fact": "TIMERS",
+      "basis": "BASE4-CB pp.231–233 Tables 3-7–3-10"
+    },
+    {
+      "name": "GEN2_BIT_HALF_PS",
+      "value": 400,
+      "unit": "0.5 ps",
+      "fact": "FRAMING",
+      "basis": "BASE4-CB §4.2 编码速率，推算"
+    },
+    {
+      "name": "GEN2_SYMBOL_PS",
+      "value": 2000,
+      "unit": "ps",
+      "fact": "TIMERS",
+      "basis": "BASE4-CB §3.6 符号时间单位"
+    },
+    {
+      "name": "GEN2_MPS128_X1_ACK_SYMBOLS",
+      "value": 288,
+      "unit": "symbols",
+      "fact": "TIMERS",
+      "basis": "BASE4-CB pp.231–233 Tables 3-7–3-10"
+    },
+    {
+      "name": "GEN2_MPS128_X2_ACK_SYMBOLS",
+      "value": 179,
+      "unit": "symbols",
+      "fact": "TIMERS",
+      "basis": "BASE4-CB pp.231–233 Tables 3-7–3-10"
+    },
+    {
+      "name": "GEN2_MPS128_X4_ACK_SYMBOLS",
+      "value": 124,
+      "unit": "symbols",
+      "fact": "TIMERS",
+      "basis": "BASE4-CB pp.231–233 Tables 3-7–3-10"
+    },
+    {
+      "name": "GEN2_MPS256_X1_ACK_SYMBOLS",
+      "value": 467,
+      "unit": "symbols",
+      "fact": "TIMERS",
+      "basis": "BASE4-CB pp.231–233 Tables 3-7–3-10"
+    },
+    {
+      "name": "GEN2_MPS256_X2_ACK_SYMBOLS",
+      "value": 268,
+      "unit": "symbols",
+      "fact": "TIMERS",
+      "basis": "BASE4-CB pp.231–233 Tables 3-7–3-10"
+    },
+    {
+      "name": "GEN2_MPS256_X4_ACK_SYMBOLS",
+      "value": 169,
+      "unit": "symbols",
+      "fact": "TIMERS",
+      "basis": "BASE4-CB pp.231–233 Tables 3-7–3-10"
+    },
+    {
+      "name": "GEN3_BIT_HALF_PS",
+      "value": 250,
+      "unit": "0.5 ps",
+      "fact": "FRAMING",
+      "basis": "BASE4-CB §4.2 编码速率，推算"
+    },
+    {
+      "name": "GEN3_SYMBOL_PS",
+      "value": 1000,
+      "unit": "ps",
+      "fact": "TIMERS",
+      "basis": "BASE4-CB §3.6 符号时间单位"
+    },
+    {
+      "name": "GEN3_MPS128_X1_ACK_SYMBOLS",
+      "value": 333,
+      "unit": "symbols",
+      "fact": "TIMERS",
+      "basis": "BASE4-CB pp.231–233 Tables 3-7–3-10"
+    },
+    {
+      "name": "GEN3_MPS128_X2_ACK_SYMBOLS",
+      "value": 224,
+      "unit": "symbols",
+      "fact": "TIMERS",
+      "basis": "BASE4-CB pp.231–233 Tables 3-7–3-10"
+    },
+    {
+      "name": "GEN3_MPS128_X4_ACK_SYMBOLS",
+      "value": 169,
+      "unit": "symbols",
+      "fact": "TIMERS",
+      "basis": "BASE4-CB pp.231–233 Tables 3-7–3-10"
+    },
+    {
+      "name": "GEN3_MPS256_X1_ACK_SYMBOLS",
+      "value": 512,
+      "unit": "symbols",
+      "fact": "TIMERS",
+      "basis": "BASE4-CB pp.231–233 Tables 3-7–3-10"
+    },
+    {
+      "name": "GEN3_MPS256_X2_ACK_SYMBOLS",
+      "value": 313,
+      "unit": "symbols",
+      "fact": "TIMERS",
+      "basis": "BASE4-CB pp.231–233 Tables 3-7–3-10"
+    },
+    {
+      "name": "GEN3_MPS256_X4_ACK_SYMBOLS",
+      "value": 214,
+      "unit": "symbols",
+      "fact": "TIMERS",
+      "basis": "BASE4-CB pp.231–233 Tables 3-7–3-10"
+    },
+    {
+      "name": "GEN4_BIT_HALF_PS",
+      "value": 125,
+      "unit": "0.5 ps",
+      "fact": "FRAMING",
+      "basis": "BASE4-CB §4.2 编码速率，推算"
+    },
+    {
+      "name": "GEN4_SYMBOL_PS",
+      "value": 500,
+      "unit": "ps",
+      "fact": "TIMERS",
+      "basis": "BASE4-CB §3.6 符号时间单位"
+    },
+    {
+      "name": "GEN4_MPS128_X1_ACK_SYMBOLS",
+      "value": 333,
+      "unit": "symbols",
+      "fact": "TIMERS",
+      "basis": "BASE4-CB pp.231–233 Tables 3-7–3-10"
+    },
+    {
+      "name": "GEN4_MPS128_X2_ACK_SYMBOLS",
+      "value": 224,
+      "unit": "symbols",
+      "fact": "TIMERS",
+      "basis": "BASE4-CB pp.231–233 Tables 3-7–3-10"
+    },
+    {
+      "name": "GEN4_MPS128_X4_ACK_SYMBOLS",
+      "value": 169,
+      "unit": "symbols",
+      "fact": "TIMERS",
+      "basis": "BASE4-CB pp.231–233 Tables 3-7–3-10"
+    },
+    {
+      "name": "GEN4_MPS256_X1_ACK_SYMBOLS",
+      "value": 512,
+      "unit": "symbols",
+      "fact": "TIMERS",
+      "basis": "BASE4-CB pp.231–233 Tables 3-7–3-10"
+    },
+    {
+      "name": "GEN4_MPS256_X2_ACK_SYMBOLS",
+      "value": 313,
+      "unit": "symbols",
+      "fact": "TIMERS",
+      "basis": "BASE4-CB pp.231–233 Tables 3-7–3-10"
+    },
+    {
+      "name": "GEN4_MPS256_X4_ACK_SYMBOLS",
+      "value": 214,
+      "unit": "symbols",
+      "fact": "TIMERS",
+      "basis": "BASE4-CB pp.231–233 Tables 3-7–3-10"
+    },
+    {
+      "name": "REPLAY_SYMBOLS",
+      "value": 24576,
+      "unit": "symbols",
+      "fact": "TIMERS",
+      "basis": "BASE4-CB p.217 允许范围内的参考选择"
+    },
+    {
+      "name": "REPLAY_EXTENDED_SYMBOLS",
+      "value": 81920,
+      "unit": "symbols",
+      "fact": "TIMERS",
+      "basis": "BASE4-CB p.217 允许范围内的参考选择"
+    },
+    {
+      "name": "FC_UPDATE_PS",
+      "value": 30000000,
+      "unit": "ps",
+      "fact": "FLOW_CONTROL",
+      "basis": "BASE4-CB p.175"
+    },
+    {
+      "name": "FC_UPDATE_EXTENDED_PS",
+      "value": 120000000,
+      "unit": "ps",
+      "fact": "FLOW_CONTROL",
+      "basis": "BASE4-CB p.175"
+    },
+    {
+      "name": "FC_INIT_REPEAT_PS",
+      "value": 34000000,
+      "unit": "ps",
+      "fact": "FLOW_CONTROL",
+      "basis": "BASE4-CB pp.198–201"
+    },
+    {
+      "name": "SKP_SYMBOLS_INTERVAL",
+      "value": 1280,
+      "unit": "symbols",
+      "fact": "FRAMING",
+      "basis": "BASE4-CB p.381 范围内的参考选择"
+    },
+    {
+      "name": "SKP_BLOCKS_INTERVAL",
+      "value": 370,
+      "unit": "blocks",
+      "fact": "FRAMING",
+      "basis": "BASE4-CB p.382 范围内的参考选择"
+    },
+    {
+      "name": "LCRC_POLYNOMIAL",
+      "value": 79764919,
+      "unit": "polynomial",
+      "fact": "CRC",
+      "basis": "BASE4-CB p.213"
+    },
+    {
+      "name": "DLLP_CRC_POLYNOMIAL",
+      "value": 4107,
+      "unit": "polynomial",
+      "fact": "CRC",
+      "basis": "BASE4-CB p.209"
+    },
+    {
+      "name": "L1_IDLE_MIN_PS",
+      "value": 20000,
+      "unit": "ps",
+      "fact": "L1",
+      "basis": "BASE4-CB p.1093"
+    },
+    {
+      "name": "L1_EXIT_GUARD_PS",
+      "value": 40000,
+      "unit": "ps",
+      "fact": "L1",
+      "basis": "BASE4-CB p.366"
+    },
+    {
+      "name": "PHY_FEEDBACK_PS",
+      "value": 100000,
+      "unit": "ps",
+      "fact": "RESOURCES",
+      "basis": "数字 PHY 默认反馈等待 100 ns，参考设计"
+    },
+    {
+      "name": "PHY_EQ_EVALUATION_PS",
+      "value": 1000000,
+      "unit": "ps",
+      "fact": "RESOURCES",
+      "basis": "数字 PHY 每次均衡评估默认 1 µs，满足规定请求保持下界"
+    },
+    {
+      "name": "ASPM_IDLE_PS",
+      "value": 10000000,
+      "unit": "ps",
+      "fact": "RESOURCES",
+      "basis": "启用 ASPM 后空闲 10 µs 的参考策略"
+    },
+    {
+      "name": "LT_DETECT_QUIET_PS",
+      "value": 12000000000,
+      "unit": "ps",
+      "fact": "LTSSM",
+      "basis": "BASE4-CB pp.301–359,374–375 §4.2.6"
+    },
+    {
+      "name": "LT_DETECT_RETURN_TO_GEN1_MIN_PS",
+      "value": 1000000000,
+      "unit": "ps",
+      "fact": "LTSSM",
+      "basis": "BASE4-CB pp.301–359,374–375 §4.2.6"
+    },
+    {
+      "name": "LT_POLLING_ACTIVE_PS",
+      "value": 24000000000,
+      "unit": "ps",
+      "fact": "LTSSM",
+      "basis": "BASE4-CB pp.301–359,374–375 §4.2.6"
+    },
+    {
+      "name": "LT_POLLING_CONFIGURATION_PS",
+      "value": 48000000000,
+      "unit": "ps",
+      "fact": "LTSSM",
+      "basis": "BASE4-CB pp.301–359,374–375 §4.2.6"
+    },
+    {
+      "name": "LT_CONFIGURATION_PS",
+      "value": 2000000000,
+      "unit": "ps",
+      "fact": "LTSSM",
+      "basis": "BASE4-CB pp.301–359,374–375 §4.2.6"
+    },
+    {
+      "name": "LT_RECOVERY_LOCK_PS",
+      "value": 24000000000,
+      "unit": "ps",
+      "fact": "LTSSM",
+      "basis": "BASE4-CB pp.301–359,374–375 §4.2.6"
+    },
+    {
+      "name": "LT_RECOVERY_CONFIG_PS",
+      "value": 48000000000,
+      "unit": "ps",
+      "fact": "LTSSM",
+      "basis": "BASE4-CB pp.301–359,374–375 §4.2.6"
+    },
+    {
+      "name": "LT_EQUALIZATION_EP_PHASE01_PS",
+      "value": 12000000000,
+      "unit": "ps",
+      "fact": "LTSSM",
+      "basis": "BASE4-CB pp.301–359,374–375 §4.2.6"
+    },
+    {
+      "name": "LT_EQUALIZATION_OTHER_PHASE_PS",
+      "value": 24000000000,
+      "unit": "ps",
+      "fact": "LTSSM",
+      "basis": "BASE4-CB pp.301–359,374–375 §4.2.6"
+    },
+    {
+      "name": "LT_HOT_RESET_RECEIVER_HOLD_PS",
+      "value": 2000000000,
+      "unit": "ps",
+      "fact": "LTSSM",
+      "basis": "BASE4-CB pp.301–359,374–375 §4.2.6"
+    },
+    {
+      "name": "LT_POLLING_ACTIVE_MIN_TS1",
+      "value": 1024,
+      "unit": "count",
+      "fact": "LTSSM",
+      "basis": "BASE4-CB pp.301–359,374–375 §4.2.6"
+    },
+    {
+      "name": "LT_POLLING_RECEIVE_CONSECUTIVE",
+      "value": 8,
+      "unit": "count",
+      "fact": "LTSSM",
+      "basis": "BASE4-CB pp.301–359,374–375 §4.2.6"
+    },
+    {
+      "name": "LT_POLLING_CONFIG_MIN_TS2_AFTER_FIRST_RX",
+      "value": 16,
+      "unit": "count",
+      "fact": "LTSSM",
+      "basis": "BASE4-CB pp.301–359,374–375 §4.2.6"
+    },
+    {
+      "name": "LT_CONFIG_LANE_RECEIVE_TS1",
+      "value": 2,
+      "unit": "count",
+      "fact": "LTSSM",
+      "basis": "BASE4-CB pp.301–359,374–375 §4.2.6"
+    },
+    {
+      "name": "LT_CONFIG_COMPLETE_RECEIVE_TS2",
+      "value": 8,
+      "unit": "count",
+      "fact": "LTSSM",
+      "basis": "BASE4-CB pp.301–359,374–375 §4.2.6"
+    },
+    {
+      "name": "LT_CONFIG_COMPLETE_MIN_TS2_AFTER_FIRST_RX",
+      "value": 16,
+      "unit": "count",
+      "fact": "LTSSM",
+      "basis": "BASE4-CB pp.301–359,374–375 §4.2.6"
+    },
+    {
+      "name": "LT_IDLE_RECEIVE_SYMBOLS",
+      "value": 8,
+      "unit": "count",
+      "fact": "LTSSM",
+      "basis": "BASE4-CB pp.301–359,374–375 §4.2.6"
+    },
+    {
+      "name": "LT_IDLE_TRANSMIT_SYMBOLS_AFTER_FIRST_RX",
+      "value": 16,
+      "unit": "count",
+      "fact": "LTSSM",
+      "basis": "BASE4-CB pp.301–359,374–375 §4.2.6"
+    },
+    {
+      "name": "LT_RECOVERY_RECEIVE_TS",
+      "value": 8,
+      "unit": "count",
+      "fact": "LTSSM",
+      "basis": "BASE4-CB pp.301–359,374–375 §4.2.6"
+    },
+    {
+      "name": "LT_RECOVERY_SPEED_TS2_8B10B",
+      "value": 32,
+      "unit": "count",
+      "fact": "LTSSM",
+      "basis": "BASE4-CB pp.301–359,374–375 §4.2.6"
+    },
+    {
+      "name": "LT_RECOVERY_SPEED_TS2_128B130B",
+      "value": 128,
+      "unit": "count",
+      "fact": "LTSSM",
+      "basis": "BASE4-CB pp.301–359,374–375 §4.2.6"
+    },
+    {
+      "name": "LT_EQ_PHASE_RECEIVE_TS1",
+      "value": 2,
+      "unit": "count",
+      "fact": "LTSSM",
+      "basis": "BASE4-CB pp.301–359,374–375 §4.2.6"
+    },
+    {
+      "name": "LT_EQ_REQUEST_HOLD_MIN_PS",
+      "value": 1000000,
+      "unit": "ps",
+      "fact": "LTSSM",
+      "basis": "BASE4-CB pp.301–359,374–375 §4.2.6"
+    },
+    {
+      "name": "LT_SPEED_IDLE_SUCCESS_PS",
+      "value": 800000,
+      "unit": "ps",
+      "fact": "LTSSM",
+      "basis": "BASE4-CB p.350"
+    },
+    {
+      "name": "LT_SPEED_IDLE_FAILURE_PS",
+      "value": 6000000,
+      "unit": "ps",
+      "fact": "LTSSM",
+      "basis": "BASE4-CB p.350"
+    },
+    {
+      "name": "LT_SPEED_IDLE_MAX_EXTRA_PS",
+      "value": 1000000000,
+      "unit": "ps",
+      "fact": "LTSSM",
+      "basis": "BASE4-CB p.350"
+    },
+    {
+      "name": "L1_REJECT_RETRY_PS",
+      "value": 10000000,
+      "unit": "ps",
+      "fact": "L1",
+      "basis": "BASE4-CB p.482"
+    },
+    {
+      "name": "RC_CRS_RETRY_PS",
+      "value": 100000000,
+      "unit": "ps",
+      "fact": "RESOURCES",
+      "basis": "参考 RC 每次 CRS 重试等待 100 us"
+    },
+    {
+      "name": "RC_CRS_RETRIES",
+      "value": 10000,
+      "unit": "count",
+      "fact": "RESOURCES",
+      "basis": "参考 RC 最多 10000 次 CRS 重试，覆盖约 1 s"
+    },
+    {
+      "name": "CPL_TIMEOUT_A_SHORT_PS",
+      "value": 100000000,
+      "unit": "ps",
+      "fact": "CONFIG_RESET",
+      "basis": "BASE4-CB p.812，参考实现选择 100 us"
+    },
+    {
+      "name": "CPL_TIMEOUT_A_LONG_PS",
+      "value": 10000000000,
+      "unit": "ps",
+      "fact": "CONFIG_RESET",
+      "basis": "BASE4-CB p.812，参考实现选择 10 ms"
+    },
+    {
+      "name": "CPL_TIMEOUT_B_SHORT_PS",
+      "value": 55000000000,
+      "unit": "ps",
+      "fact": "CONFIG_RESET",
+      "basis": "BASE4-CB p.812，参考实现选择 55 ms"
+    },
+    {
+      "name": "CPL_TIMEOUT_B_LONG_PS",
+      "value": 210000000000,
+      "unit": "ps",
+      "fact": "CONFIG_RESET",
+      "basis": "BASE4-CB p.812，参考实现选择 210 ms"
+    },
+    {
+      "name": "RC_LINK_WAIT_PS",
+      "value": 100000000000,
+      "unit": "ps",
+      "fact": "RESOURCES",
+      "basis": "参考 RC 在数据链路不可用时最多保留一次上游请求 100 ms"
+    }
+  ],
+  "coverage": [
+    {
+      "id": "RATE",
+      "title": "代际速率编码",
+      "status": "verified",
+      "required_scope": [
+        "Gen1",
+        "Gen2",
+        "Gen3",
+        "Gen4"
+      ],
+      "verified_scope": [
+        "Gen1",
+        "Gen2",
+        "Gen3",
+        "Gen4"
+      ],
+      "evidence": [
+        "PG213-STATUS"
+      ],
+      "missing": [],
+      "planned_implementation": "gem5-ext/src/gw100/pcie/link/serializer.cc",
+      "planned_tests": [
+        "LinkSerializer.TwelveModes",
+        "ReferenceTest.test_serialization_twelve_modes"
+      ]
+    },
+    {
+      "id": "CREDIT_UNIT",
+      "title": "六类信用与数据单位",
+      "status": "verified",
+      "required_scope": [
+        "Gen1",
+        "Gen2",
+        "Gen3",
+        "Gen4"
+      ],
+      "verified_scope": [
+        "Gen1",
+        "Gen2",
+        "Gen3",
+        "Gen4"
+      ],
+      "evidence": [
+        "ALTERA-FC",
+        "PG213-FC"
+      ],
+      "missing": [],
+      "planned_implementation": "gem5-ext/src/gw100/pcie/link/flow_control.cc",
+      "planned_tests": [
+        "LinkCredits.InitializationAndExhaustion",
+        "PcieSpecTest.test_configuration_write_budget"
+      ]
+    },
+    {
+      "id": "RCB",
+      "title": "完成拆分边界及头资源预留",
+      "status": "verified",
+      "required_scope": [
+        "Gen1",
+        "Gen2",
+        "Gen3",
+        "Gen4"
+      ],
+      "verified_scope": [
+        "Gen1",
+        "Gen2",
+        "Gen3",
+        "Gen4"
+      ],
+      "evidence": [
+        "PG213-RCB"
+      ],
+      "missing": [],
+      "planned_implementation": "gem5-ext/src/gw100/pcie/link/link_transport.cc",
+      "planned_tests": [
+        "LinkTransport.WholeReadAndWireTag",
+        "LinkTransport.RejectIncompatibleCompletionRcb",
+        "tools/pcie_verify.py --matrix"
+      ]
+    },
+    {
+      "id": "RESOURCES",
+      "title": "参考微架构资源预算",
+      "status": "design",
+      "required_scope": [
+        "Gen1",
+        "Gen2",
+        "Gen3",
+        "Gen4"
+      ],
+      "verified_scope": [
+        "Gen1",
+        "Gen2",
+        "Gen3",
+        "Gen4"
+      ],
+      "evidence": [],
+      "missing": [],
+      "planned_implementation": "gem5-ext/src/gw100/pcie/link/link_model.cc, link/replay.cc, link/link_transport.cc",
+      "planned_tests": [
+        "LinkReplay.ActualStoredBytes",
+        "LinkReplay.DescriptorCapacity",
+        "LinkTransport.RcPostedReservation",
+        "LinkModel.BackendRetry"
+      ]
+    },
+    {
+      "id": "BOUNDARIES",
+      "title": "六个观测点与条件性能验收",
+      "status": "design",
+      "required_scope": [
+        "Gen1",
+        "Gen2",
+        "Gen3",
+        "Gen4"
+      ],
+      "verified_scope": [
+        "Gen1",
+        "Gen2",
+        "Gen3",
+        "Gen4"
+      ],
+      "evidence": [],
+      "missing": [],
+      "planned_implementation": "gem5-ext/src/gw100/pcie/gw100_pci_link.cc, link/link_model.cc",
+      "planned_tests": [
+        "LinkModel.SixPointsAndPipelines",
+        "LinkTransport.ReadWaitsForPostedVisibility",
+        "baremetal/pcie_link"
+      ]
+    },
+    {
+      "id": "TIMERS",
+      "title": "ACK/replay 定时规则",
+      "status": "verified",
+      "required_scope": [
+        "Gen1",
+        "Gen2",
+        "Gen3",
+        "Gen4"
+      ],
+      "verified_scope": [
+        "Gen1",
+        "Gen2",
+        "Gen3",
+        "Gen4"
+      ],
+      "evidence": [
+        "AM012-LL",
+        "PG054-LL",
+        "SIG-REPLAY",
+        "LATTICE-X4",
+        "BASE4-CB"
+      ],
+      "missing": [],
+      "planned_implementation": "gem5-ext/src/gw100/pcie/link/link_model.cc",
+      "planned_tests": [
+        "LinkModel.AckDeadlineUnderDuplexTraffic",
+        "LinkModel.LostAckTimeoutAndDuplicate",
+        "LinkModel.ReplayRolloverRecovery"
+      ]
+    },
+    {
+      "id": "FRAMING",
+      "title": "编码块、framing 与 SKP",
+      "status": "verified",
+      "required_scope": [
+        "Gen1",
+        "Gen2",
+        "Gen3",
+        "Gen4"
+      ],
+      "verified_scope": [
+        "Gen1",
+        "Gen2",
+        "Gen3",
+        "Gen4"
+      ],
+      "evidence": [
+        "SIG-SKP",
+        "PG213-STATUS",
+        "BASE4-CB"
+      ],
+      "missing": [],
+      "planned_implementation": "gem5-ext/src/gw100/pcie/link/serializer.cc, link/packet.cc",
+      "planned_tests": [
+        "LinkSerializer.ContinuousPhase",
+        "LinkSerializer.SkipNeedsWholeEds",
+        "LinkPacket.StartTokenProtection"
+      ]
+    },
+    {
+      "id": "CRC",
+      "title": "LCRC、DLLP CRC 与 framing 检查",
+      "status": "verified",
+      "required_scope": [
+        "Gen1",
+        "Gen2",
+        "Gen3",
+        "Gen4"
+      ],
+      "verified_scope": [
+        "Gen1",
+        "Gen2",
+        "Gen3",
+        "Gen4"
+      ],
+      "evidence": [
+        "SIG-REPLAY",
+        "BASE4-CB"
+      ],
+      "missing": [],
+      "planned_implementation": "gem5-ext/src/gw100/pcie/link/packet.cc",
+      "planned_tests": [
+        "LinkPacket.Crc32WireVector",
+        "LinkPacket.Crc16WireVector",
+        "LinkModel.DigitalFaultMatrix",
+        "tools/pcie_system_verify.py --suite faults"
+      ]
+    },
+    {
+      "id": "FLOW_CONTROL",
+      "title": "信用初始化、累计更新与回绕",
+      "status": "verified",
+      "required_scope": [
+        "Gen1",
+        "Gen2",
+        "Gen3",
+        "Gen4"
+      ],
+      "verified_scope": [
+        "Gen1",
+        "Gen2",
+        "Gen3",
+        "Gen4"
+      ],
+      "evidence": [
+        "PG213-FC",
+        "ALTERA-FC",
+        "LATTICE-X4",
+        "BASE4-CB"
+      ],
+      "missing": [],
+      "planned_implementation": "gem5-ext/src/gw100/pcie/link/flow_control.cc, link/link_model.cc",
+      "planned_tests": [
+        "LinkCredits.HeaderWrap",
+        "LinkCredits.DataWrap",
+        "LinkCredits.Scales",
+        "LinkModel.SequenceAndCreditWrap",
+        "LinkModel.ReceiveCreditBackpressure"
+      ]
+    },
+    {
+      "id": "WIRE_FIELDS",
+      "title": "TLP/DLLP 线上格式与完成匹配",
+      "status": "verified",
+      "required_scope": [
+        "Gen1",
+        "Gen2",
+        "Gen3",
+        "Gen4"
+      ],
+      "verified_scope": [
+        "Gen1",
+        "Gen2",
+        "Gen3",
+        "Gen4"
+      ],
+      "evidence": [
+        "PG213-CPL",
+        "PG213-STATUS",
+        "BASE4-CB"
+      ],
+      "missing": [],
+      "planned_implementation": "gem5-ext/src/gw100/pcie/link/packet.cc, link/link_transport.cc",
+      "planned_tests": [
+        "LinkPacket.UnalignedBytes",
+        "LinkTransport.CompletionFaultMatrix",
+        "LinkTransport.ZeroLengthReadAndWriteNoSideEffects",
+        "LinkTransport.WireIdenticalTagReuseBoundary"
+      ]
+    },
+    {
+      "id": "ORDERING",
+      "title": "事务排序与前进保证",
+      "status": "verified",
+      "required_scope": [
+        "Gen1",
+        "Gen2",
+        "Gen3",
+        "Gen4"
+      ],
+      "verified_scope": [
+        "Gen1",
+        "Gen2",
+        "Gen3",
+        "Gen4"
+      ],
+      "evidence": [
+        "PG213-STATUS",
+        "BASE4-CB"
+      ],
+      "missing": [],
+      "planned_implementation": "gem5-ext/src/gw100/pcie/link/packet.cc, link/link_transport.cc",
+      "planned_tests": [
+        "LinkPacket.Ordering",
+        "LinkTransport.PostedVisibilityAndIntx",
+        "LinkTransport.ReadDoesNotWaitForYoungerPosted"
+      ]
+    },
+    {
+      "id": "LTSSM",
+      "title": "数字训练与重训",
+      "status": "verified",
+      "required_scope": [
+        "Gen1",
+        "Gen2",
+        "Gen3",
+        "Gen4"
+      ],
+      "verified_scope": [
+        "Gen1",
+        "Gen2",
+        "Gen3",
+        "Gen4"
+      ],
+      "evidence": [
+        "PG213-STATUS",
+        "BASE4-CB"
+      ],
+      "missing": [],
+      "planned_implementation": "gem5-ext/src/gw100/pcie/link/link_training.cc",
+      "planned_tests": [
+        "LinkModel.TwelveModesTrain",
+        "LinkModel.TrainingFailure",
+        "LinkModel.PhyCapabilityLimits",
+        "tools/pcie_system_verify.py --suite smoke"
+      ]
+    },
+    {
+      "id": "L1",
+      "title": "ASPM L1 与电源转换",
+      "status": "verified",
+      "required_scope": [
+        "Gen1",
+        "Gen2",
+        "Gen3",
+        "Gen4"
+      ],
+      "verified_scope": [
+        "Gen1",
+        "Gen2",
+        "Gen3",
+        "Gen4"
+      ],
+      "evidence": [
+        "PG213-STATUS",
+        "AM012-LL",
+        "BASE4-CB"
+      ],
+      "missing": [],
+      "planned_implementation": "gem5-ext/src/gw100/pcie/link/link_training.cc",
+      "planned_tests": [
+        "LinkModel.AspmEntryExit",
+        "LinkModel.PciPowerEntryExit",
+        "baremetal/dram_lifecycle",
+        "tools/pcie_system_verify.py --suite checkpoint"
+      ]
+    },
+    {
+      "id": "CONFIG_RESET",
+      "title": "配置空间复位值与配置生效点",
+      "status": "verified",
+      "required_scope": [
+        "Gen1",
+        "Gen2",
+        "Gen3",
+        "Gen4"
+      ],
+      "verified_scope": [
+        "Gen1",
+        "Gen2",
+        "Gen3",
+        "Gen4"
+      ],
+      "evidence": [
+        "PG213-STATUS",
+        "BASE4-CB"
+      ],
+      "missing": [],
+      "planned_implementation": "gem5-ext/src/gw100/pcie/config/config_space.cc, config/capability/pcie_capability.cc",
+      "planned_tests": [
+        "ConfigSpaceTest.CompletionTimeoutSelection",
+        "ConfigSpaceLink.SecondaryEndpointControlsReserved",
+        "ConfigSpaceLink.AerAndFlrPreservation",
+        "baremetal/pcie_config"
+      ]
+    },
+    {
+      "id": "ERROR_RESET",
+      "title": "AER、复位和错误生命周期",
+      "status": "verified",
+      "required_scope": [
+        "Gen1",
+        "Gen2",
+        "Gen3",
+        "Gen4"
+      ],
+      "verified_scope": [
+        "Gen1",
+        "Gen2",
+        "Gen3",
+        "Gen4"
+      ],
+      "evidence": [
+        "SIG-REPLAY",
+        "PG213-CPL",
+        "BASE4-CB"
+      ],
+      "missing": [],
+      "planned_implementation": "gem5-ext/src/gw100/pcie/config/config_space.cc, gw100_pci_link.cc, hdma/hdma_engine.cc",
+      "planned_tests": [
+        "LinkTransport.ConfigurationCrsRetry",
+        "LinkTransport.ConfigurationCrsBound",
+        "LinkModel.HotResetAndLinkDown",
+        "baremetal/pcie_link_error",
+        "baremetal/dram_link_reset"
+      ]
+    }
+  ],
+  "protocol_values": {
+    "ack_replay_limits": {
+      "source": "BASE4-CB pp.211–233 §3.6",
+      "width_order": [
+        1,
+        2,
+        4
+      ],
+      "ack_symbols": {
+        "1": {
+          "128": [
+            237,
+            128,
+            73
+          ],
+          "256": [
+            416,
+            217,
+            118
+          ]
+        },
+        "2": {
+          "128": [
+            288,
+            179,
+            124
+          ],
+          "256": [
+            467,
+            268,
+            169
+          ]
+        },
+        "3": {
+          "128": [
+            333,
+            224,
+            169
+          ],
+          "256": [
+            512,
+            313,
+            214
+          ]
+        },
+        "4": {
+          "128": [
+            333,
+            224,
+            169
+          ],
+          "256": [
+            512,
+            313,
+            214
+          ]
+        }
+      },
+      "symbol_ps": {
+        "1": 4000,
+        "2": 2000,
+        "3": 1000,
+        "4": 500
+      },
+      "simplified_replay_symbols": {
+        "normal_range": [
+          24000,
+          31000
+        ],
+        "extended_range": [
+          80000,
+          100000
+        ],
+        "selected_normal": 24576,
+        "selected_extended": 81920
+      },
+      "rules": [
+        "支持 16 GT/s 的端口在各代速率下均采用简化 replay 限制。",
+        "replay 从最老未确认 TLP 发送结束计时，有效累计 ACK 取得进展时重置。Recovery 和 Configuration 暂停计数。",
+        "ACK 期限从接收包尾至反向 ACK 起始，允许等待已开始的包结束。累计八包策略受此期限约束。",
+        "序号为 12 位，重放保留原序号与原包，重复包经序号检查丢弃并再次确认。",
+        "收到无效 ACK/NAK 序号报告 Data Link Protocol Error。连续重放计数回绕时请求重训并报告 Replay Number Rollover。"
+      ]
+    },
+    "framing_rules": {
+      "source": "BASE4-CB pp.237–257,375–383 §4.2.1/2/7",
+      "coding": {
+        "1": [
+          8,
+          10
+        ],
+        "2": [
+          8,
+          10
+        ],
+        "3": [
+          128,
+          130
+        ],
+        "4": [
+          128,
+          130
+        ]
+      },
+      "bit_half_ps": {
+        "1": 800,
+        "2": 400,
+        "3": 250,
+        "4": 125
+      },
+      "tlp_framing_bytes": 8,
+      "dllp_wire_bytes": 8,
+      "data_block_bytes_per_lane": 16,
+      "block_header_bits": 2,
+      "skp_schedule": {
+        "1": {
+          "unit": "symbols",
+          "range": [
+            1180,
+            1538
+          ],
+          "selected": 1280
+        },
+        "2": {
+          "unit": "symbols",
+          "range": [
+            1180,
+            1538
+          ],
+          "selected": 1280
+        },
+        "3": {
+          "unit": "blocks",
+          "range": [
+            370,
+            375
+          ],
+          "selected": 370
+        },
+        "4": {
+          "unit": "blocks",
+          "range": [
+            370,
+            375
+          ],
+          "selected": 370
+        }
+      },
+      "skp_symbols_per_lane": {
+        "1": 4,
+        "2": 4,
+        "3": 16,
+        "4": 16
+      },
+      "reference_clocking": "Common Refclk, no retimer",
+      "rules": [
+        "x1/x2/x4 从 lane 0 开始条带化。8b/10b 包含 STP、两字节序号、LCRC、END。128b/130b STP 为四字节，内含序号和带保护的包长，包尾为 LCRC。",
+        "128b/130b 连续数据块跨包推进，空闲以 IDL 延续块相位。包结束不强制填满块。",
+        "SKP 在包边界发送。128b/130b 先在数据块末 DWORD 放 EDS，随后发送 SKP，下一数据块继续数据流。SKP 后续无需重发 SDS。",
+        "进入新数据流发送 SDS。Gen4 从 Configuration.Idle 或 Recovery.Idle 进入数据流前先发 Control SKP，周期 SKP 按 Standard/Control 交替。",
+        "SKP 间隔按调度时刻计量，已开始的包可推迟实际发送。电气空闲期间暂停 SKP 调度。",
+        "边沿以整数半皮秒相位累计并向上量化到 1 ps 事件，不对每包重置相位。",
+        "Recovery.RcvrLock 前发送 EIEOS，Gen2 在指定训练状态、Gen3/4 在训练状态每 32 个 TS 后插入 EIEOS，规定首个 TS2 接收检查点重置计数。"
+      ]
+    },
+    "crc_rules": {
+      "source": "BASE4-CB pp.209,213–214,249–250",
+      "lcrc": {
+        "width": 32,
+        "polynomial": 79764919,
+        "seed": 4294967295,
+        "complement": true,
+        "input": "byte 0 onward, bit 0 through bit 7",
+        "coverage": "reserved nibble + sequence + TLP header/payload/digest"
+      },
+      "dllp_crc": {
+        "width": 16,
+        "polynomial": 4107,
+        "seed": 65535,
+        "complement": true,
+        "input": "byte 0 onward, bit 0 through bit 7",
+        "coverage": "four DLLP bytes"
+      },
+      "result_mapping": "result bit i maps to wire field bit 8*(i//8)+7-(i%8). CRC field most significant byte is transmitted first (Figure 3-14)",
+      "frame_crc_masks": [
+        1239,
+        1724,
+        862,
+        431
+      ],
+      "frame_parity_mask": 1893,
+      "rules": [
+        "坏 DLLP 丢弃并报告 Bad DLLP。坏 LCRC 丢弃并请求 NAK。合法 nullified 包丢弃且无错误。",
+        "128b/130b 帧错误请求 Recovery，等待新的 SDS 后继续接收。"
+      ]
+    },
+    "fc_state_machine": {
+      "source": "BASE4-CB pp.169–175,198–208",
+      "classes": [
+        "PH",
+        "PD",
+        "NPH",
+        "NPD",
+        "CplH",
+        "CplD"
+      ],
+      "unscaled_field_bits": {
+        "header": 8,
+        "data": 12
+      },
+      "maximum_outstanding": {
+        "header": 127,
+        "data": 2047
+      },
+      "infinite_initial_value": 0,
+      "data_unit_bytes": 16,
+      "init_resend_max_ps": 34000000,
+      "update_period_ps": 30000000,
+      "update_extended_period_ps": 120000000,
+      "optional_timeout_ps": 200000000,
+      "feature_exchange_required_for_gen4_support": true,
+      "scales": [
+        1,
+        4,
+        16
+      ],
+      "selected_header_scale": 1,
+      "selected_data_scale": 1,
+      "completion_advertisement": "EP 与本轮无跨端口 P2P 的 RC 宣告无限完成信用，有限完成存储在发读前预留。",
+      "rules": [
+        "DL_Feature 交换能力与确认。Gen4 端口支持 Scaled FC，可协商使用 scale 1。",
+        "FC_INIT1 按 P、NP、Cpl 广告预算，三类预算收齐后进入 FC_INIT2。",
+        "FC_INIT2 按 P、NP、Cpl 确认，接收任意 InitFC2、UpdateFC 或合法 VC0 TLP 后完成。初始化完成前禁止该 VC 的 TLP。",
+        "初次发送增加累计已消耗信用，累计 UpdateFC 更新 CREDIT_LIMIT，按对应字段模数比较。replay 不再扣信用。",
+        "释放接收缓冲后经参考流水更新累计广告，信用归还与目标可见性分别记录。",
+        "接收资源从零恢复或 PD 低于最大包所需信用时安排更新。周期更新覆盖丢失的 DLLP。"
+      ]
+    },
+    "wire_fields": {
+      "source": "BASE4-CB pp.78–104,108–116,129–131,143–154,205–208",
+      "tlp_types": {
+        "memory": 0,
+        "configuration_type0": 4,
+        "configuration_type1": 5,
+        "completion": 10,
+        "message_to_root": 16
+      },
+      "fmt": {
+        "3dw_no_data": 0,
+        "4dw_no_data": 1,
+        "3dw_data": 2,
+        "4dw_data": 3
+      },
+      "statuses": {
+        "success": 0,
+        "ur": 1,
+        "crs": 2,
+        "ca": 4
+      },
+      "dllp_types": {
+        "ack": 0,
+        "nak": 16,
+        "pm_enter_l1": 32,
+        "pm_enter_l23": 33,
+        "pm_active_request_l1": 35,
+        "pm_request_ack": 36,
+        "feature": 2,
+        "initfc1_p": 64,
+        "initfc1_np": 80,
+        "initfc1_cpl": 96,
+        "initfc2_p": 192,
+        "initfc2_np": 208,
+        "initfc2_cpl": 224,
+        "updatefc_p": 128,
+        "updatefc_np": 144,
+        "updatefc_cpl": 160
+      },
+      "rules": [
+        "请求携带 Requester ID、tag、DWORD 长度、首末 Byte Enable、地址和事务属性。内存请求不跨 4 KiB。",
+        "完成携带 Completer ID、Requester ID、tag、Completion Status、Byte Count、Lower Address 和载荷长度。",
+        "成功内存读完成按递增地址重组，首段 Lower Address 对应首个使能字节，Byte Count 指尚未返回的请求字节。",
+        "后续非末段结束于 RCB，载荷还受到 Completion 上限与 MPS 约束。",
+        "UR/CA 完成无载荷并终止请求。CRS 仅适用于配置请求。未匹配的完成报告 Unexpected Completion。"
+      ],
+      "completion_special_cases": {
+        "source": "BASE4-CB pp.90–91,129–130,149",
+        "configuration_byte_count": 4,
+        "configuration_lower_address": 0,
+        "zero_length_read_byte_count": 1,
+        "zero_length_read_payload_bytes": 4,
+        "rule": "零 BE 的一 DWORD 写无效果，读没有目标副作用。"
+      },
+      "completion_rcb_rule": "完成载荷上限独立于 MPS，正常多包读要求不小于 RCB。源为 BASE4-CB pp.146–147。"
+    },
+    "ordering_matrix": {
+      "source": "BASE4-CB pp.155–157 Table 2-39",
+      "columns": [
+        "P",
+        "NP_read",
+        "NP_data",
+        "Cpl"
+      ],
+      "rows": {
+        "P": [
+          "blocked_unless_RO_or_distinct_IDO",
+          "must_pass",
+          "must_pass",
+          "may_pass"
+        ],
+        "NP_read": [
+          "blocked_unless_distinct_IDO",
+          "may_pass",
+          "may_pass",
+          "may_pass"
+        ],
+        "NP_data": [
+          "blocked_unless_RO_or_distinct_IDO",
+          "may_pass",
+          "may_pass",
+          "may_pass"
+        ],
+        "Cpl": [
+          "blocked_unless_RO_or_distinct_IDO_or_cfg_io_write_cpl",
+          "must_pass",
+          "must_pass",
+          "same_transaction_ordered"
+        ]
+      },
+      "scope": "同 TC 的同一方向。单 PF/VC0 默认 TC0，No Snoop 不提供重排序许可。",
+      "policy": "允许越过不代表必须越过。实现满足 must_pass 并保证有限队列公平。"
+    },
+    "ltssm_rules": {
+      "source": "BASE4-CB pp.301–359,374–375 §4.2.6",
+      "states": [
+        "Detect.Quiet",
+        "Detect.Active",
+        "Polling.Active",
+        "Polling.Configuration",
+        "Configuration.Linkwidth.Start",
+        "Configuration.Linkwidth.Accept",
+        "Configuration.Lanenum.Wait",
+        "Configuration.Lanenum.Accept",
+        "Configuration.Complete",
+        "Configuration.Idle",
+        "L0",
+        "Recovery.RcvrLock",
+        "Recovery.RcvrCfg",
+        "Recovery.Speed",
+        "Recovery.Equalization.Phase0",
+        "Recovery.Equalization.Phase1",
+        "Recovery.Equalization.Phase2",
+        "Recovery.Equalization.Phase3",
+        "Recovery.Idle",
+        "HotReset",
+        "Disabled"
+      ],
+      "limits_ps": {
+        "detect_quiet": 12000000000,
+        "detect_return_to_gen1_min": 1000000000,
+        "polling_active": 24000000000,
+        "polling_configuration": 48000000000,
+        "configuration": 2000000000,
+        "recovery_lock": 24000000000,
+        "recovery_config": 48000000000,
+        "equalization_ep_phase01": 12000000000,
+        "equalization_other_phase": 24000000000,
+        "hot_reset_receiver_hold": 2000000000
+      },
+      "training_symbols": 16,
+      "polling_active_min_ts1": 1024,
+      "polling_receive_consecutive": 8,
+      "polling_config_min_ts2_after_first_rx": 16,
+      "config_lane_receive_ts1": 2,
+      "config_complete_receive_ts2": 8,
+      "config_complete_min_ts2_after_first_rx": 16,
+      "idle_receive_symbols": 8,
+      "idle_transmit_symbols_after_first_rx": 16,
+      "recovery_receive_ts": 8,
+      "recovery_speed_ts2_8b10b": 32,
+      "recovery_speed_ts2_128b130b": 128,
+      "eq_phase_receive_ts1": 2,
+      "eq_request_hold_min_ps": 1000000,
+      "eq_setting_response_max_ps": 500000,
+      "rules": [
+        "链路先以 Gen1 到达 L0，提升至 Gen3 和 Gen4 经 Recovery 分别执行对应速率均衡。",
+        "Detect.Quiet 在超时或检测到电气空闲解除后进入检测。仅部分 lane 检测成功时等待 12 ms 后复查，稳定子集再协商宽度。",
+        "Polling 和 Configuration 必须同时满足规定发送数量和对端连续训练序列，数字反馈的成功不能跳过发送下界。",
+        "速率改变经 Recovery.RcvrLock、RcvrCfg、Speed、目标速率均衡和 Idle，恢复原速率或降至 Gen1 的路径按握手结果选择。",
+        "均衡步骤保存每 lane 请求、接受或拒绝和各阶段状态，物理眼图与系数评估由数字 PHY 替身给出。",
+        "PHY 可设置延迟、失败、超时和可用 lane/速率集合，反馈只在相应状态接受。",
+        "Hot Reset 接收端在最后有效 Hot Reset TS1 后保持 2 ms，再进入 Detect。"
+      ],
+      "recovery_speed_idle_min_ps": {
+        "success": 800000,
+        "failure": 6000000,
+        "max_extra": 1000000000
+      }
+    },
+    "l1_rules": {
+      "source": "BASE4-CB pp.366–367,476–483,1093 §4.2.6.7/5.4.1.2",
+      "idle_min_ps": 20000,
+      "l1_idle_directed_exit_min_ps_above_gen1": 40000,
+      "negotiation_idle_symbols_max": {
+        "8b10b": 8,
+        "128b130b": 32
+      },
+      "retry_after_rejection_min_ps": 10000000,
+      "rules": [
+        "两侧软件使能 L1 后 EP 可提出进入，先阻止新的事务层提交并等待 replay 全部确认。",
+        "EP 重复 PM_Active_State_Request_L1，RC 根据待发事务和 ACK/NAK 状态接受或以 PM_Active_State_Nak TLP 拒绝。",
+        "RC 接受后阻止新事务层提交，等待自身 replay 清空，再重复 PM_Request_Ack。EP 接收确认后发送 EIOS 并进入电气空闲，RC 观察后同样进入。",
+        "协商期间出现新的事务须先完成 L1 进入，再退出至 L0。",
+        "L1 冻结 FC 定时器，NP Completion Timeout 继续计时。退出经 Recovery，信用与序号保持。",
+        "D3hot 使用 PCI-PM 的 PM_Enter_L1 握手，配置访问可唤醒链路以响应，主动业务受功能电源状态门控。"
+      ]
+    },
+    "configuration_reset_values": {
+      "source": "BASE4-CB pp.767–775 §7.5.3.4/5",
+      "device_control": {
+        "relaxed_ordering_enable": 1,
+        "extended_tag_enable": "implementation_specific",
+        "no_snoop_enable": 1,
+        "mps_bytes": 128,
+        "mrrs_bytes": 512
+      },
+      "selected_extended_tag_enable": 1,
+      "rules": [
+        "Extended Tag 的默认值由实现选择。本轮保留 EP 的默认开启行为，测试仍显式配置能力。",
+        "软件在存在未完成 NP 请求时改变 Extended Tag 的行为未定义，夹具报告协议使用违规。",
+        "RO 和 No Snoop 的使能允许请求者按各事务条件设置属性。MSI/MSI-X 的 RO 必须为零。",
+        "Transactions Pending 对应已提交且尚未完成或超时的 NP 请求，FLR 完成后清零。",
+        "动态 MPS/MRRS 约束后续构造的包，队列中已有包保留构造时的字段，软件须排空后进行不兼容重配。"
+      ],
+      "endpoint_link_status": {
+        "source": "BASE4-CB pp.780,792",
+        "link_training_bit": 0,
+        "dll_active_bit": 0,
+        "aspm_optionality_compliance": 1
+      },
+      "completion_timeout": {
+        "source": "BASE4-CB p.812",
+        "supported_selectors": [
+          0,
+          1,
+          2,
+          5,
+          6
+        ],
+        "selected_ps": {
+          "0": 50000000000,
+          "1": 100000000,
+          "2": 10000000000,
+          "5": 55000000000,
+          "6": 210000000000
+        },
+        "rule": "DLL 提交时采样超时选择，已提交请求保留其期限。保留编码保持先前选择。"
+      },
+      "secondary_control": {
+        "source": "BASE4-CB pp.862–863",
+        "rule": "单 PF Endpoint 不支持 Crosslink，Link Control 3 的 Perform Equalization 与中断使能位为 RsvdP。"
+      }
+    },
+    "error_reset_rules": {
+      "source": "BASE4-CB pp.153–155,545–564,584–590,860–877,903–918",
+      "flr_max_ps": 100000000000,
+      "flr_preserved_fields": [
+        "MPS",
+        "ASPM",
+        "RCB",
+        "CommonClock",
+        "ExtendedSynch",
+        "ClockPowerManagement",
+        "HardwareAutonomousWidthDisable",
+        "HardwareAutonomousSpeedDisable",
+        "link_equalization",
+        "VC0",
+        "data_link_feature",
+        "phy16",
+        "AER_sticky"
+      ],
+      "extended_capabilities": {
+        "AER": 1,
+        "SecondaryPCIe": 25,
+        "DataLinkFeature": 37,
+        "Physical16GT": 38
+      },
+      "aer_uncorrectable_bits": {
+        "dlp": 4,
+        "surprise_down": 5,
+        "poisoned": 12,
+        "flow_control": 13,
+        "completion_timeout": 14,
+        "completer_abort": 15,
+        "unexpected_completion": 16,
+        "receiver_overflow": 17,
+        "malformed": 18,
+        "unsupported_request": 20,
+        "internal": 22
+      },
+      "aer_correctable_bits": {
+        "receiver": 0,
+        "bad_tlp": 6,
+        "bad_dllp": 7,
+        "replay_rollover": 8,
+        "replay_timeout": 12,
+        "advisory": 13
+      },
+      "aer_severity_default_fatal_bits": [
+        4,
+        5,
+        13,
+        17,
+        18,
+        22
+      ],
+      "aer_uncorrectable_default_mask_bits": [
+        22
+      ],
+      "aer_correctable_default_mask_bits": [
+        13
+      ],
+      "rules": [
+        "AER 状态为 RW1CS，屏蔽控制报告和日志，严重程度决定 Non-Fatal/Fatal，保存首个未屏蔽错误指针与四 DWORD 头日志。",
+        "错误消息以普通有序 TLP 发送并遵守 Device Control 报告使能，链路错误由端口记录。",
+        "FLR 保留链路序号、信用和电源控制字段，先安排 INTx 撤销，主动请求门控，规定 100 ms 内结束。",
+        "FLR 清除 BME/MSI 等功能使能。已提交读事务的 tag 隔离保留线上的 Requester ID/tag 匹配条件。",
+        "PERST、Hot Reset 或实际 DL_Down 清理链路层、重新训练和初始化信用。Recovery 和 L1 保持当前链路代次。",
+        "配置尚未就绪时可返回 CRS，RC 有界重发或按 CRS 可见性设置返回 0x0001 Vendor ID。",
+        "drain 后 checkpoint 保存 L0/L1、配置、计数、相位及信用状态。返回反压、replay 或后端仍有在途操作时排空继续等待。"
+      ]
+    }
+  },
+  "milestones": [
+    {
+      "id": "G0",
+      "depends_on": [],
+      "description": "来源、资源和接口契约",
+      "implementation": "complete",
+      "evidence": [
+        "25/25 共享档案测试，BASE4-CB SHA-256 与字节数复核通过",
+        "docs/spec/host/spec-pcie/link-contract.md"
+      ]
+    },
+    {
+      "id": "G1",
+      "depends_on": [
+        "G0"
+      ],
+      "description": "独立数字链路和参考校验",
+      "implementation": "pending",
+      "evidence": []
+    },
+    {
+      "id": "G2",
+      "depends_on": [
+        "G1"
+      ],
+      "description": "Host、HDMA、BAR 和中断接入",
+      "implementation": "pending",
+      "evidence": []
+    },
+    {
+      "id": "G3",
+      "depends_on": [
+        "G2"
+      ],
+      "description": "生命周期、错误、checkpoint 和完整验收",
+      "implementation": "pending",
+      "evidence": []
+    }
+  ],
+  "source_audit": {
+    "baseline": "BASE4-CB",
+    "rejected_candidates": [
+      {
+        "url": "https://raw.githubusercontent.com/kaitoukito/Integrated-Circuit-Specifications/a896c75e8719f5ecd94c0e7111abca49c1dfdaf6/PCI-Express-Base-Specification-Revision-4.0-Version-1.0.pdf",
+        "sha256": "672166e4cd731e45db77c6e70720de0099a95a5fced847bf51f699d226fbc5fb",
+        "reason": "封面为 2017-08-28，含评审说明，作为候选比较材料，协议基线采用后续 1.0-c。"
+      }
+    ],
+    "unavailable_candidates": [
+      {
+        "url": "https://www.pedestrian.com.cn/_downloads/d2f2495e73c44b8c3a8dfd4c399f50f0/PCIE_V4.0.pdf",
+        "reason": "搜索索引显示 2017-09-27 正文，本地 HTTPS 下载失败，尚未核验其原件摘要。"
+      }
+    ],
+    "errata_baseline": "本轮冻结 2017 年 1.0-c 正文。2019-09-02 勘误尚待单独适用性核验。"
+  }
+}
