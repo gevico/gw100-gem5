@@ -408,6 +408,26 @@ TEST(Sram, CancelledIngressKeepsOldEpoch)
     EXPECT_EQ(model.response(0)->committed, 0);
 }
 
+TEST(Sram, PreservingResetKeepsInitializationAndRetention)
+{
+    SramModel model(config());
+    model.reset(true);
+    EXPECT_EQ(model.state(), SramModel::State::Reset);
+    model.initialize();
+    model.step();
+    model.step();
+    model.reset(true);
+    EXPECT_EQ(model.state(), SramModel::State::Initializing);
+    while (model.state() != SramModel::State::Ready) {
+        model.step();
+    }
+    ASSERT_TRUE(model.enterRetention());
+    model.reset(true);
+    EXPECT_EQ(model.state(), SramModel::State::Retention);
+    model.leaveRetention();
+    EXPECT_EQ(run(model, 0, {}).data[0], 0);
+}
+
 TEST(Sram, PartialFaultRetainsCommittedMask)
 {
     SramModel model(config());
@@ -417,6 +437,20 @@ TEST(Sram, PartialFaultRetainsCommittedMask)
     auto result = run(model, 0, write(0, 12));
     EXPECT_EQ(result.status, SramModel::Status::Partial);
     EXPECT_EQ(result.committed, 0xff);
+}
+
+TEST(Sram, RestoreFailureKeepsOriginalState)
+{
+    SramModel model(config());
+    ready(model);
+    run(model, 0, write(0));
+    std::stringstream snapshot;
+    model.save(snapshot);
+    auto truncated = snapshot.str();
+    truncated.resize(truncated.size() - 12);
+    std::stringstream broken(truncated);
+    EXPECT_THROW(model.restore(broken), std::runtime_error);
+    EXPECT_EQ(run(model, 0, {}).data[0], 1);
 }
 
 TEST(Sram, FiniteSlotsIncludeBlockedResponses)
@@ -479,6 +513,61 @@ TEST(Sram, ResetCancelsPendingWrite)
         model.step();
     }
     EXPECT_EQ(run(model, 0, {}).data[0], 0);
+}
+TEST(Sram, PausePreservesRemainingCycles)
+{
+    SramModel model(config());
+    ready(model);
+    uint64_t id;
+    model.submit(0, write(0), id);
+    model.step();
+    auto before = model.now();
+    model.pause();
+    for (unsigned i = 0; i < 20; ++i) {
+        model.step();
+    }
+    EXPECT_EQ(model.now(), before);
+    EXPECT_FALSE(model.response(0));
+    model.resume();
+    model.step();
+    ASSERT_TRUE(model.response(0));
+}
+TEST(Sram, CheckpointReadyAndRetention)
+{
+    for (bool retain : {false, true}) {
+        SramModel model(config());
+        ready(model);
+        run(model, 0, write(1016));
+        model.inject(1016, 65);
+        if (retain) {
+            EXPECT_TRUE(model.enterRetention());
+        }
+        std::stringstream snapshot;
+        model.save(snapshot);
+        SramModel restored(config());
+        restored.restore(snapshot);
+        EXPECT_EQ(restored.state(), model.state());
+        if (retain) {
+            restored.leaveRetention();
+        }
+        auto result = run(restored, 0, SramModel::Request{1016});
+        EXPECT_EQ(result.data[0], 1);
+        EXPECT_EQ(restored.stats().ce, 1);
+    }
+}
+TEST(Sram, CheckpointMismatchAndTruncation)
+{
+    SramModel model(config());
+    ready(model);
+    std::stringstream snapshot;
+    model.save(snapshot);
+    auto cfg = config();
+    cfg.splitPorts = true;
+    SramModel other(cfg);
+    EXPECT_THROW(other.restore(snapshot), std::invalid_argument);
+    std::stringstream truncated("GW100-SRAM-1\n" + config().fingerprint() +
+                                "\n2 0");
+    EXPECT_THROW(model.restore(truncated), std::runtime_error);
 }
 TEST(Sram, FairnessIncludesPartialWrites)
 {
