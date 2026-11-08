@@ -41,6 +41,7 @@
 #include <list>
 #include <memory>
 #include <set>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -64,6 +65,24 @@ dirExists(std::string dir)
 }
 
 using SerializeFixture = SerializationFixture;
+
+/** vector<bool> 代理迭代器使用布尔编码，保证 libc++ checkpoint 可恢复。 */
+TEST_F(SerializeFixture, BooleanProxyRoundTrip)
+{
+    const std::vector<bool> expected{false, true, false};
+    std::ostringstream output;
+    {
+        Serializable::ScopedCheckpointSection section(output, "booleans");
+        arrayParamOut(output, "bits", expected.begin(), expected.end());
+    }
+    ASSERT_EQ(output.str(), "\n[booleans]\nbits=false true false\n");
+    simulateSerialization(output.str());
+    CheckpointIn checkpoint(getDirName());
+    Serializable::ScopedCheckpointSection section(checkpoint, "booleans");
+    std::vector<bool> restored;
+    arrayParamIn(checkpoint, "bits", restored);
+    EXPECT_EQ(restored, expected);
+}
 
 class CheckpointInFixture : public SerializationFixture
 {

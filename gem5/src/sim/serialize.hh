@@ -390,7 +390,8 @@ arrayParamOut(CheckpointOut &os, const std::string &name,
 {
     os << name << "=";
     auto it = start;
-    using Elem = std::remove_cv_t<std::remove_reference_t<decltype(*it)>>;
+    // libc++ 的 vector<bool> 解引用返回代理，按实际元素类型编码。
+    using Elem = typename std::iterator_traits<InputIterator>::value_type;
     if (it != end)
         ShowParam<Elem>::show(os, *it++);
     while (it != end) {
