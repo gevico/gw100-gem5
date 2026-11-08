@@ -20,10 +20,12 @@
 
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <string>
 
 #include "sim/eventq.hh"
 #include "src/gw100/ml/ml_endpoint.hh"
+#include "src/gw100/pcie/link/generated/link_defs.hh"
 #include "src/gw100/pcie/status/status_unit.hh"
 
 namespace gem5
@@ -66,11 +68,12 @@ class BootCtrl
     /** 启动窗口是否打开 */
     bool windowOpen() const;
 
-    /**
-     * BAR2 在启动窗口模式下的写：off 为窗口内偏移。返回 false 表示
-     * 写入非法（已记录 BOOT_WIN 错误与 WIN_WRITE）
-     */
-    bool windowWrite(Addr off, unsigned len, const uint8_t *data);
+    /** 启动写完成槽是否仍有空间，与 EP 后端总预算相同。 */
+    bool canWindowWrite() const;
+
+    /** 提交启动窗口写，全部 ML 写结算后通知 done，非法写立即结算。 */
+    bool windowWrite(Addr off, unsigned len, const uint8_t *data,
+                     std::function<void()> done = {});
 
     /** 固件读 FW_BOOT_STATUS：HIF 中的实际值 */
     uint32_t fwBootStatus() const;
@@ -119,6 +122,10 @@ class BootCtrl
 
     /** DEV_STATUS.DEV_FATAL：只能由完全复位、热复位、冷复位清除 */
     bool devFatal() const { return fatal; }
+    /** 启动写入、启动命令和 FLR 握手已完成。 */
+    bool quiescent() const;
+    /** 保存稳定启动状态、窗口和错误锁存。 */
+    /** 恢复稳定启动状态、窗口和错误锁存。 */
 
     /**
      * 置位 DEV_FATAL：硬件故障、固件经 DEV_CTRL_FW 请求，或看门狗第二级
@@ -188,6 +195,10 @@ class BootCtrl
 
     /** 已接受、尚未确认的 BOOT_WR 个数（提交计数） */
     unsigned commitCount = 0;
+    /** 等待 ML 确认的有限启动写完成回调。 */
+    std::map<uint64_t, std::function<void()>> writeCompletions;
+    /** 启动写的本地唯一编号，跨设备复位继续单调递增。 */
+    uint64_t nextWrite = 0;
     /** FW_START 已被接受、事件尚未被 ML 接受 */
     bool fwStartPending = false;
 

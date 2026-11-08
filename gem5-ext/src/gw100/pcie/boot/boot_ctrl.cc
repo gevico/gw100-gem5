@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <memory>
 
 #include "base/trace.hh"
 #include "debug/Gw100Boot.hh"
@@ -123,18 +124,43 @@ BootCtrl::hostWriteFwSize(uint32_t v)
         size = v;
 }
 
-/**
- * BAR2 在启动窗口模式下的写：off 为窗口内偏移。返回 false 表示
- * 写入非法（已记录 BOOT_WIN 错误与 WIN_WRITE）
- */
+/** 启动写完成槽是否仍有空间，与 EP 后端总预算相同。 */
 bool
-BootCtrl::windowWrite(Addr off, unsigned len, const uint8_t *data)
+BootCtrl::canWindowWrite() const
 {
+    return writeCompletions.size() < pciedefs::BACKEND_SLOTS;
+}
+
+/** 提交启动窗口写，全部 ML 写结算后通知 done，非法写立即结算。 */
+bool
+BootCtrl::windowWrite(Addr off, unsigned len, const uint8_t *data,
+                      std::function<void()> done)
+{
+    if (done && !canWindowWrite()) {
+        return false;
+    }
     if (off % 8 || len == 0 || len % 8 || off + len > fwLoadMax) {
         status.logError(StatusUnit::ErrBootWin, off, true, len, 2);
         winWrite = true;
+        if (done) {
+            done();
+        }
         return false;
     }
+    uint64_t ticket = ++nextWrite;
+    bool tracked = bool(done);
+    if (tracked) {
+        writeCompletions.emplace(ticket, std::move(done));
+    }
+    auto remaining = std::make_shared<unsigned>((off % 64 + len + 63) / 64);
+    auto settled = [this, ticket, remaining] {
+        if (--*remaining == 0) {
+            auto completion = writeCompletions.extract(ticket);
+            if (!completion.empty()) {
+                completion.mapped()();
+            }
+        }
+    };
     // 按 64 B 边界拆成 BOOT_WR，入口处立即计入提交计数
     for (Addr a = off; a < off + len;) {
         unsigned n = std::min<Addr>(64 - a % 64, off + len - a);
@@ -144,18 +170,25 @@ BootCtrl::windowWrite(Addr off, unsigned len, const uint8_t *data)
         t->len = n;
         t->be = n == 64 ? ~0ULL : ((1ULL << n) - 1);
         std::memcpy(t->data.data(), data + (a - off), n);
-        t->done = [this](MlStatus st, const MlData &) {
+        t->done = [this, ticket, tracked, settled](MlStatus st,
+                                                   const MlData &) {
+            if (tracked && !writeCompletions.count(ticket)) {
+                return;
+            }
             if (st != MlStatus::Ok) {
                 latchLinkFault();
+                settled();
                 return;
             }
             commitCount--;
+            settled();
             trySend();
         };
         commitCount++;
         if (!ml || !ml->submit(bootClient, t)) {
             commitCount--;
             latchLinkFault();
+            settled();
         }
         a += n;
     }
@@ -261,6 +294,11 @@ BootCtrl::devReset()
     linkFault = false;
     // ML 的复位丢弃了在途的启动写入和事件，不会再有确认
     commitCount = 0;
+    auto completions = std::move(writeCompletions);
+    writeCompletions.clear();
+    for (auto &[ticket, done] : completions) {
+        done();
+    }
     fwStartPending = false;
     flrInProgress = false;
     flrNeedSend = false;
@@ -409,3 +447,20 @@ BootCtrl::flrTimeout()
 
 } // namespace gw100
 } // namespace gem5
+
+namespace gem5::gw100
+{
+
+/** 启动写入、启动命令和 FLR 握手已完成。 */
+bool
+BootCtrl::quiescent() const
+{
+    return !commitCount && writeCompletions.empty() && !fwStartPending &&
+           !flrInProgress && !flrProcessing();
+}
+
+/** 保存稳定启动状态、窗口和错误锁存。 */
+
+/** 恢复稳定启动状态、窗口和错误锁存。 */
+
+} // namespace gem5::gw100
