@@ -1,0 +1,3 @@
+# 共享 SRAM 独立周期状态机
+Import('*')
+Source('sram_model.cc', add_tags='gw100 sram')
