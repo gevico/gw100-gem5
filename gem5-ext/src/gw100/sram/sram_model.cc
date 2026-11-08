@@ -37,6 +37,13 @@ load64(const uint8_t *data)
     return value;
 }
 /** 按小端序写出八个数据字节。 */
+void
+store64(uint8_t *data, uint64_t value)
+{
+    for (unsigned i = 0; i < 8; ++i) {
+        data[i] = value >> (8 * i);
+    }
+}
 } // namespace
 
 struct SramModel::Operation
@@ -119,9 +126,6 @@ SramModel::Config::fingerprint() const
 SramModel::SramModel(const Config &config) : cfg(config)
 {
     cfg.validate();
-    if (cfg.ecc) {
-        throw std::invalid_argument("本阶段仅开放 ECC 关闭的独立配置");
-    }
     bytes.resize(cfg.size);
     checks.resize(cfg.size / 8);
     transactions.resize(cfg.sources * cfg.slots);
@@ -158,6 +162,30 @@ SramModel::encode(uint64_t data)
 }
 
 /** 检查并纠正一个 64+8 SECDED 码字。 */
+SramModel::EccResult
+SramModel::decode(uint64_t data, uint8_t check)
+{
+    unsigned syndrome = (encode(data) ^ check) & 0x7f;
+    unsigned odd =
+        (__builtin_popcountll(data) + __builtin_popcount(unsigned(check))) & 1;
+    if (!syndrome) {
+        return {data, bool(odd), false};
+    }
+    if (!odd || syndrome > 71) {
+        return {data, false, true};
+    }
+    unsigned index = 0;
+    for (unsigned position = 1; position <= 71; ++position) {
+        if (powerOfTwo(position)) {
+            continue;
+        }
+        if (position == syndrome) {
+            data ^= uint64_t(1) << index;
+        }
+        ++index;
+    }
+    return {data, true, false};
+}
 
 /** 将合法实例内地址映射至 bank 编号。 */
 unsigned
@@ -253,11 +281,39 @@ SramModel::submit(unsigned source, const Request &request, uint64_t &id,
 
 /** 采样所需码字并报告 CE 或 UE。 */
 bool
-SramModel::readWord(Transaction &, Operation &op,
+SramModel::readWord(Transaction &txn, Operation &op,
                     std::array<uint8_t, 64> &data)
 {
     std::copy_n(bytes.begin() + op.word, cfg.wordBytes, data.begin());
-    return true;
+    if (!cfg.ecc) {
+        return true;
+    }
+    bool ok = true;
+    for (unsigned off = 0; off < cfg.wordBytes; off += 8) {
+        unsigned touched = 0;
+        for (unsigned i = 0; i < 8; ++i) {
+            uint64_t address = op.word + off + i;
+            touched +=
+                address >= txn.request.address &&
+                address - txn.request.address < txn.request.size &&
+                (!txn.request.write ||
+                 ((txn.request.mask >> (address - txn.request.address)) & 1));
+        }
+        if (!touched || (txn.request.write && touched == 8)) {
+            continue;
+        }
+        auto result = decode(load64(&data[off]), checks[(op.word + off) / 8]);
+        if (result.corrected || result.uncorrectable) {
+            counters.ce += result.corrected;
+            counters.ue += result.uncorrectable;
+            if (eccEvent) {
+                eccEvent(op.word + off, result.uncorrectable);
+            }
+        }
+        store64(&data[off], result.data);
+        ok &= !result.uncorrectable;
+    }
+    return ok;
 }
 
 /** 提交宏字内已使能的字节并更新 ECC 与提交掩码。 */
@@ -704,6 +760,19 @@ SramModel::checkRange(uint64_t address, unsigned size) const
     }
 }
 /** 在对齐码字中翻转编号 0–71 的一个物理位。 */
+void
+SramModel::inject(uint64_t codeword, unsigned bit)
+{
+    checkRange(codeword, 8);
+    if (codeword % 8 || bit >= 72 || !cfg.ecc) {
+        throw std::invalid_argument("SRAM ECC 注入参数错误");
+    }
+    if (bit < 64) {
+        bytes[codeword + bit / 8] ^= 1u << (bit % 8);
+    } else {
+        checks[codeword / 8] ^= 1u << (bit - 64);
+    }
+}
 /** 排空后读取原始数据，供调试和兼容路径使用。 */
 void
 SramModel::functionalRead(uint64_t address, uint8_t *data, unsigned size) const

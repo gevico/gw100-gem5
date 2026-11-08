@@ -6,6 +6,7 @@
 #include "src/gw100/sram/sram_model.hh"
 #include <gtest/gtest.h>
 #include <sstream>
+#include "src/gw100/mgmt/regs/ecc_status.hh"
 
 namespace gem5::gw100
 {
@@ -16,7 +17,6 @@ SramModel::Config
 config()
 {
     SramModel::Config cfg;
-    cfg.ecc = false;
     cfg.size = 1024;
     cfg.banks = 4;
     return cfg;
@@ -64,6 +64,66 @@ write(uint64_t address, unsigned size = 8)
     return request;
 }
 
+TEST(Sram, ManagementEccRegisters)
+{
+    MgmtEccStatus status;
+    status.threshold = 2;
+    status.record(0x100, false, 1);
+    EXPECT_FALSE(status.ceIrq());
+    status.record(0x108, false, 1);
+    EXPECT_TRUE(status.ceIrq());
+    status.clear(1, 1);
+    EXPECT_EQ(status.status, 1);
+    status.clearCount(1);
+    EXPECT_EQ(status.count, 2);
+    status.clear(1, 2);
+    status.clearCount(2);
+    EXPECT_EQ(status.status, 0);
+    EXPECT_FALSE(status.ceIrq());
+    status.count = UINT32_MAX;
+    status.record(0x108, false, 3);
+    EXPECT_EQ(status.count, UINT32_MAX);
+    status.record(0x108, true, 4);
+    status.record(0x100, true, 4);
+    EXPECT_EQ(status.address, 0x100);
+    status.record(0, true, 5);
+    EXPECT_EQ(status.address, 0x100);
+    status.clear(2, 6);
+    status.record(8, true, 6);
+    EXPECT_EQ(status.address, 8);
+}
+
+TEST(Sram, AllSingleAndDoubleBitFaults)
+{
+    for (uint64_t value :
+         {uint64_t(0), ~uint64_t(0), uint64_t(0x0123456789abcdef)}) {
+        uint8_t check = SramModel::encode(value);
+        for (unsigned first = 0; first < 72; ++first) {
+            uint64_t data = value;
+            uint8_t code = check;
+            if (first < 64) {
+                data ^= uint64_t(1) << first;
+            } else {
+                code ^= 1 << (first - 64);
+            }
+            auto result = SramModel::decode(data, code);
+            EXPECT_TRUE(result.corrected);
+            EXPECT_FALSE(result.uncorrectable);
+            EXPECT_EQ(result.data, value);
+            for (unsigned second = first + 1; second < 72; ++second) {
+                uint64_t other = data;
+                uint8_t parity = code;
+                if (second < 64) {
+                    other ^= uint64_t(1) << second;
+                } else {
+                    parity ^= 1 << (second - 64);
+                }
+                auto bad = SramModel::decode(other, parity);
+                EXPECT_TRUE(bad.uncorrectable);
+            }
+        }
+    }
+}
 TEST(Sram, ParameterValidation)
 {
     for (unsigned word : {8, 16, 32, 64}) {
@@ -192,6 +252,49 @@ TEST(Sram, MaskedReadModifyWrite)
     EXPECT_EQ(result.data[3], 4);
     EXPECT_EQ(model.stats().rmw, 1);
 }
+TEST(Sram, CorrectedReadAndRmwRepair)
+{
+    SramModel model(config());
+    ready(model);
+    run(model, 0, write(0));
+    model.inject(0, 3);
+    auto result = run(model, 0, {});
+    EXPECT_EQ(result.status, SramModel::Status::Ok);
+    EXPECT_EQ(result.data[0], 1);
+    EXPECT_EQ(model.stats().ce, 1);
+    run(model, 0, write(7, 1));
+    auto before = model.stats().ce;
+    result = run(model, 0, {});
+    EXPECT_EQ(result.data[0], 1);
+    EXPECT_EQ(model.stats().ce, before);
+}
+TEST(Sram, UncorrectableRmwHasNoEffect)
+{
+    SramModel model(config());
+    ready(model);
+    run(model, 0, write(0));
+    model.inject(0, 0);
+    model.inject(0, 1);
+    auto result = run(model, 0, write(4, 4));
+    EXPECT_EQ(result.status, SramModel::Status::Ecc);
+    EXPECT_EQ(result.committed, 0);
+    uint8_t data[8];
+    model.functionalRead(0, data, 8);
+    EXPECT_EQ(data[4], 5);
+}
+TEST(Sram, FullCodewordOverwriteDuringWideRmw)
+{
+    auto cfg = config();
+    cfg.wordBytes = 16;
+    SramModel model(cfg);
+    ready(model);
+    model.inject(0, 0);
+    model.inject(0, 1);
+    auto request = write(0, 12);
+    EXPECT_EQ(run(model, 0, request).status, SramModel::Status::Ok);
+    request.write = false;
+    EXPECT_EQ(run(model, 0, request).data, write(0, 12).data);
+}
 
 TEST(Sram, SameWordReadWriteCollisionIsSerialized)
 {
@@ -303,6 +406,17 @@ TEST(Sram, CancelledIngressKeepsOldEpoch)
     EXPECT_EQ(model.response(0)->status, SramModel::Status::Reset);
     EXPECT_EQ(model.response(0)->epoch, old);
     EXPECT_EQ(model.response(0)->committed, 0);
+}
+
+TEST(Sram, PartialFaultRetainsCommittedMask)
+{
+    SramModel model(config());
+    ready(model);
+    model.inject(8, 0);
+    model.inject(8, 1);
+    auto result = run(model, 0, write(0, 12));
+    EXPECT_EQ(result.status, SramModel::Status::Partial);
+    EXPECT_EQ(result.committed, 0xff);
 }
 
 TEST(Sram, FiniteSlotsIncludeBlockedResponses)
