@@ -2008,8 +2008,8 @@
       "description": "独立数字链路和参考校验",
       "implementation": "complete",
       "evidence": [
-        "当前独立组件 GTest 183/183",
-        "独立矩阵 208/208，逐边沿误差不超过 1 ps"
+        "193/193 扩展 GTest，208/208 独立矩阵，含 190 个合法配置和 18 个预期拒绝",
+        "全部合法配置的孤立写逐边沿检查通过，误差不超过 1 ps"
       ]
     },
     {
@@ -2018,8 +2018,11 @@
         "G1"
       ],
       "description": "Host、HDMA、BAR 和中断接入",
-      "implementation": "pending",
-      "evidence": []
+      "implementation": "complete",
+      "evidence": [
+        "timing/atomic/O3 67/67，能力跳过 8 项",
+        "十二种链路与补充 O3 冒烟 42/42，正常与 CRC 故障的四份原生 trace 独立检查通过"
+      ]
     },
     {
       "id": "G3",
@@ -2027,8 +2030,12 @@
         "G2"
       ],
       "description": "生命周期、错误、checkpoint 和完整验收",
-      "implementation": "pending",
-      "evidence": []
+      "implementation": "complete",
+      "evidence": [
+        "系统矩阵 59/59，含 42 项冒烟、14 项故障与 PHY、3 项跨进程 L0/L1 恢复",
+        "原生序列化 34/34，另有一个既有 disabled 用例",
+        "docs/spec/host/spec-pcie/verification.md"
+      ]
     }
   ],
   "source_audit": {

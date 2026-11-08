@@ -65,6 +65,12 @@ dram_lifecycle 在实际 COPY 已传输部分数据时注入 FLR 或 D3hot，验
 事务收尾和三轮数据保持。dram_link_reset 通过测试夹具的数字输入请求
 PERST、Hot Reset 和 Link Down，随后重新枚举并由 ROM、固件重新训练。
 
+PCIe 数字链路用例归属 `pcie_link` 能力，G0–G3 的状态由
+`tools/pcie_spec.py --status` 查询。当前共 25 个裸机用例，timing/O3
+各运行 25 项，atomic 兼容配置运行原有 17 项，显式跳过 8 项能力测试。
+`pcie_checkpoint` 的普通回归检查访问与电源标记，三个独立进程的文件
+保存和恢复由 `tools/pcie_system_verify.py --suite checkpoint` 验收。
+
 ## 现有 test
 
 | test | 验证什么 |
@@ -75,6 +81,14 @@ PERST、Hot Reset 和 Link Down，随后重新枚举并由 ROM、固件重新训
 | `pcie_regs` | BAR0 全局寄存器、访问规则（保留偏移、非法宽度）、错误记录、中断状态寄存器、加载固件后的启动寄存器（F4–F6） |
 | `pcie_bar2` | BAR2 调试窗口：配置、经窗口读写设备内存、未使能、越界、只读窗口（F7） |
 | `pcie_flr` | FLR 与 D3hot→D0：配置空间、BAR、寄存器复位，设备内存保留，固件确认 FLR 后重新就绪（F11、F12） |
+| `pcie_link` | 十二种速率与宽度的状态字段、MPS/MRRS/Extended Tag、BAR2 部分写、数据正确性及 Host BAR RTT，输出线上 trace |
+| `pcie_link_error` | 注入实际 TLP CRC 错误，检查重放恢复、AER 状态与清除 |
+| `pcie_checkpoint` | 配置、scratch、MSI-X、L0/L1 跨进程恢复标记，专用夹具完成文件往返 |
+| `dram_access` | 完整容量、通道/rank、边界、部分写与拒绝语义 |
+| `dram_boot_events` | 初始化期间 FLR 与 D3hot/D0 |
+| `dram_error` | 指定训练失败的启动错误 |
+| `dram_lifecycle` | 在途 COPY 中 FLR、电源切换与重复数据保持 |
+| `dram_link_reset` | PERST、Hot Reset、Link Down 后重新枚举与固件启动 |
 | `boot_ok` | 上电初始化：经启动窗口加载固件，ROM 校验并跳转，固件置位 `FW_READY`（F10） |
 | `boot_errors` | 启动失败：镜像校验失败、`FW_SIZE` 非法、启动窗口的非法写入，各自回到 STAGE 2 后可重新加载（F10） |
 | `boot_flr` | 启动期间和固件运行期间的 FLR：门控、回到 STAGE 2 或重新就绪（F11） |
@@ -95,6 +109,7 @@ PERST、Hot Reset 和 Link Down，随后重新枚举并由 ROM、固件重新训
 
 ```sh
 make test                                  # 按需构建 gem5 和全部 test，在 timing、atomic 下各跑一遍
+make pcie-test                            # 全部 PCIe 独立、系统与软件验收
 make test TESTS="pcie_*" HOSTS=o3          # 选 test 和 host 预设，TESTS 支持通配
 make run TEST=pcie_regs                    # 只运行一个 test，输出直接显示在终端
 ```
