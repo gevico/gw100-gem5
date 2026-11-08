@@ -28,9 +28,9 @@
 | 领域 | 目录 | 范围 | 文档 |
 |---|---|---|---|
 | 系统 | `spec/system/` | 横跨全芯片：总体结构、地址、时钟复位、错误、可观测性 | `spec-arch`、`spec-address-map`、`spec-clock-reset-power`、`spec-interrupt-ras`、`spec-debug-perf` |
-| 计算 | `spec/compute/` | Tile 内部怎么算：功能单元、指令、数值；片上 SRAM 也在这里 | `spec-compute-tile`、`spec-matrix-engine`、`spec-vector-engine`、`spec-isa`、`spec-numerics` |
+| 计算 | `spec/compute/` | Tile 内部怎么算，包含功能单元、指令、数值以及本地 SRAM 的接入与分配 | `spec-compute-tile`、`spec-matrix-engine`、`spec-vector-engine`、`spec-isa`、`spec-numerics` |
 | 互连 | `spec/interconnect/` | 数据和同步怎么在 Tile 之间流动 | `spec-noc`、`spec-tile-sync` |
-| 存储 | `spec/memory/` | 片外 DRAM 子系统 | `spec-dram` |
+| 存储 | `spec/memory/` | 片外 DRAM 与跨 Tile 复用的 SRAM 组件 | `spec-dram`、`spec-sram` |
 | 主机接口 | `spec/host/` | 芯片与 host 之间：链路、DMA、固件、命令协议、程序格式 | `spec-pcie`、`spec-host-dma`、`spec-mgmt-tile`、`spec-mgmt-link`、`spec-hdi`、`spec-exe-format` |
 
 手册不分子目录：`man-registers`、`man-programming`、`man-perf-tuning`、`man-driver-guide`、`man-gem5-user`、`man-gem5-dev`、`man-qwen3-mapping`。
