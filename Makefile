@@ -107,6 +107,7 @@ AARCH64_GDB ?= $(shell command -v aarch64-linux-gnu-gdb 2>/dev/null || command -
 .DEFAULT_GOAL := help
 .PHONY: all run test gem-build memory-spec-check FORCE
 .PHONY: memory-test
+.PHONY: noc-spec-check noc-g0-test
 .PHONY: pcie-spec-check pcie-source-check pcie-test
 .PHONY: baremetal-build firmware-build vscode-config commit-check
 .PHONY: clean check format help
@@ -122,7 +123,7 @@ test: gem-build baremetal-build firmware-build
 memory-test: gem-build baremetal-build
 	$(PYTHON) tools/memory_verify.py --jobs $(TEST_JOBS)
 
-gem-build: memory-spec-check pcie-spec-check $(GEM5_BIN)
+gem-build: memory-spec-check pcie-spec-check noc-spec-check $(GEM5_BIN)
 
 memory-spec-check:
 	$(PYTHON) tools/memory_spec.py --check
@@ -308,3 +309,12 @@ help:
 	@echo "  HOSTS=$(HOSTS)   每个 test 在这些 host 预设下各跑一遍"
 	@echo "  TEST_JOBS=$(TEST_JOBS)  TEST_TIMEOUT=$(TEST_TIMEOUT) 秒  TEST_MAX_TICKS=$(TEST_MAX_TICKS)"
 	@echo "  TEST_OUTDIR=$(TEST_OUTDIR)   每次运行的输出在 <TEST_OUTDIR>/<device>/<host>/<test>/"
+
+noc-spec-check:
+	$(PYTHON) tools/noc_spec.py --check
+
+noc-g0-test: memory-spec-check pcie-spec-check noc-spec-check
+	$(PYTHON) tools/memory_spec_test.py
+	$(PYTHON) tools/pcie_spec_test.py
+	$(PYTHON) tools/noc_spec_test.py
+	$(PYTHON) tools/noc_spec.py --check --gate G0 --report build/noc-g0/report.json
