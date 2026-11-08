@@ -1,0 +1,3 @@
+# PCIe 包、串行、资源和数字链路组件
+Import('*')
+Source('packet.cc', add_tags='gw100 pcie link')

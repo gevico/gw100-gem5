@@ -1,0 +1,3 @@
+# PCIe 独立组件测试
+Import('*')
+GTest('link_packet.test', 'link_packet.test.cc', with_tag('gw100 pcie link'))
