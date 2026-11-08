@@ -881,7 +881,11 @@ Gicv3CPUInterface::setMiscReg(int misc_reg, RegVal val)
               return;
           }
 
-          Gicv3::GroupId group = inSecureState() ? Gicv3::G1S : Gicv3::G1NS;
+          // With GICD_CTLR.DS == 1 there is a single Security state and
+          // every Group 1 interrupt is G1NS (see getIntGroup()), also when
+          // it was acknowledged at Secure EL3.
+          Gicv3::GroupId group = (inSecureState() && !distributor->DS) ?
+              Gicv3::G1S : Gicv3::G1NS;
 
           if (highestActiveGroup() == Gicv3::G0S) {
               return;
