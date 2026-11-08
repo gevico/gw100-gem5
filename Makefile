@@ -137,6 +137,7 @@ pcie-source-check:
 $(GEM5_BIN): $(GEM5_INPUTS) $(GEM5_INPUT_STAMP) $(GEM5_KCONFIG)
 	$(GEM5_SCONS)
 	@touch $@
+	$(PYTHON) tools/pcie_verify.py --record-build $@
 
 # 第一次构建时生成构建配置：以 build_opts/ARM 为基础，再打开 RISC-V
 $(GEM5_KCONFIG):
