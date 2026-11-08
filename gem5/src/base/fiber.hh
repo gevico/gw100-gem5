@@ -28,16 +28,11 @@
 #ifndef __BASE_FIBER_HH__
 #define __BASE_FIBER_HH__
 
-// ucontext functions (like getcontext, setcontext etc) have been marked
-// as deprecated and are hence hidden in latest macOS releases.
-// By defining _XOPEN_SOURCE we make them available at compilation time.
-#if defined(__APPLE__) && defined(__MACH__)
-#define _XOPEN_SOURCE 600
-#include <ucontext.h>
-#undef _XOPEN_SOURCE
-#else
-#include <ucontext.h>
-#endif
+// The ucontext state lives in fiber.cc only. On macOS the layout of
+// ucontext_t depends on whether _XOPEN_SOURCE was defined before
+// <ucontext.h> was first included in a translation unit, so embedding it
+// in Fiber would give the class different layouts (an ODR violation) in
+// files that happened to include <ucontext.h> or <signal.h> earlier.
 
 // Avoid fortify source for longjmp to work between ucontext stacks.
 #pragma push_macro("__USE_FORTIFY_LEVEL")
@@ -47,6 +42,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 
 #include "config/have_valgrind.hh"
 
@@ -145,7 +141,9 @@ class Fiber
     static void entryTrampoline();
     void start();
 
-    ucontext_t ctx;
+    // The ucontext_t of this fiber, defined in fiber.cc (see above).
+    struct Context;
+    std::unique_ptr<Context> ctx;
     // ucontext is slow in swapcontext. Here we use _setjmp/_longjmp to avoid
     // the additional signals for speed up.
     jmp_buf jmp;
