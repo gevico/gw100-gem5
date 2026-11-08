@@ -4,7 +4,7 @@ __pycache__/
 .pytest_cache/
 .venv/
 
-# 构建产物与测试输出（/build/ 是测试包；gem5 自己的 build/ 由子模块的 .gitignore 管理）
+# 构建产物与测试输出（gem5 自己的 build/ 由 gem5/.gitignore 管理）
 /build/
 
 # Claude Code 的个人配置（项目共享配置 .claude/settings.json 入库）
