@@ -41,6 +41,7 @@
 #ifndef __CPU_SIMPLE_TIMING_HH__
 #define __CPU_SIMPLE_TIMING_HH__
 
+#include <functional>
 #include "arch/generic/mmu.hh"
 #include "cpu/simple/base.hh"
 #include "cpu/simple/exec_context.hh"
@@ -58,8 +59,16 @@ class TimingSimpleCPU : public BaseSimpleCPU
     virtual ~TimingSimpleCPU();
 
     void init() override;
+    /** Optional platform conversion of response errors to ISA faults. */
+    using MemoryErrorHandler =
+        std::function<Fault(PacketPtr, BaseMMU::Mode)>;
+    /** Install the platform response-error conversion callback. */
+    void setMemoryErrorHandler(const MemoryErrorHandler &handler)
+    { memoryErrorHandler = handler; }
 
   private:
+    /** Optional response-error conversion supplied by the platform. */
+    MemoryErrorHandler memoryErrorHandler;
 
     /*
      * If an access needs to be broken into fragments, currently at most two,
@@ -76,6 +85,8 @@ class TimingSimpleCPU : public BaseSimpleCPU
       public:
         int outstanding;
         PacketPtr fragments[2];
+        /** Retain a fragment's access fault until all fragments complete. */
+        Fault memoryFault = NoFault;
 
         int
         getPendingFragment()
