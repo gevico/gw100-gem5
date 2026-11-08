@@ -139,6 +139,12 @@ class ArmVExpressBoard(ArmBoard):
             self._devices_attached = True
             # 设备号由 VExpress 的 attachPciDevice 从 1 起依次分配
             for dev in self._extra_pci_devices:
+                if hasattr(dev, "precise_link"):
+                    dev.pcie_host_ranges = list(self.mem_ranges)
+                    its = self.realview.gic.its
+                    dev.pcie_interrupt_ranges = [
+                        AddrRange(its.pio_addr + 0x10000, size=0x10000)
+                    ]
                 self._pci_devices.append(dev)
                 self.realview.attachPciDevice(dev)
 

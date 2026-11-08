@@ -28,11 +28,14 @@
 #include <deque>
 #include <memory>
 
+#include <fstream>
+#include "base/statistics.hh"
 #include "dev/intpin.hh"
 #include "dev/pci/device.hh"
-#include "sim/signal.hh"
 #include "params/Gw100PciDevice.hh"
+#include "sim/signal.hh"
 #include "src/gw100/ml/mgmt_link.hh"
+#include "src/gw100/pcie/link/link_transport.hh"
 #include "src/gw100/pcie/pcie_factory.hh"
 
 namespace gem5
@@ -43,7 +46,7 @@ namespace gw100
 class Gw100MemoryIngress;
 
 /** GW100 的 PCIe endpoint：组件的外壳 */
-class Gw100PciDevice : public PciEndpoint
+class Gw100PciDevice : public PciEndpoint, public pcie::LinkClockIf
 {
   public:
     PARAMS(Gw100PciDevice);
@@ -85,8 +88,22 @@ class Gw100PciDevice : public PciEndpoint
 
     /** wdt_fatal 信号撤销：它保持到复位，不会撤销 */
     void lowerInterruptPin(int num);
-    /** 冷复位或热复位时恢复配置头部并重建时间戳起点 */
-    void resetLink(Tick origin);
+    /** 按 PERST=2、Hot Reset=4、Link Down=8 重建配置和链路。 */
+    void resetLink(Tick origin, unsigned cause);
+    /** 链路内核的 1 ps 时钟。 */
+    uint64_t
+    now() const override
+    {
+        return curTick();
+    }
+    /** 在指定协议边界运行共享链路事件。 */
+    void wakeAt(uint64_t when) override;
+    /** 排空 Host、共享链路与目标完成。 */
+    DrainState drain() override;
+    /** checkpoint 恢复后继续协议维护。 */
+    void drainResume() override;
+    /** 返回实际链路配置、有限资源与计数的 JSON 快照。 */
+    std::string pcieReport();
 
   protected:
     /** BAR 读访问的入口：交给该 BAR 的处理者 */
@@ -179,6 +196,8 @@ class Gw100PciDevice : public PciEndpoint
         bool done = false;
         /** 复位已作废此请求 */
         bool cancelled = false;
+        /** 精确链路目标完成回调，空值使用兼容 PIO 返回。 */
+        std::function<void(PacketPtr)> linkDone;
     };
     /** 处理异步 PIO 和响应 */
     void processPio();
@@ -200,6 +219,100 @@ class Gw100PciDevice : public PciEndpoint
     bool pioResponseBlocked = false;
     /** 异步 PIO 调度事件 */
     EventFunctionWrapper pioEvent;
+    /** 一个已由 RC 本地入口接受的原生 Host 请求。 */
+    struct HostIngress
+    {
+        /** 原生请求，保留到上游响应被接受。 */
+        PacketPtr packet = nullptr;
+        /** 从硬件入口构造的线上事务。 */
+        pcie::Tlp tlp;
+        /** Host 总线传输到达 RC 的时刻。 */
+        Tick ready = 0;
+        /** DLL 不可用时 RC 本地保留请求的上界，单位 ps。 */
+        Tick linkDeadline = 0;
+    };
+    /** 处理共享链路、Host 准入与返回。 */
+    void processLink();
+    /** 将线上请求交给 EP PIO 或 RC Host timing 目标。 */
+    bool executeLink(unsigned side, const pcie::Tlp &tlp,
+                     pcie::TargetDone done);
+    /** Host PIO 最终完成，返回队列保留其全部反压占用。 */
+    void finishHost(PacketPtr pkt, HostStatus status, const uint8_t *data);
+    /** 实际数字链路状态更新配置空间。 */
+    void updateLinkStatus();
+    /** 将一次线上错误归入 AER 与错误消息。 */
+    void linkError(unsigned side, pcie::LinkError error,
+                   const std::vector<uint8_t> &header);
+    /** 保存已排空的协议状态、事务层门控和统计。 */
+    void serializeLink(CheckpointOut &cp) const;
+    /** 恢复已排空的协议状态、事务层门控和统计。 */
+    void unserializeLink(CheckpointIn &cp);
+    /** 记录原始链路观测和所在系统时刻。 */
+    void traceLink(const pcie::LinkTrace &trace);
+    /** 为原生目标开始或完成建立可分项统计的观测。 */
+    void traceService(unsigned side, uint64_t cookie, bool complete);
+    /** PCIe 的双向计数与累计服务时间。 */
+    struct LinkStats : public statistics::Group
+    {
+        /** 建立 RC、EP 两项向量。 */
+        explicit LinkStats(statistics::Group *parent);
+        /** 本地接受的 TLP 数。 */
+        statistics::Vector accepted;
+        /** 首次发送的 TLP 数。 */
+        statistics::Vector transmitted;
+        /** 首次发送的有效载荷，单位 B。 */
+        statistics::Vector payload;
+        /** 重放次数。 */
+        statistics::Vector replays;
+        /** DLLP 发送数。 */
+        statistics::Vector dllps;
+        /** 线上错误数。 */
+        statistics::Vector errors;
+        /** 包串行占用，单位 tick。 */
+        statistics::Vector packetTicks;
+        /** SKP 及 framing 占用，单位 tick。 */
+        statistics::Vector maintenanceTicks;
+        /** 训练占用，单位 tick。 */
+        statistics::Vector trainingTicks;
+        /** 接受到 DLL 提交的累计排队时间，单位 tick。 */
+        statistics::Vector queueTicks;
+        /** 接受到完整 completion 的累计时间，单位 tick。 */
+        statistics::Vector requestTicks;
+        /** 请求者收到全部 completion 的次数。 */
+        statistics::Vector completed;
+        /** 原生目标服务累计时间，单位 tick。 */
+        statistics::Vector targetTicks;
+    };
+    /** 与实际链路事件同步的统计。 */
+    LinkStats linkStats;
+    /** 一个有限的源端观测条目。 */
+    struct ObservedRequest
+    {
+        /** 本地接受时刻。 */
+        Tick accepted = 0;
+        /** 用于区分 posted/NP/completion 的实体类别。 */
+        pcie::Traffic traffic = pcie::Traffic::Posted;
+    };
+    /** 仅跟踪已有有限资源内的源端事务。 */
+    std::array<std::map<uint64_t, ObservedRequest>, 2> observedRequests;
+    /** 仅跟踪两端各六十四个有限原生目标。 */
+    std::array<std::map<uint64_t, Tick>, 2> observedTargets;
+    /** 精确配置的共享 RC/EP 事务链路。 */
+    std::unique_ptr<pcie::LinkTransport> pcieTransport;
+    /** RC 原生入口与返回合计最多六十四个请求。 */
+    unsigned hostRequests = 0;
+    /** 等待 Host 总线到达与共享链路准入的完整操作。 */
+    std::deque<HostIngress> hostIngress;
+    /** 等待上游接受的已完成原生请求。 */
+    std::deque<PacketPtr> hostResponses;
+    /** 共享链路事件，复位和门控先于本事件生效。 */
+    EventFunctionWrapper linkEvent;
+    /** 可选原始线上事件文件。 */
+    std::ofstream linkTrace;
+    /** 全系统要求排空，关闭新的原生 Host 准入。 */
+    bool linkDraining = false;
+    /** 原生入口已有请求均进入链路后，已经启动内核排空。 */
+    bool linkDrainStarted = false;
 };
 
 } // namespace gw100

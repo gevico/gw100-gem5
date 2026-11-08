@@ -26,6 +26,7 @@ gem5 会在仿真开始前等待 GDB 连接 127.0.0.1:7100（--gdb-port 可改�
 """
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -151,7 +152,47 @@ def main() -> None:
         action="store_true",
         help="允许裸机测试请求外部数字复位输入",
     )
+    parser.add_argument(
+        "--pcie-gen", type=int, choices=(1, 2, 3, 4), default=4
+    )
+    parser.add_argument("--pcie-width", type=int, choices=(1, 2, 4), default=4)
+    parser.add_argument("--pcie-rcb", type=int, choices=(64, 128), default=64)
+    parser.add_argument(
+        "--pcie-cpl", type=int, choices=(64, 128, 256), default=256
+    )
+    parser.add_argument("--pcie-rc-aspm", action="store_true")
+    parser.add_argument("--pcie-trace", action="store_true")
+    parser.add_argument("--pcie-host-service", default="0ns")
+    parser.add_argument(
+        "--pcie-phy-gen", type=int, choices=(1, 2, 3, 4), default=4
+    )
+    parser.add_argument(
+        "--pcie-lane-mask", type=lambda v: int(v, 0), default=15
+    )
+    parser.add_argument("--pcie-phy-feedback", default="100ns")
+    parser.add_argument("--pcie-training-fail", default="")
+    parser.add_argument(
+        "--pcie-fault",
+        choices=(
+            "tlp_crc",
+            "dllp_crc",
+            "drop_tlp",
+            "drop_ack",
+            "drop_update",
+            "framing",
+            "duplicate",
+        ),
+        default="",
+    )
+    parser.add_argument(
+        "--pcie-fault-side", type=int, choices=(0, 1), default=0
+    )
+    parser.add_argument("--pcie-fault-count", type=int, default=1)
     args = parser.parse_args(namespace=Args())
+    if args.pcie_cpl < args.pcie_rcb:
+        parser.error("通用大读请求要求完成载荷上限不小于 RCB")
+    if not 0 <= args.pcie_lane_mask <= 15 or args.pcie_fault_count < 0:
+        parser.error("PCIe PHY lane 位图或有限故障次数无效")
 
     if args.workload == "baremetal" and not args.kernel:
         parser.error("--workload baremetal 需要 --kernel")
@@ -188,6 +229,26 @@ def main() -> None:
         )
 
     dev = device.make()
+    if device.precise_memory:
+        dev.link_speed = args.pcie_gen
+        dev.link_width = args.pcie_width
+        dev.pcie_rcb = args.pcie_rcb
+        dev.pcie_completion_payload = args.pcie_cpl
+        dev.pcie_rc_aspm = args.pcie_rc_aspm
+        dev.pcie_host_service = args.pcie_host_service
+        dev.pcie_phy_generation = args.pcie_phy_gen
+        dev.pcie_phy_lane_mask = args.pcie_lane_mask
+        dev.pcie_phy_feedback = args.pcie_phy_feedback
+        dev.pcie_training_fail = args.pcie_training_fail
+        dev.pcie_fault = args.pcie_fault
+        dev.pcie_fault_side = args.pcie_fault_side
+        dev.pcie_fault_count = args.pcie_fault_count
+        if args.pcie_trace:
+            dev.pcie_trace_path = str(
+                Path(m5.options.outdir) / "pcie-link.jsonl"
+            )
+    elif args.pcie_fault or args.pcie_rc_aspm or args.pcie_trace:
+        parser.error("PCIe 数字链路能力需要 gw100 timing/o3 配置")
     board = board_cls(
         HOSTS[args.host],
         [dev],
@@ -220,16 +281,59 @@ def main() -> None:
         # m5.instantiate()/m5.simulate()。
         board._pre_instantiate()
         # 管理 Tile 所在的 RISC-V 系统，与 host 系统在同一个 Root 下
+        repo = Path(__file__).resolve().parents[2]
+        sources = list((repo / "gem5-ext/src/gw100/pcie").rglob("*.cc"))
+        sources += list((repo / "gem5-ext/src/gw100/pcie").rglob("*.hh"))
+        sources += [
+            repo / "gem5/src/sim/serialize.hh",
+            repo / "spec-src/pcie/gw100-link.json",
+            Path(args.kernel),
+            Path(__file__),
+        ]
+        executable = Path(sys.executable)
+        if executable.is_file():
+            sources.append(executable)
+        fingerprints = {
+            str(path): hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in sources
+        }
         m5.instantiate()
         board._post_instantiate()
         limit = args.max_ticks or m5.MaxTick
         event = m5.simulate(limit)
-        while args.hardware_reset_test and event.getCause() == (
-            "semi:ADP_Stopped_UserInterruption"
-        ):
-            mgmt.tile.externalReset(event.getCode())
+        while event.getCause() == "semi:ADP_Stopped_UserInterruption":
+            if args.hardware_reset_test:
+                mgmt.tile.externalReset(event.getCode())
+            elif event.getCode() not in (0x100, 0x101):
+                break
             event = m5.simulate(max(0, limit - m5.curTick()))
         cause = event.getCause()
+        pcie_report = json.loads(dev.pcieReport())
+        pcie_report["fingerprints"] = fingerprints
+        pcie_report["inputs_unchanged_during_run"] = all(
+            hashlib.sha256(path.read_bytes()).hexdigest()
+            == fingerprints[str(path)]
+            for path in sources
+        )
+        manifest = executable.with_suffix(".pcie-build.json")
+        if manifest.is_file():
+            built = json.loads(manifest.read_text())
+            pcie_report["build"] = built
+            pcie_report["build_matches_inputs"] = built[
+                "executable_sha256"
+            ] == fingerprints[str(executable)] and all(
+                fingerprints.get(str(repo / name)) == value
+                for name, value in built["sources"].items()
+            )
+        pcie_report["capture_tick"] = m5.curTick()
+        pcie_report["host"] = args.host
+        pcie_report["fault"] = args.pcie_fault
+        pcie_report["fault_side"] = args.pcie_fault_side
+        pcie_report["fault_count"] = args.pcie_fault_count
+        pcie_report["trace"] = bool(args.pcie_trace)
+        (Path(m5.options.outdir) / "pcie-report.json").write_text(
+            json.dumps(pcie_report, indent=2, ensure_ascii=False) + "\n"
+        )
         if memory is not None:
             controller = memory.controllers[0]
             report = {
