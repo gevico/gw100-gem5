@@ -80,7 +80,12 @@ Gw100MgmtTile::PioPort::recvFunctional(PacketPtr pkt)
 {
     Addr a = pkt->getAddr();
     unsigned sz = pkt->getSize();
-    if (tile.sram.inRom(a, sz) || tile.sram.inSram(a, sz)) {
+    if (tile.rom.contains(a, sz)) {
+        if (pkt->isWrite())
+            pkt->writeData(tile.rom.ptr(a));
+        else
+            pkt->setData(tile.rom.ptr(a));
+    } else if (tile.sram.inSram(a, sz)) {
         if (pkt->isWrite())
             pkt->writeData(tile.sram.ptr(a));
         else
@@ -97,7 +102,7 @@ AddrRangeList
 Gw100MgmtTile::PioPort::getAddrRanges() const
 {
     AddrRangeList r;
-    r.push_back(RangeSize(MgmtSram::RomBase, tile.sram.romSize));
+    r.push_back(RangeSize(MgmtRom::RomBase, tile.rom.romSize));
     r.push_back(RangeSize(MgmtSram::SramBase, tile.sram.sramSize));
     r.push_back(RangeSize(MgmtWdt::Base, MgmtWdt::Size));
     r.push_back(RangeSize(MgmtLocalRegs::Base, MgmtLocalRegs::Size));
@@ -112,7 +117,7 @@ Gw100MgmtTile::PioPort::getAddrRanges() const
 /** 按参数构造各组件 */
 Gw100MgmtTile::Gw100MgmtTile(const Params &p)
     : ClockedObject(p),
-      sram(p.rom_size, p.sram_size, p.sram_banks),
+      rom(p.rom_size), sram(p.sram_size, p.sram_banks),
       mailbox(p.db_slots),
       regs(sram),
       fwLoadMax(p.fw_load_max),
@@ -132,7 +137,7 @@ Gw100MgmtTile::Gw100MgmtTile(const Params &p)
       tsSync(p.ts_sync),
       cpu(p.cpu),
       wdtFatal(name() + ".wdt_fatal", 0, this),
-      haltPc(MgmtSram::RomBase + p.rom_size - 4),
+      haltPc(MgmtRom::RomBase + p.rom_size - 4),
       devResetReq(name() + ".dev_reset_req", 0, this),
       pcieReset(name() + ".pcie_reset"),
       timestampReset(name() + ".timestamp_reset"),
@@ -428,10 +433,10 @@ Gw100MgmtTile::restartCpu()
     restartPending = false;
     Addr pc = tc->pcState().instAddr();
     unsigned sz = pkt->getSize();
-    panic_if(pc % sz || !sram.inRom(pc, sz),
+    panic_if(pc % sz || !rom.contains(pc, sz),
              "%s: 复位向量 %#x 不在启动 ROM 中", name(), pc);
     DPRINTF(Gw100Mgmt, "管理 CPU 从 %#x 重新开始\n", pc);
-    pkt->setData(sram.ptr(pc));
+    pkt->setData(rom.ptr(pc));
     respond(pkt, clockEdge(Cycles(1)));
 }
 
@@ -448,10 +453,10 @@ Gw100MgmtTile::accessLocal(PacketPtr pkt, Tick now)
     Tick per = clockPeriod();
     Tick one = now + per;
 
-    if (sram.inRom(a, sz)) {
+    if (rom.contains(a, sz)) {
         if (wr)
             return MaxTick;  // ROM 只读
-        pkt->setData(sram.ptr(a));
+        pkt->setData(rom.ptr(a));
         return one;
     }
     if (sram.inSram(a, sz)) {
