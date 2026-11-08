@@ -827,7 +827,11 @@ TimingSimpleCPU::completeIfetch(PacketPtr pkt)
 
     // received a response from the icache: execute the received
     // instruction
-    panic_if(pkt && pkt->isError(), "Instruction fetch (%s) failed: %s",
+    Fault responseFault = NoFault;
+    if (pkt && pkt->isError() && memoryErrorHandler)
+        responseFault = memoryErrorHandler(pkt, BaseMMU::Execute);
+    panic_if(pkt && pkt->isError() && responseFault == NoFault,
+            "Instruction fetch (%s) failed: %s",
             pkt->getAddrRange().to_string(), pkt->print());
     assert(_status == IcacheWaitResponse);
 
@@ -839,6 +843,11 @@ TimingSimpleCPU::completeIfetch(PacketPtr pkt)
     if (pkt)
         pkt->req->setAccessLatency();
 
+    if (responseFault != NoFault) {
+        delete pkt;
+        advanceInst(responseFault);
+        return;
+    }
 
     preExecute();
 
@@ -954,7 +963,14 @@ TimingSimpleCPU::completeDataAccess(PacketPtr pkt)
 
     // received a response from the dcache: complete the load or store
     // instruction
-    panic_if(pkt->isError(), "Data access (%s) failed: %s",
+    Fault responseFault = NoFault;
+    if (pkt->isError() && memoryErrorHandler) {
+        BaseMMU::Mode mode = curStaticInst && curStaticInst->isStore() ?
+                            BaseMMU::Write : BaseMMU::Read;
+        responseFault = memoryErrorHandler(pkt, mode);
+    }
+    panic_if(pkt->isError() && responseFault == NoFault,
+            "Data access (%s) failed: %s",
             pkt->getAddrRange().to_string(), pkt->print());
     assert(_status == DcacheWaitResponse || _status == DTBWaitResponse ||
            pkt->req->getFlags().isSet(Request::NO_ACCESS));
@@ -997,6 +1013,9 @@ TimingSimpleCPU::completeDataAccess(PacketPtr pkt)
         SplitMainSenderState * main_send_state =
             dynamic_cast<SplitMainSenderState *>(big_pkt->senderState);
         assert(main_send_state);
+        if (responseFault != NoFault &&
+            main_send_state->memoryFault == NoFault)
+            main_send_state->memoryFault = responseFault;
         // Record the fact that this packet is no longer outstanding.
         assert(main_send_state->outstanding != 0);
         main_send_state->outstanding--;
@@ -1004,6 +1023,7 @@ TimingSimpleCPU::completeDataAccess(PacketPtr pkt)
         if (main_send_state->outstanding) {
             return;
         } else {
+            responseFault = main_send_state->memoryFault;
             delete main_send_state;
             big_pkt->senderState = NULL;
             pkt = big_pkt;
@@ -1027,7 +1047,9 @@ TimingSimpleCPU::completeDataAccess(PacketPtr pkt)
 
     // shouldn't fail through stores because this would be inconsistent w/ O3
     // which cannot fault after the store has been sent to memory
-    if (pkt->htmTransactionFailedInCache() && !pkt->isWrite()) {
+    if (responseFault != NoFault) {
+        fault = responseFault;
+    } else if (pkt->htmTransactionFailedInCache() && !pkt->isWrite()) {
         const HtmCacheFailure htm_rc =
             pkt->getHtmTransactionFailedInCacheRC();
         DPRINTF(HtmCpu, "HTM abortion in cache (rc=%s) detected htmUid=%u\n",
