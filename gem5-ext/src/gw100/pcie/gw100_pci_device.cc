@@ -789,7 +789,7 @@ Gw100PciDevice::serialize(CheckpointOut &cp) const
 {
     PciEndpoint::serialize(cp);
     parts->serialize(cp);
-    fatal_if(pcieTransport, "数字链路 checkpoint 尚未接入");
+    serializeLink(cp);
 }
 
 /** 从 checkpoint 恢复 serialize() 保存的状态 */
@@ -798,7 +798,7 @@ Gw100PciDevice::unserialize(CheckpointIn &cp)
 {
     PciEndpoint::unserialize(cp);
     parts->unserialize(cp);
-    fatal_if(pcieTransport, "数字链路 checkpoint 尚未接入");
+    unserializeLink(cp);
 }
 
 } // namespace gw100
