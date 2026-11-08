@@ -26,6 +26,11 @@ namespace gem5
 namespace gw100
 {
 
+namespace pcie
+{
+enum class LinkError : unsigned;
+}
+
 /** 配置空间中由 GW100 自己提供的部分（0x40–0xFFF） */
 class ConfigSpace : public Serializable
 {
@@ -50,9 +55,25 @@ class ConfigSpace : public Serializable
      * capability 处理；返回需要设备处理的事件
      */
     CfgEvent write(Addr off, unsigned size, uint32_t val);
+    /** 按 Byte Enable 写配置，禁用字节不触发 RW1C 或 FLR。 */
+    CfgEvent writeMasked(Addr off, unsigned size, uint32_t val,
+                         const std::vector<bool> &mask);
 
     /** 恢复为 finalize() 时保存的复位值 */
     void reset() { cfg = cfgReset; }
+    /** 精确链路注册 AER 和必需扩展 capability，在 finalize 前调用。 */
+    void
+    enableLinkExtensions()
+    {
+        linkExtensions = true;
+    }
+    /** FLR 复位功能字段，保留规范规定的链路和 sticky AER 字段。 */
+    void resetFunction();
+    /** 硬件更新只读状态，size 为 1、2 或 4。 */
+    void setLive(Addr off, unsigned size, uint32_t value);
+    /** 记录 AER 并返回应发送的错误 Message Code，零表示无需上报。 */
+    uint8_t raiseAer(pcie::LinkError error,
+                     const std::vector<uint8_t> &header);
 
     /** 保存配置空间映像的当前值 */
     void serialize(CheckpointOut &cp) const override;
@@ -80,6 +101,8 @@ class ConfigSpace : public Serializable
     CfgBytes cfgWmask{};
     /** 写 1 清零的位 */
     CfgBytes cfgW1c{};
+    /** 精确配置是否启用链路扩展。 */
+    bool linkExtensions = false;
 };
 
 } // namespace gw100
