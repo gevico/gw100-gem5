@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include "base/logging.hh"
 
 namespace gem5
 {
@@ -191,6 +192,7 @@ HdmaEngine::parseDesc(unsigned c, Desc &d, const MlData &raw)
     d.sgl = (w[0] >> 8) & 1;
     bool no_snoop = (w[0] >> 9) & 1;
     bool relaxed = (w[0] >> 10) & 1;
+    d.attributes = no_snoop | (relaxed << 1);
     d.notify = (w[0] >> 11) & 1;
     d.fence = (w[0] >> 12) & 1;
     d.len = w[1];
@@ -476,6 +478,10 @@ HdmaEngine::issueRead()
         return false;
     }
     readCandidate(c, kind, addr, len);
+    if (!host.canRead(addr, len)) {
+        stallNow[StallTx] = true;
+        return false;
+    }
     if (tagsFull() || cplUsed + len > cfg.cplBuffer) {
         stallNow[StallTag] = true;
         return false;
@@ -489,14 +495,48 @@ HdmaEngine::issueRead()
     Desc *d = issuingDesc(c);
     Tag &tg = tags[t];
     tg.inUse = true;
+    tg.submitted = false;
     tg.use++;
     tg.lastUsed = now;
-    tg.deadline = now + cfg.cplTimeout;
+    tg.deadline = MaxTick;
     tg.kind = kind;
     tg.chan = c;
     tg.serial = d->serial;
     tg.addr = addr;
     tg.len = len;
+    tagsInUse++;
+    cplUsed += len;
+    d->outstanding++;
+    ch.inflight++;
+    uint64_t use = tg.use;
+    bool accepted = host.readTagged(
+        addr, len, t,
+        [this, t, use] {
+            Tag &tag = tags[t];
+            if (!tag.inUse || tag.use != use) {
+                return;
+            }
+            tag.submitted = true;
+            tag.deadline = clk.now() + (pcie.cplTimeout ? pcie.cplTimeout
+                                                        : cfg.cplTimeout);
+            nextTagEvent = std::min(nextTagEvent, tag.deadline);
+            wakeAt(tag.deadline);
+        },
+        [this, t, use](HostStatus st, const uint8_t *p) {
+            readDone(t, use, st, p);
+        },
+        kind == ReadKind::Data
+            ? d->attributes & (unsigned(pcie.noSnoop) | (pcie.relaxed << 1))
+            : 0);
+    if (!accepted) {
+        tg.inUse = false;
+        --tagsInUse;
+        cplUsed -= len;
+        --d->outstanding;
+        --ch.inflight;
+        stallNow[StallTx] = true;
+        return false;
+    }
     if (kind == ReadKind::Data) {
         tg.dest = d->dev + d->issued;
         d->issued += len;
@@ -507,15 +547,6 @@ HdmaEngine::issueRead()
         tg.dest = ch.sgl.requested;
         ch.sgl.requested += len;
     }
-    tagsInUse++;
-    cplUsed += len;
-    d->outstanding++;
-    ch.inflight++;
-    nextTagEvent = std::min(nextTagEvent, tg.deadline);
-    uint64_t use = tg.use;
-    host.read(addr, len, [this, t, use](HostStatus st, const uint8_t *p) {
-        readDone(t, use, st, p);
-    });
     commitArb(c, rrRead, 0);
     rdFreeAt = now + clk.period();
     progress = true;
@@ -790,7 +821,8 @@ HdmaEngine::issueWrite()
     std::vector<uint8_t> buf(len);
     takeStaged(*d, len, buf.data());
     d2hUsed -= len;
-    host.write(addr, len, buf.data());
+    host.write(addr, len, buf.data(),
+               d->attributes & (unsigned(pcie.noSnoop) | (pcie.relaxed << 1)));
     d->issued += len;
     advanceHost(c, len);
     if (d->issued == d->len)
@@ -1043,6 +1075,7 @@ HdmaEngine::checkTags()
             tagsInUse--;
             tg.quarantined = true;
             tg.releaseAt = now + cfg.quarantine;
+            host.isolateRead(t);
             tagsQuarantined++;
             chans[tg.chan].inflight--;
             cplUsed -= tg.len;
@@ -1176,12 +1209,18 @@ void
 HdmaEngine::reset()
 {
     Tick now = clk.now();
-    for (auto &tg : tags) {
+    for (unsigned t = 0; t < tags.size(); ++t) {
+        auto &tg = tags[t];
         if (!tg.inUse)
             continue;
         tg.inUse = false;
+        if (!tg.submitted) {
+            host.cancelRead(t);
+            continue;
+        }
         tg.quarantined = true;
         tg.releaseAt = now + cfg.quarantine;
+        host.isolateRead(t);
         tagsQuarantined++;
         nextTagEvent = std::min(nextTagEvent, tg.releaseAt);
     }
@@ -1376,3 +1415,29 @@ HdmaEngine::write(Addr off, uint32_t v)
 
 } // namespace gw100
 } // namespace gem5
+
+namespace gem5::gw100
+{
+
+/** 在途事务、描述符与隔离资源是否已全部结算。 */
+bool
+HdmaEngine::quiescent() const
+{
+    if (tagsInUse || tagsQuarantined || cplUsed || d2hUsed ||
+        !devWrites.empty() || pendingEvents) {
+        return false;
+    }
+    for (const auto &channel : chans) {
+        if (!channel.descs.empty() || channel.inflight || channel.aborting ||
+            channel.abortWbPending) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/** 保存已排空的寄存器、仲裁、tag LRU 与计数。 */
+
+/** 恢复已排空的寄存器、仲裁、tag LRU 与计数。 */
+
+} // namespace gem5::gw100
