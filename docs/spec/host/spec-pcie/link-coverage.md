@@ -2,15 +2,15 @@
 
 <!-- 由 tools/pcie_spec.py 生成，请勿手改 -->
 
-档案版本为 0.1。gw100-link.json SHA-256=c29b2defc6b3efc431d314589de4824b7cfd63e778c23721743321dd40a4dfea
+档案版本为 0.1。gw100-link.json SHA-256=a6a97acad6e22cab2f538d7dc12ea1cec57bebc6e2cf5756886b6d1886a807d6
 
 ## 实施关口
 
 | 关口 | 当前状态 |
 |---|---|
 | G0 | complete |
-| G1 | pending |
-| G2 | waiting_for_G1 |
+| G1 | complete |
+| G2 | pending |
 | G3 | waiting_for_G2 |
 
 当前表区分来源核验、参考设计和实现验收。

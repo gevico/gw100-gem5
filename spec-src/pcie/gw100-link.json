@@ -2006,8 +2006,11 @@
         "G0"
       ],
       "description": "独立数字链路和参考校验",
-      "implementation": "pending",
-      "evidence": []
+      "implementation": "complete",
+      "evidence": [
+        "当前独立组件 GTest 183/183",
+        "独立矩阵 208/208，逐边沿误差不超过 1 ps"
+      ]
     },
     {
       "id": "G2",
