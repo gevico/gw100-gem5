@@ -30,6 +30,7 @@
 #include <memory>
 #include <vector>
 
+#include "sim/serialize.hh"
 #include "src/gw100/pcie/hdma/hdma_if.hh"
 
 namespace gem5
@@ -116,6 +117,12 @@ class HdmaEngine
         unsigned mrrs = 512;
         /** Extended Tag Field Enable */
         bool extTag = true;
+        /** Device Control 允许 Relaxed Ordering 属性。 */
+        bool relaxed = true;
+        /** Device Control 允许 No Snoop 属性。 */
+        bool noSnoop = true;
+        /** DLL 提交时采样的完成超时，零表示使用控制器默认值。 */
+        Tick cplTimeout = 0;
     };
 
     /** 按参数构造；各接口由所属设备提供 */
@@ -152,6 +159,10 @@ class HdmaEngine
      * tag 进入隔离，撤销 ML 上的请求，寄存器恢复复位值（§8.4）
      */
     void reset();
+    /** 在途事务、描述符与隔离资源是否已全部结算。 */
+    bool quiescent() const;
+    /** 保存已排空的寄存器、仲裁、tag LRU 与计数。 */
+    /** 恢复已排空的寄存器、仲裁、tag LRU 与计数。 */
 
     /** FLR 进行中保持复位：寄存器读返回复位值，写被忽略，不做任何访问 */
     void setHold(bool h);
@@ -230,6 +241,8 @@ class HdmaEngine
         Addr dev = 0;
         /** SGL_SEG_BYTES */
         unsigned segBytes = 0;
+        /** 描述符要求的 PCIe Attr[1:0]，分别为 No Snoop 与 RO。 */
+        uint8_t attributes = 0;
         /** H2D：已发出读请求的字节数；D2H：已交给发送通路的字节数 */
         uint64_t issued = 0;
         /** D2H：已发出设备内存读的字节数 */
@@ -351,6 +364,8 @@ class HdmaEngine
     {
         /** 正在使用 */
         bool inUse = false;
+        /** 该次请求已经进入数据链路层。 */
+        bool submitted = false;
         /** 隔离中 */
         bool quarantined = false;
         /** 每次分配递增，回调据此识别 */
