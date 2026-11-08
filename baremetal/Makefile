@@ -22,6 +22,7 @@ FW_IMAGE ?= ../build/gw100-firmware/fw.img
 FW_WDT_IMAGE ?= $(dir $(FW_IMAGE))fw_wdt.img
 FW_HDMA_IMAGE ?= $(dir $(FW_IMAGE))fw_hdma.img
 FW_INT_IMAGE ?= $(dir $(FW_IMAGE))fw_int.img
+FW_SRAM_IMAGE ?= $(dir $(FW_IMAGE))fw_sram.img
 LDSCRIPT := linker.ld
 
 # 一个 test 是 tests/<名字>.c，或者多文件的 tests/<名字>/ 目录
@@ -42,7 +43,8 @@ endif
 ASFLAGS := -g -Iinclude -DGW100_FW_IMAGE='"$(abspath $(FW_IMAGE))"' \
            -DGW100_FW_WDT_IMAGE='"$(abspath $(FW_WDT_IMAGE))"' \
            -DGW100_FW_HDMA_IMAGE='"$(abspath $(FW_HDMA_IMAGE))"' \
-           -DGW100_FW_INT_IMAGE='"$(abspath $(FW_INT_IMAGE))"'
+           -DGW100_FW_INT_IMAGE='"$(abspath $(FW_INT_IMAGE))"' \
+           -DGW100_FW_SRAM_IMAGE='"$(abspath $(FW_SRAM_IMAGE))"'
 LDFLAGS := -nostdlib -nostartfiles -static -Wl,-T,$(LDSCRIPT) -Wl,--no-warn-rwx-segments
 
 LIB_SRCS := $(wildcard lib/*.c lib/*.S)
@@ -67,7 +69,7 @@ $(BUILD_DIR)/%.S.o: %.S
 
 # 固件镜像变化时重新嵌入
 $(BUILD_DIR)/lib/fw_image.S.o: $(FW_IMAGE) $(FW_WDT_IMAGE) $(FW_HDMA_IMAGE) \
-	$(FW_INT_IMAGE)
+	$(FW_INT_IMAGE) $(FW_SRAM_IMAGE)
 
 # 每个 test 的源文件、目标文件和链接规则
 define TEST_RULES
