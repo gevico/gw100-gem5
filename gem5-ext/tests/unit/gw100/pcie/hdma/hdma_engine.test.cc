@@ -13,6 +13,10 @@
 
 #include <gtest/gtest.h>
 
+#include <fstream>
+
+#include "base/gtest/serialization_fixture.hh"
+
 #include <cstring>
 #include <map>
 #include <set>
@@ -107,6 +111,8 @@ class TestHost : public HdmaHostIf
     std::vector<uint8_t> mem;
     /** 读完成的延迟 */
     Tick latency = 500 * ns;
+    /** 本地准入后到 DLL 提交的等待，单位 tick。 */
+    Tick commitDelay = 0;
     /** 读这些地址范围时返回 UR */
     std::vector<std::pair<Addr, Addr>> urRanges;
     /** 读这些地址时不返回完成（制造超时） */
@@ -139,13 +145,17 @@ class TestHost : public HdmaHostIf
     unsigned violations = 0;
     /** 各次读请求的地址，按发出顺序 */
     std::vector<Addr> readAddrs;
+    /** 实际提交的请求 Attr[1:0]。 */
+    std::vector<uint8_t> attributes;
 
     /** 检查一个请求 */
     void
     check(Addr a, unsigned len, unsigned max)
     {
-        if (len == 0 || len > max || (a & 4095) + len > 4096)
+        if (len == 0 || ((len + (a & 3) + 3) & ~3u) > max ||
+            (a & 4095) + len > 4096) {
             violations++;
+        }
     }
 
     /** 发出一个 MRd */
@@ -174,6 +184,25 @@ class TestHost : public HdmaHostIf
         });
     }
 
+    /** 接受真实 tag 与 Attr[2:0]，在 DLL 提交时调用 committed。 */
+    bool
+    readTagged(Addr addr, unsigned len, uint8_t,
+               std::function<void()> committed, HostReadDone done,
+               uint8_t attributes = 0) override
+    {
+        this->attributes.push_back(attributes);
+        if (!commitDelay) {
+            committed();
+            read(addr, len, std::move(done));
+        } else {
+            sim.at(sim.now + commitDelay, [this, addr, len, committed, done] {
+                committed();
+                read(addr, len, done);
+            });
+        }
+        return true;
+    }
+
     /** 发送通路能否再接受一个写请求 */
     bool
     canWrite() const override
@@ -183,8 +212,10 @@ class TestHost : public HdmaHostIf
 
     /** 发出一个 MWr */
     void
-    write(Addr a, unsigned len, const uint8_t *data, uint8_t = 0) override
+    write(Addr a, unsigned len, const uint8_t *data,
+          uint8_t attributes = 0) override
     {
+        this->attributes.push_back(attributes);
         check(a, len, mps);
         writes++;
         if (txCredits == 0) {
@@ -336,6 +367,8 @@ struct DescSpec
     uint64_t dev = 0;
     /** SGL_SEG_BYTES */
     uint16_t segBytes = 0;
+    /** No Snoop 与 RO 请求位。 */
+    uint8_t attributes = 0;
 };
 
 /** 测试台：仿真器、各假接口和被测的 HDMA */
@@ -411,7 +444,7 @@ class Rig
     {
         uint32_t w[8] = {};
         w[0] = d.type | (d.sgl << 8) | (d.notify << 11) | (d.fence << 12) |
-               (uint32_t(d.tag) << 16);
+               (uint32_t(d.tag) << 16) | (uint32_t(d.attributes) << 9);
         w[1] = d.len;
         w[2] = uint32_t(d.host);
         w[3] = uint32_t(d.host >> 32);
@@ -912,4 +945,85 @@ TEST(HdmaEngine, D2hWithTxCredits)
     EXPECT_TRUE(same(r.host.mem, 0x31000, r.dev.mem, 0xF1000, 4096));
     EXPECT_TRUE(same(r.host.mem, 0x35000, r.dev.mem, 0xF2000, 4096));
     EXPECT_GT(r.rd(0x02C), 0u);    // HDMA_STALL_TX
+}
+
+/** 本地排队超过 completion timeout 仍不计时，DLL 提交后才开始。 */
+TEST(HdmaEngine, CompletionTimeoutStartsAtDllCommit)
+{
+    Rig r;
+    r.host.commitDelay = 60000 * ns;
+    r.setup(1);
+    r.putDesc(1, 0, {1, false, false, false, 0, 64, 0x1000, 0x1000});
+    r.submit(1, 1);
+    EXPECT_EQ(r.dw7(1, 0), 1u);
+    EXPECT_EQ(r.hostErrors, 0);
+}
+
+/** 描述符的 Host 地址要求 DWORD 对齐，非法地址不能进入线上。 */
+TEST(HdmaEngine, RejectUnalignedDescriptorBeforeWire)
+{
+    Rig r;
+    r.host.mrrs = 128;
+    r.host.mps = 128;
+    HdmaEngine::PcieParams params;
+    params.mrrs = 128;
+    params.mps = 128;
+    r.eng->setPcie(params);
+    r.setup(1);
+    r.putDesc(1, 0, {1, false, false, false, 0, 1024, 0x1001, 0x1000});
+    r.submit(1, 1);
+    EXPECT_EQ(r.dw7(1, 0), 1u | (7u << 8));
+    EXPECT_EQ(r.host.reads, 0);
+    EXPECT_EQ(r.host.writes, 0);
+    EXPECT_EQ(r.host.violations, 0);
+}
+
+/** 数据描述符的 RO/No Snoop 受 Device Control 许可后进入线上。 */
+TEST(HdmaEngine, DescriptorAttributesRespectDeviceControl)
+{
+    for (uint8_t enabled : {0, 1, 2, 3}) {
+        for (uint8_t type : {1, 2}) {
+            Rig rig;
+            HdmaEngine::PcieParams params;
+            params.noSnoop = enabled & 1;
+            params.relaxed = enabled & 2;
+            rig.eng->setPcie(params);
+            rig.setup(1);
+            DescSpec descriptor;
+            descriptor.type = type;
+            descriptor.len = 64;
+            descriptor.host = 0x1000;
+            descriptor.dev = 0x1000;
+            descriptor.attributes = 3;
+            rig.putDesc(1, 0, descriptor);
+            rig.submit(1, 1);
+            EXPECT_EQ(rig.dw7(1, 0), 1u);
+            ASSERT_FALSE(rig.host.attributes.empty());
+            for (auto attributes : rig.host.attributes) {
+                EXPECT_EQ(attributes, enabled);
+            }
+        }
+    }
+}
+
+/** 原生 INI 编解码夹具。 */
+class HdmaSnapshotTest : public SerializationFixture
+{
+};
+
+/** 父字段和各通道子区段均能从实际 INI 文件恢复。 */
+
+/** 软件选择的完成超时在 DLL 提交后实际生效。 */
+TEST(HdmaEngine, ProgrammableCompletionTimeout)
+{
+    Rig rig;
+    HdmaEngine::PcieParams params;
+    params.cplTimeout = 1000 * ns;
+    rig.eng->setPcie(params);
+    rig.setup(1);
+    rig.host.dropReads.insert(0);
+    rig.putDesc(1, 0, {1, false, false, false, 0, 64, 0, 0});
+    rig.wr(Rig::ch(1, 0x14), 1);
+    rig.sim.run(2000 * ns);
+    EXPECT_EQ(rig.dw7(1, 0), 1u | (3u << 8));
 }

@@ -1,4 +1,5 @@
 # HdmaEngine（src/gw100/pcie/hdma/）的单元测试
 Import('*')
 
-GTest('hdma_engine.test', 'hdma_engine.test.cc', with_tag('gw100 pcie hdma'))
+GTest('hdma_engine.test', 'hdma_engine.test.cc', with_tag('gw100 pcie hdma'),
+      with_tag('gem5 serialize'))
