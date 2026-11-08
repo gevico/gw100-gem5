@@ -25,6 +25,17 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+// <ucontext.h> must be included before any other header here, so that
+// _XOPEN_SOURCE takes effect: macOS hides the deprecated ucontext functions
+// and the full ucontext_t layout without it.
+#if defined(__APPLE__) && defined(__MACH__)
+#define _XOPEN_SOURCE 600
+#include <ucontext.h>
+#undef _XOPEN_SOURCE
+#else
+#include <ucontext.h>
+#endif
+
 #include "base/fiber.hh"
 
 #if HAVE_VALGRIND
@@ -33,8 +44,7 @@
 
 // Mac OS requires _DARWIN_C_SOURCE if _POSIX_C_SOURCE is defined,
 // otherwise it will mask the definition of MAP_ANONYMOUS.
-// _POSIX_C_SOURCE is already defined by including <ucontext.h> in
-// base/fiber.hh
+// _POSIX_C_SOURCE is already defined by including <ucontext.h> above
 #if defined(__APPLE__) && defined(__MACH__)
 #define _DARWIN_C_SOURCE
 #endif
@@ -50,6 +60,11 @@
 
 namespace gem5
 {
+
+struct Fiber::Context
+{
+    ucontext_t uc;
+};
 
 namespace
 {
@@ -86,7 +101,7 @@ Fiber::Fiber(size_t stack_size) : Fiber(primaryFiber(), stack_size)
 {}
 
 Fiber::Fiber(Fiber *link, size_t stack_size) :
-    link(link), stack(nullptr), stackSize(stack_size), guardPage(nullptr),
+    ctx(std::make_unique<Context>()), link(link), stack(nullptr), stackSize(stack_size), guardPage(nullptr),
     guardPageSize(sysconf(_SC_PAGE_SIZE)), _started(false), _finished(false)
 {
     if (stack_size) {
@@ -123,17 +138,17 @@ void
 Fiber::createContext()
 {
     // Set up a context for the new fiber, starting it in the trampoline.
-    getcontext(&ctx);
-    ctx.uc_stack.ss_sp = stack;
-    ctx.uc_stack.ss_size = stackSize;
-    ctx.uc_link = nullptr;
-    makecontext(&ctx, &entryTrampoline, 0);
+    getcontext(&ctx->uc);
+    ctx->uc.uc_stack.ss_sp = stack;
+    ctx->uc.uc_stack.ss_size = stackSize;
+    ctx->uc.uc_link = nullptr;
+    makecontext(&ctx->uc, &entryTrampoline, 0);
 
     // Swap to the new context so it can enter its start() function. It
     // will then swap itself back out and return here.
     startingFiber = this;
     panic_if(!_currentFiber, "No active Fiber object.");
-    swapcontext(&_currentFiber->ctx, &ctx);
+    swapcontext(&_currentFiber->ctx->uc, &ctx->uc);
 
     // The new context is now ready and about to call main().
 }
@@ -149,7 +164,7 @@ Fiber::start()
     if (_setjmp(jmp) == 0) {
         // Swap back to the parent context which is still considered "current",
         // now that we're ready to go.
-        int ret = swapcontext(&ctx, &_currentFiber->ctx);
+        int ret = swapcontext(&ctx->uc, &_currentFiber->ctx->uc);
         panic_if(ret == -1, strerror(errno));
     }
 
