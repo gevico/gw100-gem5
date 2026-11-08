@@ -82,9 +82,9 @@ G0 已完成。G1 周期模型、G2 系统接入、G3 生命周期与性能验�
 | 项 | SHA-256 |
 |---|---|
 | NoC 档案 | `84bb0b9c82f183d001381c17d85c5ef924dd52365c3b2cd41c8caa090be66b77` |
-| 生成与分析工具 | `e2333744241172a5db2ce904511f7ccfe0cd4173bbf3e1fe9e4f756a6380357d` |
+| 生成与分析工具 | `4c49d9102e844d60f1c8f104f70f64dfd89447246332cf3fbf3c1db4d0148627` |
 | NoC 测试 | `36c9d0f5c970083f224be3b0aa6f852bb1b02e5305a9e55a68e385fc7d1f10f6` |
-| 分析报告 | `6aadfa7421f02a4bb976c08faa3c596bc5e2bc86fb47a270c4e4d1368469013f` |
+| 分析报告 | `8581ff2d11c5470ddf88bd63d86eb57fa3ca57b476716e16ba75fbda2edef847` |
 | 本次 gem5 构建产物 | `a3cdaf341692c5665037dee0ec98e4dd69f2adffbf0ae748de8af6c3a9c2683a` |
 
 其余依赖文件的摘要逐项保存于分析报告。工具测试日志为
