@@ -36,3 +36,10 @@ gw100_fw_int_image:
     .incbin GW100_FW_INT_IMAGE
     .globl gw100_fw_int_image_end
 gw100_fw_int_image_end:
+
+    .balign 8
+    .globl gw100_fw_sram_image
+gw100_fw_sram_image:
+    .incbin GW100_FW_SRAM_IMAGE
+    .globl gw100_fw_sram_image_end
+gw100_fw_sram_image_end:

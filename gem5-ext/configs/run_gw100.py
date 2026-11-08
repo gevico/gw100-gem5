@@ -144,6 +144,8 @@ def main() -> None:
         "--dram-fault-phase", choices=("calibrate", "train"), default="train"
     )
     parser.add_argument("--dram-corrupt-selftest", action="store_true")
+    parser.add_argument("--sram-fault", choices=("ce", "ue", "ue-store", "ue-fetch",
+                                                 "ml-ue-read", "ml-ue-write"))
     parser.add_argument(
         "--dram-corrupt-mask", type=lambda v: int(v, 0), default=0
     )
@@ -257,6 +259,18 @@ def main() -> None:
     if not os.path.isfile(args.rom):
         parser.error(f"启动 ROM 不存在 {args.rom}，请先构建固件")
     mgmt = device.make_mgmt(dev, args.rom)
+    if args.sram_fault:
+        mgmt.sram.fault_offset = (2 << 20) // 8 - 8192
+        mgmt.sram.fault_mask = 1 if args.sram_fault == "ce" else 3
+        if args.sram_fault == "ue-store":
+            mgmt.sram.fault_stage = "rmw"
+        elif args.sram_fault == "ue-fetch":
+            mgmt.sram.fault_stage = "fetch"
+        elif args.sram_fault.startswith("ml-ue-"):
+            mgmt.sram.fault_source = 1
+            mgmt.sram.fault_any_word = True
+            mgmt.sram.fault_stage = ("issue_read" if args.sram_fault == "ml-ue-read"
+                                     else "rmw")
     systems = {"gw100_mgmt": mgmt}
     memory = None
     if device.precise_memory:

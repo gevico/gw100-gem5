@@ -92,6 +92,9 @@ extern const uint8_t gw100_fw_image_end[];
 extern const uint8_t gw100_fw_int_image[];
 /** 嵌入的中断请求测试固件镜像的末尾 */
 extern const uint8_t gw100_fw_int_image_end[];
+/** 管理 SRAM 逐 bank 测试固件。 */
+extern const uint8_t gw100_fw_sram_image[];
+extern const uint8_t gw100_fw_sram_image_end[];
 /** 嵌入的 HDMA 测试固件镜像的起始（lib/fw_image.S） */
 extern const uint8_t gw100_fw_hdma_image[];
 /** 嵌入的 HDMA 测试固件镜像的末尾 */

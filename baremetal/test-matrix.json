@@ -106,6 +106,55 @@
   "pcie_regs": {
     "requires": []
   },
+  "sram": {
+    "requires": [
+      "sram_timing"
+    ]
+  },
+  "sram_ce": {
+    "requires": [
+      "sram_timing"
+    ],
+    "config_args": [
+      "--sram-fault",
+      "ce"
+    ]
+  },
+  "sram_ml_read": {
+    "requires": ["sram_timing"],
+    "config_args": ["--sram-fault", "ml-ue-read"]
+  },
+  "sram_ml_write": {
+    "requires": ["sram_timing"],
+    "config_args": ["--sram-fault", "ml-ue-write"]
+  },
+  "sram_ue": {
+    "requires": [
+      "sram_timing"
+    ],
+    "config_args": [
+      "--sram-fault",
+      "ue"
+    ]
+  },
+  "sram_ue_fetch": {
+    "requires": [
+      "sram_timing"
+    ],
+    "config_args": [
+      "--sram-fault",
+      "ue-fetch"
+    ]
+  },
+  "sram_ue_store": {
+    "requires": [
+      "sram_timing"
+    ],
+    "config_args": [
+      "--sram-fault",
+      "ue-store"
+    ]
+  },
   "wdt_fatal": {
     "requires": []
   }
