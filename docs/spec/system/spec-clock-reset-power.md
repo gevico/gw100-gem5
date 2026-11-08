@@ -166,6 +166,7 @@ Link Down、Hot Reset、PERST 的状态与信用重建列入数字链路生命�
   3. 写 `CRC_CLK_SEL`，把 `clk_mgmt`、`clk_core` 切换到 PLL，再读 `CRC_CLK_SEL` 确认切换完成。切换由无毛刺的时钟选择器完成，期间时钟可以暂停，但不得产生短脉冲；暂停不超过 `clock.clk_switch_pause` = 1 µs（ML 的超时依赖这一上限，`spec-mgmt-link` §7.5）；
   4. `PLL_DDR` 同理，在释放 Memory Tile 之前完成。
 - 必须在 Mesh 保持复位期间切换 `clk_core`。Mesh 释放复位之后，v0.1 不允许再改变 `clk_core`。
+- 共享 SRAM 按 spec-sram §5 保存时钟暂停期间的剩余有效周期，并在新时钟沿恢复。管理冷、热、设备完全复位重新清零，FLR 保留内容。
 - `clk_mgmt` 切换到 PLL 之后，v0.1 不允许再切回 `XTAL` 或改变频率，直到下一次复位。ML 的超时推算依赖这一点（`spec-mgmt-link` §7.5）。
 
 ### 3.5 时钟门控

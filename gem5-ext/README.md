@@ -26,6 +26,24 @@ PYTHON_CONFIG=/opt/homebrew/bin/python3.12-config ../.venv/bin/scons \
 
 Linux（以 Ubuntu 24.04 为例）：先装好 `build-essential m4 scons python3-dev`，这是 gem5 上游列出的最小依赖（`gem5/util/dockerfiles/ubuntu-24.04_min-dependencies/Dockerfile`），裸机程序另需 `gcc-aarch64-linux-gnu`，然后同样执行 `make gem-build`。
 
+## 共享 SRAM 时序模型
+
+共享组件位于 gem5-ext/src/gw100/sram/，提供 1RW、1R1W、有限事务槽、
+逐 bank 仲裁、写提交、受保护 RMW、64+8 SECDED 和排空后的文件恢复。
+管理 Tile 的 CPU 与 ML 已接入该组件，ROM 独立持有。
+Compute 使用五来源夹具验证两种端口、竞争、返回阻塞与生命周期。
+参考档案、周期口径及验收入口见 docs/spec/memory/spec-sram.md。
+
+    make sram-spec-check
+    make sram-test
+
+独立参考预热 10 µs、测量 100 µs，时序按 1 ps tick 验收。
+实际时钟、宏字、端口、队列、ECC 和流水参数随结果保存。
+通用档案的物理参数由后续 SRAM 宏资料和 STA 校准。
+管理 CPU 安装原生 TimingSimpleCPU 的可选访存错误转换接口，把 SRAM UE
+转换为 RISC-V 取指、读取或写入访问错误。实现和验收记录见
+[SRAM 验证记录](../docs/spec/memory/spec-sram/verification.md)。
+
 ## NoC 规格与预算关口
 
 NoC G0 的共享档案位于 `spec-src/noc/gw100-noc.json`，
@@ -92,7 +110,7 @@ atomic 使用能力明确受限的 `gw100_compat`。
 | `src/gw100/pcie/` | `Gw100PciDevice`：外壳，只负责 PciEndpoint 的入口、`mem_port`、ML 的 HIF 侧接入、功能级复位与设备完全复位的编排（`dev_reset_req` 请求 CRC，`func_reset` 接受复位）、看门狗的 `wdt_fatal` 信号和 checkpoint；`Gw100PcieFactory` 组装下列组件，接口见 `pcie_types.hh`。`status/`：`StatusUnit`（ERR/INT）；`boot/`：`BootCtrl`（STAGE、启动窗口、提交计数、FW_START 门控、启动通路故障、FLR 门控与确认）；`hif/`：`HifRegs`（固件可见的 HIF 寄存器区，ML 的 HIF 侧目标）；`window/`：`WindowTable`（BAR2 调试窗口）；`config/`：`ConfigSpace`，其下 `capability/`：`Capability` 基类、`PmCapability`、`PcieCapability`、`MsixCapability`（0x90）；`bar0/`：`Bar0Handler` 与 `GlobalRegs`、`WindowRegs`、`BootRegs`、`HdmaMirror`（HDMA 寄存器的只读镜像）；`bar2/`：`Bar2Handler`（启动窗口、调试窗口、关闭）、`DevmemBackend`、`Gw100PrefetchMemBar`；`shim/`：`ResetShim`（设备完全复位期间的 reset shim）；`intr/`：`IntCtrl`（MSI-X 的待发、来源、粘滞 Pending 与发送，INTx 电平，`CTX_VECTOR`）与 BAR0 的 `MsixTable`、`MsixPba`；`hdi/`：`HdiCtrl`（HDI 控制器寄存器的影子、`HDI_WR_MAP` 与 `HDI_WR` 事件、BUSY 握手、doorbell 待发槽按最后一次写入的先后发出 `DB_WR`）与 BAR0 的 `HdiRegsBlock`、`DoorbellPage`；`hdma/`：`HdmaEngine`（Host DMA：描述符环、SGL、仲裁、tag 与有限缓冲、错误停止与中止），经 `HdmaClock`、`HostDmaPort`（dma 端口，TLP 按 cache 行拆成内存包）、`MlHdmaClient` 和 `DevmemBackend` 的 timing 接口接入 | `spec-host-dma`、`spec-pcie`、`spec-clock-reset-power` | 寄存器层与启动流程完成：裸机测试 `boot_ok`、`boot_errors`、`boot_flr` 覆盖 F10、F11 的启动部分，`dev_reset` 覆盖设备完全复位，`pcie_*` 覆盖 F1–F7、F11/F12 的寄存器部分；`hdma_basic` 覆盖 HDMA 的连续缓冲、SGL、错误停止与 BAR0 镜像；`msix_intx`、`int_fw` 覆盖 MSI-X、INTx 与固件的中断请求；`ConfigSpace`、`WindowTable`、`StatusUnit`、`ResetShim`、`HdmaEngine`、`IntCtrl`、`HdiCtrl` 有单元测试。`hdi_copy`、`hdi_errors` 覆盖 HDI 的 HIF 侧与固件的命令处理（LOAD_PROGRAM、LAUNCH 等待 Compute Tile） |
 | `src/gw100/pcie/link/` | `LinkModel`、`LinkTransport`，含 TLP/DLLP、CRC、串行相位、SKP、信用、replay、排序、数字 LTSSM、L1、tag 及完成重组 | `spec-pcie` | Host ECAM/BAR、完整 HDMA TLP、MSI-X、INTx 与错误消息共享双向有限资源链路，独立与原生恢复测试见验收报告 |
 | `src/gw100/ml/` | `Gw100MgmtLink`：ML 的两端适配器 `MlEndpoint` 与四个 `AsyncFifo`，两端分别由 PCIe 设备（`clk_pcie`）和管理 Tile（`clk_mgmt`）驱动 | `spec-mgmt-link` | 完成；`MlEndpoint` 有单元测试（建立、顺序、tag、屏障、撤销、超时与故障、延迟与吞吐） |
-| `src/gw100/mgmt/` | `Gw100MgmtTile`：外壳，本地总线端口、ML 管理侧目标、PLIC 中断源、NI 发起端口（本地地址 0x100_0000_0000 + DPA）。`sram/`：`MgmtSram`（ROM、按 bank 排队的 SRAM、复位后的硬件清零）；`mailbox/`：`MgmtMailbox`（doorbell 信箱、事件寄存器）；`regs/`：`MgmtLocalRegs`（ML、SRAM 控制、访问控制）；`wdt/`：`MgmtWdt`（看门狗的两级超时状态机；外壳按同步后的 `mtime` 安排到期，第二级时扣下 CPU 的取指并经专用信号 `wdt_fatal` 置位 HIF 的 `DEV_FATAL`）；`crc/`：`MgmtCrc`（复位原因、PLL 锁定、无毛刺时钟切换；切换 `clk_mgmt` 时改变管理系统时钟域的频率档）；`intr/`：`MgmtInterrupts`（RISC-V 中断控制器加上停机请求，CPU 在指令边界停住）。外壳还实现 CRC 的设备完全复位时序：复位本 Tile、ML 两端和 PCIe 的功能逻辑，释放后让 CPU 从启动 ROM 重新开始。管理 CPU（`RiscvTimingSimpleCPU`，RV64，M/U）、CLINT、PLIC 用 gem5 的设备，在 `configs/gw100/devices/mgmt.py` 中组成独立的 RiscvSystem | `spec-mgmt-tile` | 启动相关部分完成，运行真实的 RISC-V 启动 ROM 与固件（`firmware/`）；时钟切换、看门狗、设备完全复位完成；`MgmtCrc`、`MgmtWdt` 有单元测试；NoC 端口未实现 |
+| `src/gw100/mgmt/` | `Gw100MgmtTile`：外壳，本地总线端口、ML 管理侧目标、PLIC 中断源、NI 发起端口（本地地址 0x100_0000_0000 + DPA）。`rom/`：`MgmtRom`（独立启动 ROM）。共享 SRAM 由 `src/gw100/sram/` 提供，CPU 与 ML 通过 timing 端口连接；`mailbox/`：`MgmtMailbox`（doorbell 信箱、事件寄存器）；`regs/`：`MgmtLocalRegs`（ML、SRAM 控制、访问控制）；`wdt/`：`MgmtWdt`（看门狗的两级超时状态机；外壳按同步后的 `mtime` 安排到期，第二级时扣下 CPU 的取指并经专用信号 `wdt_fatal` 置位 HIF 的 `DEV_FATAL`）；`crc/`：`MgmtCrc`（复位原因、PLL 锁定、无毛刺时钟切换；切换 `clk_mgmt` 时改变管理系统时钟域的频率档）；`intr/`：`MgmtInterrupts`（RISC-V 中断控制器加上停机请求，CPU 在指令边界停住）。外壳还实现 CRC 的设备完全复位时序：复位本 Tile、ML 两端和 PCIe 的功能逻辑，释放后让 CPU 从启动 ROM 重新开始。管理 CPU（`RiscvTimingSimpleCPU`，RV64，M/U）、CLINT、PLIC 用 gem5 的设备，在 `configs/gw100/devices/mgmt.py` 中组成独立的 RiscvSystem | `spec-mgmt-tile` | 启动相关部分完成，运行真实的 RISC-V 启动 ROM 与固件（`firmware/`）；时钟切换、看门狗、设备完全复位完成；`MgmtCrc`、`MgmtWdt` 有单元测试；NoC 端口未实现 |
 | （待建）`src/noc/` | 轻量 2D Mesh，支持多播 | `spec-noc` | 未开始 |
 
 原来的 func-core、Compute Tile 和 common 已删除，按新的规格逐步重建。
@@ -204,20 +222,20 @@ scons --ignore-style EXTRAS=<仓库根目录>/gem5-ext \
 | 13c | 可选 PCIe 能力 | 精确配置实现 Secondary PCIe、Data Link Feature、PHY16。DSN、LTR、ECRC、10 位 tag、多 VC、SRIS 与 L1 子状态保持关闭 | 相对扩展系统功能有限 | 低 | 当前按单 PF、VC0 和已广告能力验收 |
 | 15 | CLINT 与时间戳 | 原生 RTC 在 PLL_TS 锁定之前即计数，看门狗的同步采样由仿真时间换算。冷复位和热复位同时重建 CLINT 与 endpoint 时间戳原点 | 时钟启动阶段近似 | 低 | 自研 AO 计数器和 CDC 采样后校准 |
 | 16 | ML 客户端队列 | 精确配置的启动写占用最多 64 个 EP 后端槽，全部 ML 子写确认后释放，每个最大 TLP 最多拆成五项。其他 ML 生产者保留既有客户端排队方式 | ML 独立范围仍有简化 | 中 | 后续对全部 ML 生产者统一实施硬件队列预算与反压 |
-| 19a | 管理 Tile 的 SRAM ECC | 校验位不建模，没有故障注入，不会产生可纠正或不可纠正错误；相关寄存器存在 | — | 低 | 作为独立的修复包，插入位置待第 3 天的重估；包括部分写的读改写、CE/UE 与错误传播 |
-| 19b | Compute Tile 的 SRAM ECC | 尚无模型 | — | 中 | M8 从设计开始覆盖，不重犯 19a |
+| 19b | Compute Tile 的 SRAM 接入 | 共享组件和五发起者夹具已具备 1RW、1R1W、ECC、RMW 和保持复位，实际 Compute Tile 的引擎端口与 CRC 接入仍待实现 | 集成范围有限 | 中 | M8 复用共享 SRAM 并验证实际引擎与 NoC 的流量 |
 | 20a | CRC 与互连 | CRC 实际控制临时适配器的时钟和释放，NoC 路由器与隔离握手依后续模型接入 | 功能缺失 | 中 | M6 完整 NoC 关口 |
 | 20b | CRC 与兼容内存 | gw100_compat 采用原有时钟与存储简化。gw100 的 DDR PLL、时钟域和复位实际作用于 Memory Tile 与原生控制器 | 兼容配置功能简化 | 中 | 精确配置已验证固件启动与复位，兼容配置保留本项 |
 | 20c | CRC：Compute Tile | `CRC_CT_RST`、`CRC_CT_CLK_EN`、`CRC_CT_ISO` 按规格读写，但没有 Compute Tile 模型可以作用 | 功能缺失 | 中 | M8 |
 | 20d | CRC：NI 隔离的应答 | `CRC_ISO_ACK`、`CRC_ISO_FAIL` 读 0 | 功能缺失 | 中 | 随 NoC 的 NI 隔离（M6）与各 Tile 的接入 |
 | 21 | 管理 CPU 的停机 | gem5 的 `TimingSimpleCPU` 不能在任意时刻停住。停机请求经中断控制器 `Gw100MgmtInterrupts` 在下一个指令边界取走，优先于全部中断，CPU 随后去取启动 ROM 末尾保留的字，管理 Tile 扣下这次取指；设备完全复位时再用复位向量处的指令响应它。与规格的差别：停机请求到达时已经在途的取指，其指令仍会执行（规格要求丢弃）；没有调试模块，停住后无法读取 CPU 状态 | 功能偏差 | 低 | 待批准；或加调试模块，换用能丢弃在途取指的 CPU 模型 |
 | 22 | 设备完全复位中的 PLIC 与 CLINT | gem5 的 PLIC 没有复位接口，`Clint` 的复位会把 `mtime` 一起清零（规格要求设备完全复位保留 `mtime`），所以两者都不复位：PLIC 的使能、优先级、阈值，CLINT 的 `mtimecmp`、`msip` 保留复位前的值。启动 ROM 不使用它们；CPU 复位后 `mstatus.MIE`、`mie` 为 0，固件在 `irq_init` 中重新设置 PLIC 的优先级、使能、阈值和 `mtimecmp` 之后才开中断，旧值不会引发中断 | 功能偏差 | 低 | 随自己的 CLINT（#15）一起实现 PLIC 与 CLINT 的复位 |
-| 23 | HDMA 的设备侧地址 | DPA 只接受设备内存的范围，Compute Tile 的 SRAM 尚未建模，指向它的描述符按 DEV_ADDR 失败；DEV_ECC 不会出现（#19） | 功能缺失 | 低 | 随 NoC 与 Compute Tile 的模型接入 |
+| 23 | HDMA 的设备侧地址 | DPA 只接受设备内存的范围，Compute Tile 的 SRAM 尚未接入 DPA 路径，指向它的描述符按 DEV_ADDR 失败。共享 SRAM 的 UE 已实现，设备侧 DEV_ECC 尚待目标接入 | 功能缺失 | 低 | 随 NoC 与 Compute Tile 的模型接入 |
 | 24 | Requester ID 的总线号 | 真实的 endpoint 从配置写请求中捕获自己的总线号；gem5 的配置访问不携带总线号，Requester ID（ITS 的 DeviceID）的总线号由 SimObject 参数 `pci_bus` 给出（默认 0，VExpress 的设备都在根总线上），设备号和功能号取自 gem5 的 PCI 地址。设备挂在桥后面（总线号不为 0）而参数没有相应设置时，DeviceID 会错 | 功能偏差 | 低 | 待批准；或在 gem5 的配置访问中携带总线号后改为捕获 |
 | 25 | 控制器训练反馈 | 校准与训练使用可配置的 10 µs、100 µs 数字反馈，两 rank 并行，支持逐 rank 失败和超时。固件执行全部控制器配置和检查 | 延迟为设计假设 | 中 | 有控制器实现或测量依据后校准反馈，能力寄存器标明抽象层级 |
 | 26 | 通用 LPDDR5 时序 | 通用档案固定运行模式，WCK、刷新与电源状态继承原生时序抽象，各参数分别量化，阵列延迟沿用通用预设。自刷新进入等待继承原生 tCKESR | 相对具体器件未知 | 中 | 用于通用架构评估，型号对齐和实物校准另立关口 |
 | 27 | PCIe 参考 RC 与数字 PHY | RC/EP 250 MHz、两周期适配、单向 5 ns、RC posted 预留 16/64 槽、受控训练与均衡反馈均为参考设计选择。Host 原生 PCI 总线保留 BDF/BAR 路由，MSE 关闭时可在上游拒绝未解码访问 | 相对具体实现未知 | 中 | 商业 RC、PHY 与实物校准独立验收 |
 | 28 | 全系统 checkpoint | PCIe 子系统的 L0/L1 文件恢复与八通道内存组件分别验证。管理 Tile 的完整状态保存尚未实现 | 功能范围有限 | 中 | 接入管理 Tile 状态与跨子系统一致性后验收整机恢复 |
+| 29 | SRAM 物理参数 | management 与 Compute 档案采用通用的一周期参考宏，ECC 组合路径包含在该周期内。数字端口、仲裁与 ECC 按共享规格实现 | 相对具体宏未知 | 中 | 获取 SRAM 宏手册、Liberty 与 PVT 后校准读写、启动间隔、保持及 ECC 时序 |
 
 随旧模型删除而失效（2026-10-24），重建对应组件时不得重犯。
 
@@ -232,6 +250,7 @@ scons --ignore-style EXTRAS=<仓库根目录>/gem5-ext \
 | 8 | 向量引擎吞吐 | 各数据类型都按 32 元素/周期计 | 按 `spec-vector-engine` 定义的各类型吞吐 |
 
 已消除：
+- 2026-11-08 管理 Tile SRAM ECC（原 #19a）。共享组件实现逐拍清零、有限 bank 仲裁、64+8 SECDED、受保护 RMW、CE/UE 寄存器及 PLIC、CPU 访问错误和 ML REJECT。G0–G3 验证记录位于 docs/spec/memory/spec-sram/verification.md，通用物理参数的校准状态保留在 #29。
 - 2026-11-03：启动寄存器上电即为 STAGE 4 且 `FW_READY`、调试窗口始终开启（原 #11）。现在由真实的 RISC-V 启动 ROM 推进 STAGE，host 经启动窗口加载固件，固件置位 `FW_READY` 并开启调试窗口。
 - 2026-10-18：DRAM 容量随测试缩小，器件规格也跟着变。现在只取自架构参数。
 - 2026-10-18：派生 LPDDR5X 时把 tCL 也按时钟缩短了，让 DRAM 延迟凭空变小。现在 tCL 保持纳秒值不变。
