@@ -6,6 +6,7 @@
  */
 
 #include "src/gw100/mgmt/regs/mgmt_local_regs.hh"
+#include <algorithm>
 
 namespace gem5
 {
@@ -25,7 +26,7 @@ constexpr Addr AclBase = 0x2000'F000;
 } // anonymous namespace
 
 /** 构造：sram 提供 INIT_DONE */
-MgmtLocalRegs::MgmtLocalRegs(MgmtSram &sram) : sram(sram)
+MgmtLocalRegs::MgmtLocalRegs(Gw100Sram &sram) : sram(sram)
 {
 }
 
@@ -43,11 +44,12 @@ MgmtLocalRegs::read(Addr a, unsigned size, uint64_t &v, Tick now) const
           case MlBase + 0x04: v = ml ? ml->errReg() : 0; return true;
           case MlBase + 0x08: v = ml ? ml->errInfoReg() : 0; return true;
           case MlBase + 0x0C: v = ml ? ml->errAddrReg() : 0; return true;
-          case SramCtlBase + 0x00: v = sram.initDone(now) ? 1 : 0;
+          case SramCtlBase + 0x00:
+            v = sram.model().state() == SramModel::State::Ready ? 1 : 0;
             return true;
-          case SramCtlBase + 0x04: v = eccStatus; return true;
-          case SramCtlBase + 0x08: v = ceCount; return true;
-          case SramCtlBase + 0x0C: v = ceThresh; return true;
+          case SramCtlBase + 0x04: v = ecc.status; return true;
+          case SramCtlBase + 0x08: v = ecc.count; return true;
+          case SramCtlBase + 0x0C: v = ecc.threshold; return true;
           case AclBase + 0x00: v = aclLock ? 1 : 0; return true;
           case AclBase + 0xC0: v = aclViol; return true;
         }
@@ -62,7 +64,7 @@ MgmtLocalRegs::read(Addr a, unsigned size, uint64_t &v, Tick now) const
     // 64 位寄存器
     if (size == 8) {
         switch (a) {
-          case SramCtlBase + 0x10: v = ueAddr; return true;
+          case SramCtlBase + 0x10: v = ecc.address; return true;
           case AclBase + 0x08: v = descBase; return true;
           case AclBase + 0x10: v = descLimit; return true;
           case AclBase + 0xC8: v = aclViolAddr; return true;
@@ -83,7 +85,7 @@ MgmtLocalRegs::read(Addr a, unsigned size, uint64_t &v, Tick now) const
 
 /** CPU 写本地地址 a 处 size 字节；规则同 read() */
 bool
-MgmtLocalRegs::write(Addr a, unsigned size, uint64_t v)
+MgmtLocalRegs::write(Addr a, unsigned size, uint64_t v, Tick now)
 {
     uint64_t dummy;
     if (!read(a, size, dummy, 0))
@@ -94,9 +96,13 @@ MgmtLocalRegs::write(Addr a, unsigned size, uint64_t v)
         if (ml)
             ml->clearErr(v32);
         break;
-      case SramCtlBase + 0x04: eccStatus &= ~v32; break;
-      case SramCtlBase + 0x08: ceCount = 0; break;
-      case SramCtlBase + 0x0C: ceThresh = v32; break;
+      case SramCtlBase + 0x04:
+        ecc.clear(v32, now);
+        break;
+      case SramCtlBase + 0x08:
+        ecc.clearCount(now);
+        break;
+      case SramCtlBase + 0x0C: ecc.threshold = v32; break;
       case AclBase + 0xC0: aclViol &= ~v32; break;
       default:
         // 访问控制的配置：锁定后写入被忽略
@@ -129,16 +135,22 @@ MgmtLocalRegs::write(Addr a, unsigned size, uint64_t v)
 void
 MgmtLocalRegs::reset()
 {
-    eccStatus = 0;
-    ceCount = 0;
-    ceThresh = 0;
-    ueAddr = 0;
+    ecc = MgmtEccStatus{};
     aclLock = false;
     descBase = 0;
     descLimit = 0;
     nocWin.fill(NocWin{});
     aclViol = 0;
     aclViolAddr = 0;
+}
+
+/** SRAM 采样事件，地址为管理 CPU 本地地址。 */
+void
+MgmtLocalRegs::recordEcc(Addr address, bool ue, Tick now)
+{
+    ecc.record(address, ue, now);
+    if (onChange)
+        onChange();
 }
 
 /** HDMA 经 ML 访问 [a, a + len) 是否落在 DESC_BASE – DESC_LIMIT 内 */
@@ -170,7 +182,7 @@ MgmtLocalRegs::mlIrq() const
 bool
 MgmtLocalRegs::ceIrq() const
 {
-    return ceThresh != 0 && ceCount >= ceThresh;
+    return ecc.ceIrq();
 }
 
 } // namespace gw100
