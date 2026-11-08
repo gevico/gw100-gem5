@@ -1,0 +1,904 @@
+{
+  "schema_version": 1,
+  "profile": "gw100-noc-g0",
+  "model_version": "0.1",
+  "decisions": {
+    "latency": "layered",
+    "acceptance": "cycle_accurate_performance",
+    "link_accounting": "header_in_band",
+    "routing": "XY",
+    "switching": "store_and_forward",
+    "arbitration": "oldest_ready_then_round_robin",
+    "unused_ports": "omitted",
+    "normal_mode": "reference_1GHz",
+    "runtime_mesh": "pending_G1_G2"
+  },
+  "dependencies": {
+    "memory": "spec-src/dram/gw100-memory.json",
+    "pcie": "spec-src/pcie/gw100-link.json",
+    "architecture": "docs/spec/system/spec-arch.md",
+    "address_map": "docs/spec/system/spec-address-map.md",
+    "clock_reset": "docs/spec/system/spec-clock-reset-power.md",
+    "hdma_header": "gem5-ext/src/gw100/pcie/hdma/hdma_engine.hh",
+    "management": "docs/spec/host/spec-mgmt-tile.md",
+    "noc_specification": "docs/spec/interconnect/spec-noc.md",
+    "dram_specification": "docs/spec/memory/spec-dram.md",
+    "pcie_specification": "docs/spec/host/spec-pcie.md",
+    "dram_preset": "gem5-ext/src/memory/LPDDR5.py"
+  },
+  "architecture_aliases": {
+    "window_columns": 8,
+    "window_bytes": 16777216,
+    "ct_sram_bytes": 2097152,
+    "mgmt_sram_bytes": 2097152,
+    "pcie_x": 5,
+    "pcie_y": 0,
+    "mgmt_x": 5,
+    "mgmt_y": 1,
+    "reserved_nodes": [
+      17,
+      23
+    ]
+  },
+  "definitions": [
+    {
+      "name": "MESH_COLS",
+      "value": 6,
+      "unit": "nodes",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "MESH_ROWS",
+      "value": 4,
+      "unit": "nodes",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "CORE_PERIOD_PS",
+      "value": 1000,
+      "unit": "ps",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "TICK_PS",
+      "value": 1,
+      "unit": "ps",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "FLIT_BYTES",
+      "value": 64,
+      "unit": "B",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "HEADER_BYTES",
+      "value": 16,
+      "unit": "B",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "BYTE_ENABLE_BYTES",
+      "value": 8,
+      "unit": "B",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "MAX_DATA_BYTES",
+      "value": 64,
+      "unit": "B",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "VN_COUNT",
+      "value": 4,
+      "unit": "classes",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "VCS_PER_VN",
+      "value": 1,
+      "unit": "VC",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "INPUT_DEPTH_FLITS",
+      "value": 4,
+      "unit": "flits",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "OUTPUT_DEPTH_FLITS",
+      "value": 1,
+      "unit": "flits",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "ROUTER_PIPELINE_CYCLES",
+      "value": 2,
+      "unit": "cycles",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "NI_PIPELINE_CYCLES",
+      "value": 2,
+      "unit": "cycles",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "LINK_CYCLES_PER_FLIT",
+      "value": 1,
+      "unit": "cycles",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "CREDIT_RETURN_CYCLES",
+      "value": 1,
+      "unit": "cycles",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "PACKET_SLOT_BYTES",
+      "value": 128,
+      "unit": "B",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "ROUTER_DESCRIPTOR_BYTES",
+      "value": 16,
+      "unit": "B",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "CDC_DESCRIPTOR_BYTES",
+      "value": 16,
+      "unit": "B",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "CDC_PACKET_BYTES",
+      "value": 128,
+      "unit": "B",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "CDC_DEPTH",
+      "value": 8,
+      "unit": "packets",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "CDC_SYNC_STAGES",
+      "value": 2,
+      "unit": "cycles",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "NI_RX_PACKETS_PER_VN",
+      "value": 8,
+      "unit": "packets",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "DATA_SLOTS_MGMT",
+      "value": 16,
+      "unit": "fragments",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "DATA_SLOTS_HDMA",
+      "value": 64,
+      "unit": "fragments",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "DATA_SLOTS_BAR2",
+      "value": 16,
+      "unit": "fragments",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "DATA_SLOTS_COMPUTE",
+      "value": 16,
+      "unit": "fragments",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "COMMAND_SLOTS_MGMT",
+      "value": 8,
+      "unit": "transactions",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "CONTROL_SLOTS_PER_NI",
+      "value": 4,
+      "unit": "transactions",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "TRANSACTION_REQUEST_BYTES",
+      "value": 128,
+      "unit": "B",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "TRANSACTION_RESPONSE_BYTES",
+      "value": 128,
+      "unit": "B",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "TRANSACTION_META_BYTES",
+      "value": 32,
+      "unit": "B",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "PARENT_DESCRIPTOR_BYTES",
+      "value": 64,
+      "unit": "B",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "PROTECTION_SNAPSHOT_BYTES",
+      "value": 64,
+      "unit": "B",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "REGION_RECORD_BITS",
+      "value": 81,
+      "unit": "bits",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "SIDEBAND_FLIT_BITS",
+      "value": 5,
+      "unit": "bits",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "SIDEBAND_CREDIT_BITS",
+      "value": 3,
+      "unit": "bits",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "CREDIT_STATE_BITS_PER_VC",
+      "value": 9,
+      "unit": "bits",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "EGRESS_RR_BITS",
+      "value": 5,
+      "unit": "bits",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "INPUT_RR_BITS",
+      "value": 3,
+      "unit": "bits",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "ARRIVAL_COUNTER_BITS",
+      "value": 64,
+      "unit": "bits",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "END_TO_END_GOAL_PS",
+      "value": 1000000,
+      "unit": "ps",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "REFERENCE_TARGET_PS",
+      "value": 250000,
+      "unit": "ps",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "WARMUP_PS",
+      "value": 20000000,
+      "unit": "ps",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "MEASURE_PS",
+      "value": 100000000,
+      "unit": "ps",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "SEED",
+      "value": 1,
+      "unit": "integer",
+      "basis": "GW100 G0 参考设计选择"
+    },
+    {
+      "name": "SOURCE_STATE_BYTES",
+      "value": 32,
+      "unit": "B",
+      "basis": "GW100 G0 来源 tag、顺序号与状态预算"
+    },
+    {
+      "name": "NI_CONTROL_BYTES",
+      "value": 256,
+      "unit": "B",
+      "basis": "GW100 G0 每 NI 控制、错误快照及 16 个 64 位计数器预算"
+    },
+    {
+      "name": "EXEC_REGIONS_PER_COMPUTE",
+      "value": 8,
+      "unit": "regions",
+      "basis": "spec-address-map §5.2 ct.exec_regions"
+    },
+    {
+      "name": "MGMT_REGIONS_PER_COMPUTE",
+      "value": 8,
+      "unit": "regions",
+      "basis": "GW100 G0 管理 SRAM 开放区间的参考容量"
+    },
+    {
+      "name": "PERMISSION_REGION_BITS",
+      "value": 81,
+      "unit": "bits",
+      "basis": "两个 40 位端点与一个使能位，推算"
+    },
+    {
+      "name": "NI_CREDIT_STATE_BITS_PER_VC",
+      "value": 15,
+      "unit": "bits",
+      "basis": "八个 128 B 包槽共 16 个存储 flit 信用，三个五位计数器，推算"
+    }
+  ],
+  "header": [
+    {
+      "name": "opcode",
+      "lsb": 0,
+      "bits": 4
+    },
+    {
+      "name": "vn",
+      "lsb": 4,
+      "bits": 2
+    },
+    {
+      "name": "flags",
+      "lsb": 6,
+      "bits": 2
+    },
+    {
+      "name": "initiator",
+      "lsb": 8,
+      "bits": 5
+    },
+    {
+      "name": "destination",
+      "lsb": 13,
+      "bits": 5
+    },
+    {
+      "name": "sender",
+      "lsb": 18,
+      "bits": 5
+    },
+    {
+      "name": "admitted",
+      "lsb": 23,
+      "bits": 1
+    },
+    {
+      "name": "transaction",
+      "lsb": 24,
+      "bits": 16
+    },
+    {
+      "name": "address",
+      "lsb": 40,
+      "bits": 40
+    },
+    {
+      "name": "length",
+      "lsb": 80,
+      "bits": 8
+    },
+    {
+      "name": "destinations",
+      "lsb": 88,
+      "bits": 24
+    },
+    {
+      "name": "status",
+      "lsb": 112,
+      "bits": 8
+    },
+    {
+      "name": "reserved",
+      "lsb": 120,
+      "bits": 8
+    }
+  ],
+  "sources": [
+    {
+      "id": 0,
+      "name": "MGMT",
+      "x": 5,
+      "y": 1,
+      "data_slots": 16
+    },
+    {
+      "id": 1,
+      "name": "HDMA",
+      "x": 5,
+      "y": 0,
+      "data_slots": 64
+    },
+    {
+      "id": 2,
+      "name": "BAR2",
+      "x": 5,
+      "y": 0,
+      "data_slots": 16
+    },
+    {
+      "id": 3,
+      "name": "COMPUTE_0",
+      "x": 1,
+      "y": 0,
+      "data_slots": 16
+    },
+    {
+      "id": 4,
+      "name": "COMPUTE_1",
+      "x": 2,
+      "y": 0,
+      "data_slots": 16
+    },
+    {
+      "id": 5,
+      "name": "COMPUTE_2",
+      "x": 3,
+      "y": 0,
+      "data_slots": 16
+    },
+    {
+      "id": 6,
+      "name": "COMPUTE_3",
+      "x": 4,
+      "y": 0,
+      "data_slots": 16
+    },
+    {
+      "id": 7,
+      "name": "COMPUTE_4",
+      "x": 1,
+      "y": 1,
+      "data_slots": 16
+    },
+    {
+      "id": 8,
+      "name": "COMPUTE_5",
+      "x": 2,
+      "y": 1,
+      "data_slots": 16
+    },
+    {
+      "id": 9,
+      "name": "COMPUTE_6",
+      "x": 3,
+      "y": 1,
+      "data_slots": 16
+    },
+    {
+      "id": 10,
+      "name": "COMPUTE_7",
+      "x": 4,
+      "y": 1,
+      "data_slots": 16
+    },
+    {
+      "id": 11,
+      "name": "COMPUTE_8",
+      "x": 1,
+      "y": 2,
+      "data_slots": 16
+    },
+    {
+      "id": 12,
+      "name": "COMPUTE_9",
+      "x": 2,
+      "y": 2,
+      "data_slots": 16
+    },
+    {
+      "id": 13,
+      "name": "COMPUTE_10",
+      "x": 3,
+      "y": 2,
+      "data_slots": 16
+    },
+    {
+      "id": 14,
+      "name": "COMPUTE_11",
+      "x": 4,
+      "y": 2,
+      "data_slots": 16
+    },
+    {
+      "id": 15,
+      "name": "COMPUTE_12",
+      "x": 1,
+      "y": 3,
+      "data_slots": 16
+    },
+    {
+      "id": 16,
+      "name": "COMPUTE_13",
+      "x": 2,
+      "y": 3,
+      "data_slots": 16
+    },
+    {
+      "id": 17,
+      "name": "COMPUTE_14",
+      "x": 3,
+      "y": 3,
+      "data_slots": 16
+    },
+    {
+      "id": 18,
+      "name": "COMPUTE_15",
+      "x": 4,
+      "y": 3,
+      "data_slots": 16
+    },
+    {
+      "id": 19,
+      "name": "MEMORY_CONTROL_0",
+      "x": 0,
+      "y": 0,
+      "data_slots": 0
+    },
+    {
+      "id": 20,
+      "name": "MEMORY_CONTROL_1",
+      "x": 0,
+      "y": 1,
+      "data_slots": 0
+    },
+    {
+      "id": 21,
+      "name": "MEMORY_CONTROL_2",
+      "x": 0,
+      "y": 2,
+      "data_slots": 0
+    },
+    {
+      "id": 22,
+      "name": "MEMORY_CONTROL_3",
+      "x": 0,
+      "y": 3,
+      "data_slots": 0
+    }
+  ],
+  "opcodes": [
+    {
+      "name": "READ",
+      "value": 0,
+      "vn": 0,
+      "reply": 8
+    },
+    {
+      "name": "WRITE",
+      "value": 1,
+      "vn": 0,
+      "reply": 9
+    },
+    {
+      "name": "COMMAND",
+      "value": 2,
+      "vn": 2,
+      "reply": 10
+    },
+    {
+      "name": "EVENT",
+      "value": 3,
+      "vn": 3,
+      "reply": 11
+    },
+    {
+      "name": "CONTROL",
+      "value": 4,
+      "vn": 3,
+      "reply": 12
+    }
+  ],
+  "status_codes": {
+    "OK": 0,
+    "REJECT": 1,
+    "FAULT": 2
+  },
+  "flags": {
+    "MULTICAST": 1,
+    "BYTE_ENABLE": 2
+  },
+  "control_messages": {
+    "PROTECTION_SYNC": 0,
+    "QUIESCE": 1,
+    "RESUME": 2,
+    "ERROR_REPORT": 3
+  },
+  "metadata": {
+    "transaction": [
+      [
+        "transaction",
+        16
+      ],
+      [
+        "expected",
+        24
+      ],
+      [
+        "received",
+        24
+      ],
+      [
+        "rejected",
+        24
+      ],
+      [
+        "faulted",
+        24
+      ],
+      [
+        "parent_slot",
+        8
+      ],
+      [
+        "state",
+        8
+      ],
+      [
+        "epoch",
+        64
+      ],
+      [
+        "issue_order",
+        64
+      ]
+    ],
+    "snapshot": [
+      [
+        "tile",
+        8
+      ],
+      [
+        "version",
+        32
+      ],
+      [
+        "locked",
+        1
+      ],
+      [
+        "test_mask",
+        2
+      ],
+      [
+        "ready_mask",
+        2
+      ],
+      [
+        "regions",
+        324
+      ],
+      [
+        "reserved",
+        143
+      ]
+    ]
+  },
+  "contracts": {
+    "boundaries": [
+      "OFFER",
+      "ACCEPT",
+      "REQ_INJECT",
+      "REQ_EJECT",
+      "TARGET_ACCEPT",
+      "TARGET_COMPLETE",
+      "RSP_INJECT",
+      "RSP_EJECT",
+      "COMPLETE"
+    ],
+    "source_identity": "hardware_bound",
+    "tag_reuse": "after_upstream_acceptance",
+    "epoch": "internal_lifetime_only",
+    "response_match": "initiator_transaction_expected_sender",
+    "preflight": "whole_parent_before_effects",
+    "fragment_boundaries": [
+      64,
+      256
+    ],
+    "parent_slots_owner": "memory.SOURCE_LIMIT",
+    "protection": "per_tile_snapshot_to_18_requester_NIs_before_ENABLE",
+    "quiesce": "close_new_parents_drain_admitted_fragments_and_responses",
+    "ordering": "same_source_same_burst_serial_target_total_order",
+    "fence": "all_prior_transactions_of_same_source",
+    "write_complete": "target_visible_with_forwarding",
+    "media_drain": "separate",
+    "multicast": "branch_replication_compute_write_and_command",
+    "control_multicast": "requester_NI_mask",
+    "command_ack": "receipt_only",
+    "aggregate_status": [
+      "FAULT",
+      "REJECT",
+      "OK"
+    ],
+    "flr": "preserve_mesh_retire_only_PCIE_sources",
+    "reset": "whole_mesh_epoch",
+    "isolation": "close_drain_reject_ack_or_fault",
+    "target_timeout": "target_accept_to_target_complete_during_isolation",
+    "isolation_timeout": "isolation_request_to_ack_or_fail",
+    "target_service_bound": "unproven_native_FRFCFS",
+    "goal_condition": "uncontended_normal_clocks_target_250ns_upstream_ready",
+    "stats": [
+      "p50",
+      "p95",
+      "p99",
+      "maximum",
+      "throughput",
+      "queue_occupancy",
+      "credits",
+      "replication",
+      "backpressure"
+    ],
+    "NI_ejection_credit": "fixed_slot_two_flits_per_packet",
+    "goal_traffic": "single_unicast_le_64B"
+  },
+  "acceptance_matrix": [
+    {
+      "id": "UNLOADED",
+      "traffic": "all_pairs_read_write_1_2_4_8_32_64",
+      "target": "0_250ns",
+      "metric": "latency_edges_and_1us_goal"
+    },
+    {
+      "id": "STREAM",
+      "traffic": "single_and_eight_channel_bidirectional",
+      "target": "native_DRAM",
+      "metric": "payload_vs_wire_vs_source_limits"
+    },
+    {
+      "id": "HOTSPOT",
+      "traffic": "all_sources_one_channel_and_bank",
+      "target": "native_DRAM",
+      "metric": "p50_p95_p99_maximum"
+    },
+    {
+      "id": "REFRESH",
+      "traffic": "row_conflicts_mixed_reads_writes_refresh",
+      "target": "native_DRAM",
+      "metric": "target_vs_fabric_wait"
+    },
+    {
+      "id": "BACKPRESSURE",
+      "traffic": "source_target_and_return_stalls",
+      "target": "0_250ns_2.5us",
+      "metric": "resources_and_progress"
+    },
+    {
+      "id": "MULTICAST",
+      "traffic": "all_compute_masks_and_instruction_contention",
+      "target": "controlled",
+      "metric": "delivery_bitmap_and_replication"
+    },
+    {
+      "id": "LIFECYCLE",
+      "traffic": "FLR_isolation_reset_D3hot_D0",
+      "target": "controlled",
+      "metric": "exactly_once_and_late_effects"
+    }
+  ],
+  "coverage": [
+    {
+      "id": "TOPOLOGY",
+      "title": "坐标、节点、窗口、来源与 DPA",
+      "state": "defined",
+      "evidence": "tools/noc_spec_test.py::test_topology_and_sources"
+    },
+    {
+      "id": "PACKET",
+      "title": "报头、字节使能、填充与 opcode",
+      "state": "defined",
+      "evidence": "tools/noc_spec_test.py::test_header_roundtrip"
+    },
+    {
+      "id": "ROUTING",
+      "title": "全部 XY 路由及 VN 通道依赖",
+      "state": "defined",
+      "evidence": "tools/noc_spec_test.py::test_all_xy_routes"
+    },
+    {
+      "id": "MULTICAST",
+      "title": "分支复制、目的位图和部分结果",
+      "state": "defined",
+      "evidence": "tools/noc_spec_test.py::test_multicast_partition"
+    },
+    {
+      "id": "CREDIT",
+      "title": "完整包信用、接收与返回反压",
+      "state": "defined",
+      "evidence": "tools/noc_spec_test.py::test_credit_reservation"
+    },
+    {
+      "id": "RESOURCES",
+      "title": "队列、事务、CDC、镜像及控制线成本",
+      "state": "defined",
+      "evidence": "tools/noc_spec_test.py::test_resource_costs"
+    },
+    {
+      "id": "TIMING",
+      "title": "时钟相位、无竞争逐段预算",
+      "state": "defined",
+      "evidence": "tools/noc_spec_test.py::test_timing_fixed_vectors"
+    },
+    {
+      "id": "PERFORMANCE",
+      "title": "分层计时与条件性性能矩阵",
+      "state": "defined",
+      "evidence": "tools/noc_spec_test.py::test_layered_contract"
+    },
+    {
+      "id": "PROTECTION",
+      "title": "父请求预检与快照同步",
+      "state": "defined",
+      "evidence": "tools/noc_spec_test.py::test_protection_snapshot"
+    },
+    {
+      "id": "ORDERING",
+      "title": "写可见性、同地址顺序及 fence",
+      "state": "defined",
+      "evidence": "tools/noc_spec_test.py::test_completion_and_ordering"
+    },
+    {
+      "id": "LIFECYCLE",
+      "title": "CRC、隔离、FLR 与全复位",
+      "state": "defined",
+      "evidence": "tools/noc_spec_test.py::test_lifecycle_contract"
+    },
+    {
+      "id": "DEPENDENCIES",
+      "title": "当前 DRAM/PCIe 参数与外部服务依赖",
+      "state": "defined",
+      "evidence": "tools/noc_spec_test.py::test_dependency_consistency"
+    }
+  ],
+  "milestones": {
+    "G0": {
+      "implementation": "complete",
+      "evidence": [
+        "docs/spec/interconnect/spec-noc/verification.md",
+        "tools/noc_spec_test.py"
+      ]
+    },
+    "G1": {
+      "implementation": "pending",
+      "evidence": []
+    },
+    "G2": {
+      "implementation": "pending",
+      "evidence": []
+    },
+    "G3": {
+      "implementation": "pending",
+      "evidence": []
+    }
+  },
+  "control_modes": {
+    "SOURCE": 1,
+    "TARGET": 2
+  }
+}
