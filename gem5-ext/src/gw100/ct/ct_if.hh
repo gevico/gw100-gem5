@@ -10,9 +10,11 @@
 #define __GW100__COMPUTE_COMPUTE_IF_HH__
 
 #include<cstdint>
+#include <functional>
 
 #include"base/types.hh"
 #include"src/gw100/ml/ml_types.hh"
+#include"ct_types.hh"
 
 namespace gem5
 {
@@ -27,7 +29,7 @@ namespace gw100{
 
           /** 如何去 reset 还没定 */
           virtual void reset() = 0;
-    }
+    };
 
     using CtNocReadDone = std::function<void(CtStatus,const uint8_t *)>;
     using CtNocWriteDone = std::function<void(CtStatus)>;
@@ -46,7 +48,24 @@ namespace gw100{
           /** 向 dpa 发起一次写 */
           virtual void sendWrite(Addr dpa, unsigned len,const uint8_t *data,CtNocWriteDone done) = 0;
 
-    }
+    };
+
+    class CtClockIf
+    {
+    public:
+        virtual ~CtClockIf() = default;
+
+        /** 当前时刻 */
+        virtual Tick now() const = 0;
+
+        /** 时钟周期 */
+        virtual Tick period() const = 0;
+
+        /** 请求在不早于 when 的第一个时钟沿调用 HdmaEngine::tick() */
+        virtual void wakeAt(Tick when) = 0;
+    };
+
+
 
 }
 }

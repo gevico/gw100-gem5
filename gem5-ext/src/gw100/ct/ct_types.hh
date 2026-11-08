@@ -33,6 +33,11 @@ namespace gw100{
     constexpr Addr CtSyncBase     = 0x0080'0000;
     constexpr Addr CtSyncSize     = 0x0000'0080;
 
+    /** noc 传输包大小上限 */
+    constexpr Addr NocPacketLimit = 0x0000'0040;
+    /** 访问 bank 边界 */
+    constexpr Addr CtSramBankLimit = 0x0000'0100; 
+
 
     /** 返回状态码 */
     enum class CtStatus : uint8_t {
@@ -41,11 +46,12 @@ namespace gw100{
         Reject, /** 被拒绝（访问越界等等） */
     };
 
-
+    constexpr Addr
     VisitSingleCt(int x, int y){
         return CtBase + (y * 8 + x)* CtWindowSize;
     }
 
+    /** 地址访问的发起方 */
     enum class CtInitiator : uint8_t{
         LocalCpu = 0,
         LocalEngine,
@@ -53,6 +59,7 @@ namespace gw100{
         MT,
     };
 
+    /** 地址访问的接口实现 */
     struct CtAccess{
         Addr base;
         uint8_t* data;
@@ -65,6 +72,8 @@ namespace gw100{
         CtStatus status = CtStatus::Ok;
         Tick delay = 0;
     };
+
+    //todo 定义compute tile 内部 riscfive 核的通信规范
 
 }
 }
