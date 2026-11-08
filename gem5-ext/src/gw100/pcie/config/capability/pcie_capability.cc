@@ -28,7 +28,8 @@ PcieCapability::init(CfgBytes &cfg, CfgBytes &wmask, CfgBytes &w1c,
     // Device Status：错误检测位写 1 清零
     put16(w1c, base + 0x0A, 0x000F);
     // Link Capabilities：最高 Gen4（16 GT/s）、x4、只支持 ASPM L1
-    put32(cfg, base + 0x0C, 0x4u | (4u << 4) | (2u << 10) | (6u << 15));
+    put32(cfg, base + 0x0C,
+          0x4u | (4u << 4) | (2u << 10) | (6u << 15) | (1u << 22));
     // Link Control：ASPM 控制、Common Clock、Extended Synch 可写
     put16(wmask, base + 0x10, 0x00C3);
     // Link Status：当前速率与宽度，Slot Clock Configuration
@@ -50,6 +51,11 @@ CfgEvent
 PcieCapability::afterWrite(const CfgBytes &old, CfgBytes &cfg, Addr base,
                            Addr off, unsigned size, uint32_t val) const
 {
+    unsigned timeout = cfg[base + 0x28] & 15;
+    if (timeout != 0 && timeout != 1 && timeout != 2 && timeout != 5 &&
+        timeout != 6) {
+        cfg[base + 0x28] = (cfg[base + 0x28] & ~15u) | (old[base + 0x28] & 15);
+    }
     // Initiate FLR 位于 Device Control 高字节的 bit 7；它不在可写位中，
     // 写入后读回仍为 0
     const Addr flr_byte = base + DevCtl + 1;
