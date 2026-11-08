@@ -318,12 +318,15 @@ Gw100MemoryIngress::forward(const std::shared_ptr<Context> &ctx)
         size = std::min(size, unsigned(md::BURST_BYTES - addr % 64));
     }
     auto req = std::make_shared<Request>(addr, size, 0, requestor);
+    const auto &byte_enable = orig->req->getByteEnable();
     auto *pkt =
         new Packet(req, orig->isWrite() ? MemCmd::WriteReq : MemCmd::ReadReq);
     pkt->allocate();
     if (orig->isWrite()) {
         pkt->setData(orig->getConstPtr<uint8_t>() + ctx->offset);
     }
+    req->setByteEnable(std::vector<bool>(byte_enable.begin() + ctx->offset,
+                                         byte_enable.begin() + ctx->offset + size));
     auto *st = new ForwardState;
     st->source = source;
     st->transaction = ctx->transaction;

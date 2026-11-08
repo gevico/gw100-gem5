@@ -169,6 +169,23 @@ def data_cases():
     op(1, source=2, address=0x200008, size=8, value=0xFEEDFACE12345678)
     op(6)
     op(2, source=1, address=0x200000, size=64)
+    op(6)
+    # PCIe Byte Enable 的完整 burst 与跨 burst 稀疏写均保留禁用字节。
+    for channel in range(8):
+        address = dpa(channel, 0x20000)
+        op(1, address=address, size=128, value=0x1122334455667788)
+    op(6)
+    for channel in range(8):
+        address = dpa(channel, 0x20000)
+        op(17, source=1, address=address, size=64, value=0xA5A5A5A5A5A5A5A5)
+    op(6)
+    for channel in range(8):
+        address = dpa(channel, 0x20000)
+        op(17, source=2, address=address + 3, size=65, value=0x5A5A5A5A5A5A5A5A)
+    op(6)
+    for channel in range(8):
+        op(2, source=0, address=dpa(channel, 0x20000), size=128)
+    op(6)
     # 拒绝跨保护边界的整个请求，后续读取验证没有部分写入。
     op(1, address=0xFFC0, size=128, value=0x1122334455667788)
     op(6)
