@@ -229,6 +229,7 @@ class DRAMInterface : public MemInterface
     class Rank : public EventManager
     {
       private:
+        friend class DRAMInterface;
 
         /**
          * A reference to the parent DRAMInterface instance
@@ -497,6 +498,14 @@ class DRAMInterface : public MemInterface
      * DRAM specific device characteristics
      */
     const uint32_t bankGroupsPerRank;
+    /** External controller owns media startup and retention. */
+    const bool deferStartup;
+    /** Media refresh has been started. */
+    bool mediaRunning = false;
+    /** Finish a refresh into an explicitly held idle state. */
+    bool holdAfterRefresh = false;
+    /** Keep DRAMPower timestamps monotonic across controller resets. */
+    bool mediaEverStarted = false;
     const bool bankGroupArch;
 
     /**
@@ -672,6 +681,27 @@ class DRAMInterface : public MemInterface
      * Iterate through dram ranks and instantiate per rank startup routine
      */
     void startup() override;
+
+    /** Start refresh after controller-level initialization. */
+    void startMedia();
+    /** No data, refresh or power transition is outstanding. */
+    bool mediaIdle() const;
+    /** Precharge and perform an extra refresh before holding idle. */
+    void holdMedia();
+    /** All ranks are explicitly held idle, with refresh suspended. */
+    bool mediaHeld() const;
+    /** Enter self-refresh from the held state. */
+    void enterSelfRefresh();
+    /** All ranks have completed self-refresh entry. */
+    bool selfRefreshing() const;
+    /** Resume a held or self-refreshing interface. */
+    void resumeMedia();
+    /** Stop a held interface, preserving its backing bytes. */
+    void stopMedia();
+    /** External lifecycle control is enabled. */
+    bool managedMedia() const { return deferStartup; }
+    /** Media has started. */
+    bool runningMedia() const { return mediaRunning; }
 
     /**
      * Setup the rank based on packet received

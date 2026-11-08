@@ -77,7 +77,8 @@ MemCtrl::MemCtrl(const MemCtrlParams &p) :
     backendLatency(p.static_backend_latency),
     commandWindow(p.command_window),
     prevArrival(0),
-    stats(*this)
+    stats(*this),
+    maintenanceEvent([this] { checkMedia(); }, name() + ".maintenance")
 {
     DPRINTF(MemCtrl, "Setting up controller\n");
 
@@ -1420,6 +1421,102 @@ MemCtrl::allIntfDrained() const
    // NVM: No outstanding NVM writes
    // NVM: All other queues verified as needed with calling logic
    return dram->allRanksDrained();
+}
+
+void
+MemCtrl::startMedia()
+{
+    auto *iface = dynamic_cast<DRAMInterface *>(dram);
+    panic_if(!iface, "External lifecycle requires DRAM");
+    iface->startMedia();
+    dram->nextBurstAt = curTick() + dram->commandOffset();
+}
+
+bool
+MemCtrl::mediaAvailable() const
+{
+    auto *iface = dynamic_cast<DRAMInterface *>(dram);
+    return iface && iface->runningMedia() && !maintenanceDone &&
+        !iface->mediaHeld() && !iface->selfRefreshing();
+}
+
+void
+MemCtrl::quiesceMedia(std::function<void()> done)
+{
+    panic_if(maintenanceDone, "Concurrent media maintenance");
+    maintenanceDone = std::move(done);
+    maintenanceOp = 1;
+    maintenanceClosing = false;
+    schedule(maintenanceEvent, curTick() + clockPeriod());
+}
+
+void
+MemCtrl::enterSelfRefresh(std::function<void()> done)
+{
+    panic_if(maintenanceDone, "Concurrent media maintenance");
+    auto *iface = dynamic_cast<DRAMInterface *>(dram);
+    iface->enterSelfRefresh();
+    maintenanceDone = std::move(done);
+    maintenanceOp = 2;
+    schedule(maintenanceEvent, curTick() + clockPeriod());
+}
+
+void
+MemCtrl::resumeMedia(std::function<void()> done)
+{
+    panic_if(maintenanceDone, "Concurrent media maintenance");
+    auto *iface = dynamic_cast<DRAMInterface *>(dram);
+    iface->resumeMedia();
+    maintenanceDone = std::move(done);
+    maintenanceOp = 3;
+    schedule(maintenanceEvent, curTick() + clockPeriod());
+}
+
+void
+MemCtrl::stopMedia()
+{
+    panic_if(maintenanceDone, "Media maintenance has not completed");
+    auto *iface = dynamic_cast<DRAMInterface *>(dram);
+    iface->stopMedia();
+    burstTicks.clear();
+    prevArrival = 0;
+}
+
+void
+MemCtrl::checkMedia()
+{
+    auto *iface = dynamic_cast<DRAMInterface *>(dram);
+    bool done = false;
+    if (maintenanceOp == 1) {
+        if (iface->selfRefreshing())
+            iface->resumeMedia();
+        if (!totalReadQueueSize && totalWriteQueueSize) {
+            dram->busStateNext = WRITE;
+            if (!nextReqEvent.scheduled())
+                schedule(nextReqEvent, curTick());
+        }
+        if (!totalReadQueueSize && !totalWriteQueueSize &&
+            respQueue.empty() && port.idle() && iface->mediaIdle()) {
+            if (!iface->runningMedia() || iface->mediaHeld()) {
+                done = true;
+            } else if (!maintenanceClosing) {
+                iface->holdMedia();
+                maintenanceClosing = true;
+            }
+        }
+    } else if (maintenanceOp == 2) {
+        done = iface->selfRefreshing();
+    } else {
+        done = iface->mediaIdle();
+    }
+    if (done) {
+        auto callback = std::move(maintenanceDone);
+        maintenanceDone = nullptr;
+        maintenanceOp = 0;
+        callback();
+    } else {
+        schedule(maintenanceEvent, curTick() + clockPeriod());
+    }
 }
 
 DrainState

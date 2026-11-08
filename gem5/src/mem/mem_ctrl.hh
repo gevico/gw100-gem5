@@ -51,6 +51,7 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#include <functional>
 
 #include "base/callback.hh"
 #include "base/statistics.hh"
@@ -259,6 +260,8 @@ class MemCtrl : public qos::MemCtrl
 
         MemoryPort(const std::string& name, MemCtrl& _ctrl);
         void disableSanityCheck();
+        /** All queued timing responses have been accepted. */
+        bool idle() const { return queue.size() == 0; }
 
       protected:
 
@@ -779,6 +782,21 @@ class MemCtrl : public qos::MemCtrl
     virtual void startup() override;
     virtual void drainResume() override;
 
+    /** Start explicitly managed DRAM after initialization. */
+    void startMedia();
+    /** Flush writes and hold precharged DRAM after an extra refresh. */
+    void quiesceMedia(std::function<void()> done);
+    /** Enter self-refresh from an explicitly held interface. */
+    void enterSelfRefresh(std::function<void()> done);
+    /** Resume an explicitly held or self-refreshing interface. */
+    void resumeMedia(std::function<void()> done);
+    /** Reset an already held interface, preserving backing bytes. */
+    void stopMedia();
+    /** Managed media can accept normal timing requests. */
+    bool mediaAvailable() const;
+    /** No lifecycle operation is in progress. */
+    bool maintenanceIdle() const { return !maintenanceDone; }
+
   protected:
 
     virtual Tick recvAtomic(PacketPtr pkt);
@@ -790,6 +808,17 @@ class MemCtrl : public qos::MemCtrl
 
     bool recvFunctionalLogic(PacketPtr pkt, MemInterface* mem_intr);
     Tick recvAtomicLogic(PacketPtr pkt, MemInterface* mem_intr);
+
+    /** Poll the bounded local maintenance operation. */
+    void checkMedia();
+    /** Lifecycle operation completion. */
+    std::function<void()> maintenanceDone;
+    /** Local operation, 1 hold, 2 self-refresh, 3 resume. */
+    unsigned maintenanceOp = 0;
+    /** The extra refresh has been requested. */
+    bool maintenanceClosing = false;
+    /** Event independent of the global checkpoint drain manager. */
+    EventFunctionWrapper maintenanceEvent;
 
 };
 
