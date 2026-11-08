@@ -183,7 +183,7 @@ class TestHost : public HdmaHostIf
 
     /** 发出一个 MWr */
     void
-    write(Addr a, unsigned len, const uint8_t *data) override
+    write(Addr a, unsigned len, const uint8_t *data, uint8_t = 0) override
     {
         check(a, len, mps);
         writes++;

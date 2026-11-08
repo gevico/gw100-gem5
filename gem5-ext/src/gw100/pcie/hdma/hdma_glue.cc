@@ -86,7 +86,8 @@ HostDmaPort::read(Addr addr, unsigned len, HostReadDone done)
 
 /** 发出一个 MWr */
 void
-HostDmaPort::write(Addr addr, unsigned len, const uint8_t *data)
+HostDmaPort::write(Addr addr, unsigned len, const uint8_t *data,
+                   uint8_t)
 {
     auto op = std::make_shared<Op>();
     op->write = true;

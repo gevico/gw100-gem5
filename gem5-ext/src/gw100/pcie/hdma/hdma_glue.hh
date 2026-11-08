@@ -88,7 +88,8 @@ class HostDmaPort : public RequestPort, public HdmaHostIf
     bool canWrite() const override { return txInFlight < txCredits; }
 
     /** 发出一个 MWr */
-    void write(Addr addr, unsigned len, const uint8_t *data) override;
+    void write(Addr addr, unsigned len, const uint8_t *data,
+               uint8_t attributes = 0) override;
     /** 复位或 D3hot 时丢弃尚未被 host 端口接受的包 */
     void cancelQueued();
 
