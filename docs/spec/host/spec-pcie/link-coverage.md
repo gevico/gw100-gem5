@@ -2,7 +2,7 @@
 
 <!-- 由 tools/pcie_spec.py 生成，请勿手改 -->
 
-档案版本为 0.1。gw100-link.json SHA-256=a6a97acad6e22cab2f538d7dc12ea1cec57bebc6e2cf5756886b6d1886a807d6
+档案版本为 0.1。gw100-link.json SHA-256=88b81835dc5b9be692f402751fc8393a63512f05aa9579a3dc72865d7d78d997
 
 ## 实施关口
 
@@ -10,8 +10,8 @@
 |---|---|
 | G0 | complete |
 | G1 | complete |
-| G2 | pending |
-| G3 | waiting_for_G2 |
+| G2 | complete |
+| G3 | complete |
 
 当前表区分来源核验、参考设计和实现验收。
 共享定义覆盖已核验常量和已批准预算，后续链路实现依关口推进。

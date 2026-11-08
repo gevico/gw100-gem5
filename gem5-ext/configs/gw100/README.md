@@ -9,18 +9,22 @@
 2. PCIe 总线上挂着 `Gw100PciDevice`，它的寄存器层按 `docs/spec/host/spec-pcie.md`
    实现，由裸机测试 `pcie_*` 验证。裸机测试的架构见 `baremetal/README.md`。
 
-设备目前已实现（寄存器的完整定义见 spec-pcie）：
+当前正常配置为 `gw100`，Host 支持 timing/O3，默认 Gen4 x4。
+`gw100_compat` 承载原有 atomic 功能回归。能力矩阵由
+`baremetal/test-matrix.json` 声明。
 
-| 部分 | 内容 |
+| 部分 | 正常配置 |
 |---|---|
-| 配置空间 | Vendor/Device ID 0x1234/0x1000（仿真用占位值）、Class 0x12、INTA；capability：PM（0x40）、PCI Express（0x50） |
-| BAR0（1 MiB） | 全局寄存器（0x0000）、BAR2 窗口配置（0x1000）、启动寄存器（0x4000，上电即就绪的桩）；其余块按保留处理 |
-| BAR2（64 MiB，64 位可预取） | 调试窗口：16 个 4 MiB 窗口，只能指向设备内存。启动窗口未建模，桩模型始终报告调试窗口已开启 |
-| 设备内存 | 32 GiB 的 `SimpleMemory`，作为设备的子对象，不在 host 地址映射里 |
-| 复位 | FLR、D3hot→D0 |
+| 链路 | Gen1–Gen4、x1/x2/x4，TLP/DLLP、CRC、信用、replay、数字训练与 L1 |
+| 配置空间 | PM、PCI Express、MSI-X、AER、Secondary PCIe、Data Link Feature、PHY16 |
+| BAR0 | 全局、窗口、启动、HDMA、HDI 和中断寄存器 |
+| BAR2 | 固件装载与调试窗口，正常访问经异步 timing 路径 |
+| 设备内存 | 四 Memory Tile、八通道、双 rank、32 GiB 通用 LPDDR5-8433 |
+| 软件 | 真实 RISC-V ROM、固件初始化、HDI COPY、MSI-X/INTx 与 ITS |
+| 生命周期 | FLR、设备完全复位、PERST、Hot Reset、Link Down、D3hot/D0 |
 
-还没有中断投递、MSI-X、DMA 和命令协议，也还没有驱动。相关的理想化见
-`gem5-ext/README.md` 的理想化清单 #9、#10a–#10d、#12a–#12c、#13a–#13c。
+PCIe、DRAM、临时互连与管理 Tile 的参考假设分别记录在
+`gem5-ext/README.md` 理想化清单和 PCIe 验收报告中。
 
 ## 构建 gem5
 

@@ -107,7 +107,7 @@ AARCH64_GDB ?= $(shell command -v aarch64-linux-gnu-gdb 2>/dev/null || command -
 .DEFAULT_GOAL := help
 .PHONY: all run test gem-build memory-spec-check FORCE
 .PHONY: memory-test
-.PHONY: pcie-spec-check pcie-source-check
+.PHONY: pcie-spec-check pcie-source-check pcie-test
 .PHONY: baremetal-build firmware-build vscode-config commit-check
 .PHONY: clean check format help
 
@@ -132,6 +132,15 @@ pcie-spec-check:
 
 pcie-source-check:
 	$(PYTHON) tools/pcie_spec.py --check --gate G0
+
+# PCIe 关口的源码核验、组件、独立性能和正常软件矩阵。
+pcie-test: gem-build baremetal-build firmware-build
+	$(PYTHON) tools/pcie_spec_test.py
+	$(PYTHON) tools/pcie_verify_test.py
+	$(PYTHON) tools/gtest.py --jobs $(JOBS)
+	$(PYTHON) tools/pcie_verify.py --matrix --output build/pcie-link/final
+	$(PYTHON) tools/pcie_system_verify.py --jobs $(TEST_JOBS)
+	$(BMTEST) --hosts "timing atomic o3"
 
 # 改了 PYTHON_CONFIG 等构建选项、或怀疑构建状态不一致时，用 make -B gem-build 强制构建
 $(GEM5_BIN): $(GEM5_INPUTS) $(GEM5_INPUT_STAMP) $(GEM5_KCONFIG)

@@ -1,7 +1,7 @@
 /**
  * @file  gw100_pcie_defs.h
  * @brief PCIe 共享定义，请勿手改
- * gw100-link.json SHA-256=a6a97acad6e22cab2f538d7dc12ea1cec57bebc6e2cf5756886b6d1886a807d6
+ * gw100-link.json SHA-256=88b81835dc5b9be692f402751fc8393a63512f05aa9579a3dc72865d7d78d997
  * @see spec-pcie
  */
 #ifndef GW100_PCIE_DEFS_H
