@@ -750,7 +750,24 @@ SramModel::initialize()
     initWord = initRemaining = 0;
 }
 /** 排空且就绪时进入保持，返回是否成功。 */
+bool
+SramModel::enterRetention()
+{
+    if (mode != State::Ready || !drained()) {
+        return false;
+    }
+    mode = State::Retention;
+    return true;
+}
 /** 从保持恢复到就绪。 */
+void
+SramModel::leaveRetention()
+{
+    if (mode != State::Retention) {
+        throw std::logic_error("SRAM 保持状态错误");
+    }
+    mode = State::Ready;
+}
 /** 验证实例内非空字节范围且避免地址溢出。 */
 void
 SramModel::checkRange(uint64_t address, unsigned size) const
@@ -799,5 +816,84 @@ SramModel::functionalWrite(uint64_t address, const uint8_t *data,
     }
 }
 /** 保存已排空的 Ready 或 Retention 状态。 */
+void
+SramModel::save(std::ostream &out) const
+{
+    if (!drained() || (mode != State::Ready && mode != State::Retention)) {
+        throw std::logic_error("SRAM checkpoint 要求稳定态排空");
+    }
+    out << "GW100-SRAM-1\n"
+        << cfg.fingerprint() << '\n'
+        << unsigned(mode) << ' ' << cycle << ' ' << generation << ' ' << nextId
+        << ' ' << paused << '\n';
+    const auto &s = counters;
+    out << s.accepted << ' ' << s.completed << ' ' << s.rejected << ' '
+        << s.reads << ' ' << s.writes << ' ' << s.rmw << ' ' << s.ce << ' '
+        << s.ue << ' ' << s.readBytes << ' ' << s.writeBytes << ' '
+        << s.initWrites << ' ' << s.maxBankWait << ' ' << s.bankWait << ' '
+        << s.responseWait << ' ' << s.queueWait << ' ' << s.dependencyWait
+        << '\n';
+    out.write(reinterpret_cast<const char *>(bytes.data()), bytes.size());
+    out.write(reinterpret_cast<const char *>(checks.data()), checks.size());
+    for (const auto &bank : banks) {
+        out << '\n' << bank.readRound << ' ' << bank.writeRound;
+    }
+    if (!out) {
+        throw std::runtime_error("SRAM checkpoint 写入失败");
+    }
+}
 /** 校验完整快照后原子恢复，失败时保留原实例。 */
+void
+SramModel::restore(std::istream &in)
+{
+    if (!drained()) {
+        throw std::logic_error("SRAM restore 要求排空");
+    }
+    std::string magic, profile;
+    std::getline(in, magic);
+    std::getline(in, profile);
+    if (magic != "GW100-SRAM-1" || profile != cfg.fingerprint()) {
+        throw std::invalid_argument("SRAM checkpoint 档案不匹配");
+    }
+    SramModel restored(cfg);
+    unsigned state = 0;
+    in >> state >> restored.cycle >> restored.generation >> restored.nextId >>
+        restored.paused;
+    if (!in) {
+        throw std::runtime_error("SRAM checkpoint 不完整");
+    }
+    if (state != unsigned(State::Ready) &&
+        state != unsigned(State::Retention)) {
+        throw std::invalid_argument("SRAM checkpoint 状态错误");
+    }
+    auto &s = restored.counters;
+    in >> s.accepted >> s.completed >> s.rejected >> s.reads >> s.writes >>
+        s.rmw >> s.ce >> s.ue >> s.readBytes >> s.writeBytes >> s.initWrites >>
+        s.maxBankWait >> s.bankWait >> s.responseWait >> s.queueWait >>
+        s.dependencyWait;
+    in.get();
+    in.read(reinterpret_cast<char *>(restored.bytes.data()), bytes.size());
+    in.read(reinterpret_cast<char *>(restored.checks.data()), checks.size());
+    for (auto &bank : restored.banks) {
+        in >> bank.readRound >> bank.writeRound;
+        if (bank.readRound >= cfg.sources || bank.writeRound >= cfg.sources) {
+            throw std::invalid_argument("SRAM checkpoint 仲裁状态错误");
+        }
+        bank.readNext = bank.writeNext = restored.cycle;
+    }
+    if (!in) {
+        throw std::runtime_error("SRAM checkpoint 不完整");
+    }
+    bytes.swap(restored.bytes);
+    checks.swap(restored.checks);
+    banks.swap(restored.banks);
+    cycle = restored.cycle;
+    generation = restored.generation;
+    nextId = restored.nextId;
+    paused = restored.paused;
+    counters = restored.counters;
+    mode = State(state);
+    lastAccept.assign(cfg.sources, Never);
+    lastResponse.assign(cfg.sources, Never);
+}
 } // namespace gem5::gw100
