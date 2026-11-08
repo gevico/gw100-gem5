@@ -1,0 +1,6 @@
+# BAR0 寄存器字节使能和副作用的组件测试。
+Import('*')
+
+GTest('bar0_handler.test', 'bar0_handler.test.cc',
+      with_tag('gw100 pcie bar0'), with_tag('gw100 pcie status'),
+      with_tag('gem5 serialize'))
