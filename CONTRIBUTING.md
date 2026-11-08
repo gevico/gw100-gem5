@@ -13,7 +13,7 @@
 ## 1. 开始之前
 
 ```sh
-git clone --recurse-submodules <仓库地址>     # 已经克隆的：git submodule update --init
+git clone <仓库地址>                         # gem5 源码随主仓库检出
 git config core.hooksPath tools/git-hooks     # 启用文件头、提交信息、分支命名和 DCO 检查（每个克隆做一次）
 git config user.name  "<姓名或账号名>"         # 不要求真实姓名；DCO 签署（§3.7）会用到这两项
 git config user.email "<邮箱>"
@@ -72,7 +72,7 @@ git submodule update --init reference
 - **每个提交都必须能构建，测试全部通过。** 这样才能用 `git bisect` 定位问题。
 - **生成物和源文件放在同一个提交里。** 例如改了 ISA 的单一真源 YAML，就同时提交重新生成的 `isa_defs.*`。不得手改生成物。
 - **不得提交：** 构建产物、虚拟环境、测试包输出、个人编辑器配置、密钥。`.gitignore` 已覆盖常见情况。超过 5 MB 的文件先在评审中说明理由。
-- **不得修改 `gem5/` 子模块的内容。** 确实需要改 gem5 本体时，做成补丁放进 `gem5-ext/patches/`，并注明原因。升级 gem5 时，把子模块指针的变更单独提交，scope 用 `gem5`。
+- **`gem5/` 源码由主仓库直接跟踪。** 需要改 gem5 本体时直接修改源码，并注明原因和验证结果。升级上游时单独提交源码变更及 `gem5/UPSTREAM.json`，scope 用 `gem5`。`gem5-ext/patches/` 保存导入时已经合入源码的补丁记录。
 
 ### 3.2 提交信息格式
 
@@ -113,7 +113,7 @@ git submodule update --init reference
 | `style` | 只改格式，例如 clang-format、Black |
 | `test` | 只增改测试 |
 | `docs` | 手册、README、注释等文档 |
-| `build` | 构建系统、依赖、gem5 子模块 |
+| `build` | 构建系统、依赖、内置 gem5 源码集成 |
 | `ci` | 持续集成配置 |
 | `chore` | 其他杂项 |
 | `revert` | 撤销之前的提交。正文写明被撤销提交的哈希和撤销原因 |
@@ -304,7 +304,7 @@ pre-commit 钩子只检查新增的文件；改名时要同步修改 `@file`，�
 
 ## 8. 第三方代码与资料
 
-- **gem5**：以子模块方式引入，固定在 `.gitmodules` 和子模块指针记录的 commit。规则见 §3.1。
+- **gem5**：源码直接收录在主仓库的 `gem5/`，上游仓库和基线提交记录在 `gem5/UPSTREAM.json`。保留上游版权、许可证和测试资产。源码维护规则见 §3.1。
 - **调研资料（`reference/`）**：放在独立仓库 [`gevico/gw100-references`](https://github.com/gevico/gw100-references)，以子模块挂在 `reference/`（2026-10-21 拆出）。本项目是开源的，调研资料随仓库公开托管、对外分发（2026-10-18 确认）。资料的版权仍归原作者或出版方所有，引用时注明出处；新增资料只收官方或开放渠道发布的版本。
   - 增改资料先在 `gw100-references` 合入，再在本仓库单独提交子模块指针的更新，scope 用 `reference`。
   - PDF 原件和转换出的图片直接入库，不用 Git LFS（2026-10-18 决定）。资料会永久留在 git 历史里，所以只收确有参考价值的资料，单个文件超过 5 MB 时，在合并请求里说明理由。
