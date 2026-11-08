@@ -456,6 +456,48 @@ TEST(LinkModel, SequenceAndCreditWrap)
 }
 
 /** L0 和 L1 的排空快照恢复累计信用、序号及下一包相位。 */
+TEST(LinkModel, SnapshotL0AndL1)
+{
+    for (bool low_power : {false, true}) {
+        LinkRig original;
+        original.ready();
+        auto first = LinkRig::write();
+        ASSERT_TRUE(original.link.submit(0, first));
+        original.until([&] { return original.received.size() == 1; });
+        if (low_power) {
+            original.link.setD3hot(true);
+            original.until(
+                [&] { return original.link.state() == LinkState::L1; });
+        }
+        EXPECT_THROW(original.link.snapshot(), std::logic_error);
+        original.link.drain();
+        original.until([&] { return original.link.isDrained(); });
+        auto saved = original.link.snapshot();
+        LinkRig restored;
+        restored.time = original.time;
+        restored.due = UINT64_MAX;
+        restored.link.restore(saved);
+        original.link.resume();
+        restored.link.resume();
+        if (low_power) {
+            original.link.setD3hot(false);
+            restored.link.setD3hot(false);
+            original.ready();
+            restored.ready();
+        }
+        auto next = LinkRig::write();
+        auto copy = next;
+        ASSERT_TRUE(original.link.submit(0, next));
+        ASSERT_TRUE(restored.link.submit(0, copy));
+        original.until([&] { return original.received.size() == 2; });
+        restored.until([&] { return restored.received.size() == 1; });
+        EXPECT_EQ(original.time, restored.time);
+        EXPECT_EQ(original.link.counters(0).packetHalf,
+                  restored.link.counters(0).packetHalf);
+        EXPECT_EQ(original.link.counters(0).tlpTransmit,
+                  restored.link.counters(0).tlpTransmit);
+    }
+}
 
 /** 满载双向大包不能把 ACK 发送拖过表 3-7 规定的最大期限。 */
 TEST(LinkModel, AckDeadlineUnderDuplexTraffic)
