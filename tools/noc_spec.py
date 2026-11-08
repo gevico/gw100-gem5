@@ -1737,7 +1737,9 @@ def generated_outputs(data, raw, values, dependencies, report):
     return {
         "firmware/common/generated/gw100_noc_defs.h": "\n".join(c),
         "gem5-ext/src/gw100/noc/generated/noc_defs.hh": "\n".join(cc),
-        "gem5-ext/configs/gw100/generated/noc_defs.py": "\n".join(py).rstrip() + "\n",
+        "gem5-ext/configs/gw100/generated/noc_defs.py": (
+            "\n".join(py).rstrip() + "\n"
+        ),
         "docs/spec/interconnect/spec-noc/coverage.md": "\n".join(coverage),
         "docs/spec/interconnect/spec-noc/budget.md": "\n".join(budget),
     }
