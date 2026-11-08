@@ -18,7 +18,9 @@ GW100：面向端侧大模型推理的数据流架构 ASIC，以 PCIe 设备接�
 | 分支、提交、评审、文件头等规范 | `CONTRIBUTING.md` |
 | 调研资料及其来源 | `reference/README.md` |
 
-其他目录：`gem5/` 是上游 gem5 子模块，不要修改；`reference/` 是调研资料子模块（`gevico/gw100-references`），默认不拉取，拉取方法见 `CONTRIBUTING.md` §1，改资料要到那个仓库提交；`tools/isagen/` 是原来的 ISA 生成器，输入（`spec-src/`）和输出（func-core 的 `isa_defs.hh`）都已删除，单一真源重建前不可用。
+`gem5/` 是主仓库直接跟踪的内置源码，上游来源记录在 `gem5/UPSTREAM.json`。GW100 组件放在 `gem5-ext/`，需要调整 gem5 本体时直接修改 `gem5/` 并说明原因。
+
+`reference/` 是调研资料子模块（`gevico/gw100-references`），默认不拉取，拉取方法见 `CONTRIBUTING.md` §1，改资料要到那个仓库提交。`tools/isagen/` 是原来的 ISA 生成器，输入（`spec-src/`）和输出（func-core 的 `isa_defs.hh`）都已删除，单一真源重建前不可用。
 
 ## 必须遵守
 
