@@ -34,7 +34,11 @@ SELECTED := $(if $(TEST),$(TEST),$(TESTS_ALL))
 # MMU 关闭，内存按 Device 类型访问：必须对齐（-mstrict-align），且不用 FP/SIMD
 CFLAGS := -std=c11 -O2 -g -Wall -Wextra -Werror \
           -ffreestanding -fno-tree-loop-distribute-patterns \
-          -mgeneral-regs-only -mstrict-align -Iinclude -MMD -MP
+          -mgeneral-regs-only -mstrict-align -Iinclude -I../firmware/common -MMD -MP
+DEVICE_PROFILE ?= precise
+ifeq ($(DEVICE_PROFILE),compat)
+CFLAGS += -DGW100_COMPAT
+endif
 ASFLAGS := -g -Iinclude -DGW100_FW_IMAGE='"$(abspath $(FW_IMAGE))"' \
            -DGW100_FW_WDT_IMAGE='"$(abspath $(FW_WDT_IMAGE))"' \
            -DGW100_FW_HDMA_IMAGE='"$(abspath $(FW_HDMA_IMAGE))"' \
