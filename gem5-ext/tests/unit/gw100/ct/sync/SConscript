@@ -1,0 +1,4 @@
+# CtSync（src/gw100/ct/sync/）的单元测试
+Import('*')
+
+GTest('ct_sync.test', 'ct_sync.test.cc', with_tag('gw100 ct sync'))
