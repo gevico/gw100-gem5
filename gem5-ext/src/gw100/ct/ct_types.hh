@@ -45,8 +45,8 @@ constexpr Addr CtSramBankLimit = 0x0000'0100;
 enum class CtStatus : uint8_t
 {
     Ok = 0,
-    Fault,
-    Reject, /** 被拒绝（访问越界等等） */
+    Reject,
+    Fault, /** 被拒绝（访问越界等等） */
 };
 
 constexpr Addr

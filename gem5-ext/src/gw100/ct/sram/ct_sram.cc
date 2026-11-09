@@ -9,15 +9,12 @@
 
 #include <algorithm>
 
-#include "base/logging.hh"
 #include "src/gw100/ct/ct_types.hh"
 
 namespace gem5
 {
 namespace gw100
 {
-
-//todo 添加当前 now 时钟的获取
 
 CtSram::CtSram(CtClockIf &clock_if)
     : clockIf(clock_if), bankFree{}, storage(CtSramSize, 0)

@@ -14,7 +14,6 @@
 
 #include "base/types.hh"
 #include "src/gw100/ct/ct_types.hh"
-#include "src/gw100/ml/ml_types.hh"
 
 namespace gem5
 {
