@@ -17,5 +17,11 @@ class Gw100Ct(ClockedObject):
     
     type = "Gw100Ct"
     cxx_header = "src/gw100/ct/gw100_ct_device.hh"
+    cxx_class = "gem5::gw100::Gw100Ct" 
+    
+    pio = ResponsePort("外部读写接口")
+    
+    # todo这里配置上需要注意一个普遍性多实现的问题，对应 tile 有对应的坐标
+    window_base = Param.Addr(0x10_0100_0000, "...")
     
     

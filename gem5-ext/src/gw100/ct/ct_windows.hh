@@ -21,33 +21,33 @@ namespace gw100
 class CtWindow : public CtWindowHandler
 {
   public:
-  /** 记录 ct 内部自构建具体的信息，用于地址匹配调用 */
-  struct SubWindow{
-    Addr        base;
-    Addr        size;
-    CtWindowHandler *handler;
-  };
+    /** 记录 ct 内部自构建具体的信息，用于地址匹配调用 */
+    struct SubWindow
+    {
+        Addr base;
+        Addr size;
+        CtWindowHandler *handler;
+    };
 
-  /** 注册自构建的信息 */
-  CtWindow(
-    CtWindowHandler &sram,
-    CtWindowHandler &sync,
-    Addr base = 0
-  );
+    /** 注册自构建的信息 */
+    CtWindow(CtWindowHandler &sram, CtWindowHandler &sync, Addr base = 0);
 
-  /** 根据 subwindows 进行具体的下级构建调度 */
-  CtAccessResult access(CtAccess &a, Tick now)override;
-  void reset() override;
+    ~CtWindow() override = default;
+
+    /** 根据 subwindows 进行具体的下级构建调度 */
+    CtAccessResult access(CtAccess &a, Tick now) override;
+    void reset() override;
+
   private:
-  /** 实际进行信息储存的 vector */
-  std::vector<SubWindow> SubWindows;
-  /** 访问 tile 的地址偏移，0 默认全局 */
-  Addr                    windowsBase;
-  /** 进行地址匹配和返回特定状态，检验合法并算出单个 tile 内部的偏移 */
-  CtStatus normalizeAddr(Addr base, unsigned size, Addr &right_off) const;
+    /** 实际进行信息储存的 vector */
+    std::vector<SubWindow> SubWindows;
+    /** 访问 tile 的地址偏移，0 默认全局 */
+    Addr windowsBase;
+    /** 进行地址匹配和返回特定状态，检验合法并算出单个 tile 内部的偏移 */
+    CtStatus normalizeAddr(Addr base, unsigned size, Addr &right_off) const;
 };
 
-};
-}
+} // namespace gw100
+} // namespace gem5
 
 #endif
