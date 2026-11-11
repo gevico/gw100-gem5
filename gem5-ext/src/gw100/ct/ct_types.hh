@@ -80,6 +80,15 @@ struct CtAccessResult
     Tick delay = 0;
 };
 
+/** nidma的通信规范 */
+struct CtNidmaDesc
+{
+    Addr remote_dpa;
+    Addr local_offest;
+    unsigned len;
+    bool is_read;
+};
+
 //todo 定义compute tile 内部 riscfive 核的通信规范
 
 }
