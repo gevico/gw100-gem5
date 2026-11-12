@@ -89,6 +89,54 @@ struct CtNidmaDesc
     bool is_read;
 };
 
+/** 矩阵引擎的交互 */
+/** [MxK] * [KxN] = [MxN]*/
+struct CtMatmulDesc
+{
+    Addr a_offset;
+    Addr b_offset;
+    Addr dst_offset;
+    unsigned M;
+    unsigned N;
+    unsigned K;
+    bool sig_en;
+    unsigned sync_id;
+};
+
+enum CtVecOp{
+    add,
+    mult,
+    silu,
+};
+
+/** 处理数据的来源地址 */
+struct CtVectorDesc
+{
+    CtVecOp op;
+
+    /** 操作数 */
+    /** 在我们最开始只实现的指令中 src0 仅仅来源于 fc32 */
+    unsigned src0_fc32_idx;
+    unsigned src1_fc32_idx;
+    Addr src1_sram_idx;
+    bool src1_from_fc32;
+
+    /** 结果地址 */
+    bool dst_from_fc32;
+    unsigned dst_fc32_idx;
+    Addr dst_sram_idx;
+
+    /** 同步 */
+    /** 需要等待矩阵引擎判断 */
+    bool wait_en;
+    unsigned wait_sync_id;
+    uint32_t wait_val;
+
+    bool     sig_en;              
+    unsigned sig_sync_id;
+    unsigned float_num;
+};
+
 //todo 定义compute tile 内部 riscfive 核的通信规范
 
 }

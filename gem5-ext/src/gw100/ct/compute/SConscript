@@ -1,0 +1,5 @@
+# compute/: compute tile 中承担具体计算的部件
+Import('*')
+
+Source('ct_matrix_engine.cc', add_tags=['gw100 compute tile', 'gw100 ct compute'])
+Source('ct_vector_engine.cc', add_tags=['gw100 compute tile', 'gw100 ct compute'])
