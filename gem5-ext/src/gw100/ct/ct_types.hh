@@ -137,7 +137,28 @@ struct CtVectorDesc
     unsigned float_num;
 };
 
-//todo 定义compute tile 内部 riscfive 核的通信规范
+/** ctrl 具体操作类型 */
+enum CtCtrlOp{
+    Nidma,
+    Matmul,
+    Vector,
+    End,
+};
+
+/** ctrl 核状态 */
+enum CtCtrlStatus{
+    Idle,
+    Running,
+    Done,
+    Fault,
+};
+
+struct CtCmd{
+    CtCtrlOp   Op;
+    CtMatmulDesc Matmul{};
+    CtVectorDesc Vector{};
+    CtNidmaDesc Nidma{};
+};
 
 }
 }
