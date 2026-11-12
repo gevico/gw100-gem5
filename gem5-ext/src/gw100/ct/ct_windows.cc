@@ -8,11 +8,10 @@
 #include "src/gw100/ct/ct_windows.hh"
 
 #include <cstring>
-#include <vector>
 
 #include "src/gw100/ct/ct_if.hh"
 #include "src/gw100/ct/ct_types.hh"
-
+#include "src/gw100/ct/ctrl/ct_ctrl_ram.hh"
 namespace gem5
 {
 namespace gw100
@@ -26,10 +25,11 @@ CtWindow::reset()
     }
 }
 
-CtWindow::CtWindow(CtWindowHandler &sram, CtWindowHandler &sync, Addr base)
+CtWindow::CtWindow(CtWindowHandler &sram, CtWindowHandler &sync, CtCtrlSram &ctrl_ram,Addr base)
     : SubWindows{
           {CtSramBase, CtSramSize, &sram},
           {CtSyncBase, CtSyncSize, &sync},
+          {CtrlRamBase,CtrlRamSize,&ctrl_ram},
       },
       windowsBase(base)
 {
@@ -104,5 +104,5 @@ CtWindow::access(CtAccess &a, Tick now)
     return res;
 }
 
-} // namespace gw100
-} // namespace gem5
+}
+} 

@@ -1,3 +1,4 @@
 Import('*')
 
 Source('ct_ctrl.cc', add_tags=['gw100 compute tile', 'gw100 ct ctrl'])
+Source('ct_ctrl_ram.cc',add_tags=['gw100 compute tile', 'gw100 ct ctrl'])

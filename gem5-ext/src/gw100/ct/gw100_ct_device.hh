@@ -20,6 +20,7 @@
 #include "src/gw100/ct/ct_windows.hh"
 #include "src/gw100/ct/sram/ct_sram.hh"
 #include "src/gw100/ct/sync/ct_sync.hh"
+#include "src/gw100/ct/ctrl/ct_ctrl_ram.hh"
 
 namespace gem5
 {
@@ -83,6 +84,7 @@ class Gw100Ct : public ClockedObject
     CtSram sram;
     CtSync sync;
     CtWindow window;
+    CtCtrlSram ctrl_ram;
     CtPioPort pio;
 };
 

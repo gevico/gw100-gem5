@@ -9,11 +9,9 @@
 #ifndef __GW100_CT_CT_TYPES_HH__
 #define __GW100_CT_CT_TYPES_HH__
 
-#include <array>
 #include <cstdint>
 
 #include "base/types.hh"
-#include "sim/serialize.hh"
 
 namespace gem5
 {
@@ -40,6 +38,17 @@ constexpr Addr NocPacketLimit = 0x0000'0040;
 /** 访问 bank 边界 */
 constexpr Addr CtSramBankLimit = 0x0000'0100;
 
+/** 控制核 ram 具体的字段划分,仅仅是初始定义 */
+/** 本 tile 控制单元和状态储存起点 [0x0000, 0x0040) */
+constexpr Addr CtrlSramHead = 0x0000;
+/** 多 tile 的信箱起点 [0x0040, 0x0100) */
+constexpr Addr CtrlSramCue = 0x0040;
+/** 指令储存起点 [0x0100, 0x8000) */
+constexpr Addr CtrlSramCmd = 0x0100;
+/** 运行状态位，ctrl 和 sram 之间做同步 */
+constexpr Addr CtrlStatusOff = 0x0004;
+/** 指令总条数在 CtrlRam 中的偏移 */
+constexpr Addr CtrlCmdNumOff = 0x0008;
 
 /** 返回状态码 */
 enum class CtStatus : uint8_t

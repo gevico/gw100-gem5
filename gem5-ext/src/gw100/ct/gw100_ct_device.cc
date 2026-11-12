@@ -10,6 +10,7 @@
 #include "base/logging.hh"
 #include "src/gw100/ct/ct_types.hh"
 #include "src/gw100/ct/ct_windows.hh"
+#include "src/gw100/ct/ctrl/ct_ctrl_ram.hh"
 
 namespace gem5
 {
@@ -118,7 +119,8 @@ Gw100Ct::Gw100Ct(const Params &p)
       clock(*this, [this] { tick(); }),
       sram(clock),
       sync(clock),
-      window(sram, sync, windowBase),
+      ctrl_ram(clock),
+      window(sram, sync,ctrl_ram, windowBase),
       pio(name() + ".pio", *this, window, windowBase)
 {
 }

@@ -13,6 +13,7 @@
 
 #include "src/gw100/ct/ct_if.hh"
 #include "src/gw100/ct/ct_types.hh"
+#include "src/gw100/ct/ctrl/ct_ctrl_ram.hh"
 
 namespace gem5
 {
@@ -30,7 +31,7 @@ class CtWindow : public CtWindowHandler
     };
 
     /** 注册自构建的信息 */
-    CtWindow(CtWindowHandler &sram, CtWindowHandler &sync, Addr base = 0);
+    CtWindow(CtWindowHandler &sram, CtWindowHandler &sync, CtCtrlSram &ctrl_ram, Addr base = 0);
 
     ~CtWindow() override = default;
 
@@ -47,7 +48,7 @@ class CtWindow : public CtWindowHandler
     CtStatus normalizeAddr(Addr base, unsigned size, Addr &right_off) const;
 };
 
-} // namespace gw100
-} // namespace gem5
+} 
+} 
 
 #endif
