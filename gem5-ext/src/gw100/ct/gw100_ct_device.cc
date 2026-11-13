@@ -147,7 +147,7 @@ CtDmaPort::sendWrite(Addr dpa, unsigned len, const uint8_t *data,CtNocWriteDone 
 bool
 CtDmaPort::recvTimingResp(PacketPtr pkt)
 {
-    /** 从返回的 pkt 上弹出栈顶的 SenderState，并向下转型还原成 CallbackState* */
+    /** 从返回的 pkt 上弹出栈顶的 SendeerState，并向下转型还原成 CallbackState* */
     auto *back = dynamic_cast<Callback *>(pkt->popSenderState());
     CtStatus st = pkt->isError() ? CtStatus::Reject : CtStatus::Ok;
 
