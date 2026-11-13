@@ -1,0 +1,3 @@
+Import('*')
+
+GTest('ct_sram.test', 'ct_sram.test.cc', with_tag('gw100 ct sram'))
