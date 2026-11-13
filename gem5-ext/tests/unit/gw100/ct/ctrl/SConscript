@@ -1,0 +1,12 @@
+Import('*')
+
+GTest(
+    'ct_ctrl.test',
+    'ct_ctrl.test.cc',
+    with_tag('gw100 ct ctrl'),
+    with_tag('gw100 ct compute'),
+    with_tag('gw100 ct nidma'),
+    with_tag('gw100 ct window'),
+    with_tag('gw100 ct sram'),
+    with_tag('gw100 ct sync'),
+)
