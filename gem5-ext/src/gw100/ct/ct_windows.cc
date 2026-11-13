@@ -93,7 +93,7 @@ CtWindow::access(CtAccess &a, Tick now)
     }
 
     for (auto &sw : SubWindows) {
-        if (offset >= sw.base && a.size <= sw.size - (offset - sw.base)) {
+        if (offset >= sw.base && offset - sw.base < sw.size &&a.size <= sw.size - (offset - sw.base)) {
             CtAccess sub = a;
             sub.base = offset;
             return sw.handler->access(sub, now);

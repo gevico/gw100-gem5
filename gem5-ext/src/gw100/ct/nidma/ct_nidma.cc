@@ -156,7 +156,6 @@ CtNidma::loadWindows(){
         Addr to256b = CtSramBankLimit - (curLocal % CtSramBankLimit);
         Addr rem = curDesc.len - index;
         Addr chunk = std::min({CtSramBankLimit, rem, to256b});
-        index += chunk;
         CtAccess a = CtAccess{
             .base = curLocal,
             .data = &buf[index],
@@ -168,6 +167,7 @@ CtNidma::loadWindows(){
         if (res.status != CtStatus::Ok){
             return false;
         }
+        index += chunk;
     }
     return true;
 }

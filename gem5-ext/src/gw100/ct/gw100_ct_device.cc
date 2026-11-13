@@ -187,7 +187,7 @@ CtDmaPort::sendPacket(Addr dpa, const uint8_t *data, unsigned len, bool is_write
 /** 主类函数,初始化顺序要求和头文件中严格保证相同，分块展示也和头文件中保持一致 */
 Gw100Ct::Gw100Ct(const Params &p)
     : ClockedObject(p),
-      windowBase(p.window_base),
+      windowBase(p.base_addr + p.tile_id * p.window_size),
       clock(*this, [this] { tick(); }),
 
       sram(clock),
@@ -218,7 +218,7 @@ Gw100Ct::getPort(const std::string &if_name, PortID idx)
 {
     if (if_name == "pio") {
     return pio;
-    } else if (if_name == "dma") { 
+    } else if (if_name == "dma_port") { 
         return dma_port;
     }
     return ClockedObject::getPort(if_name, idx);

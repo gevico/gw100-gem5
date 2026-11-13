@@ -20,9 +20,12 @@ class Gw100Ct(ClockedObject):
     cxx_class = "gem5::gw100::Gw100Ct" 
     
     pio = ResponsePort("外部读写接口")
+    dma_port = RequestPort("Outbound NoC/DMA request port for CtNidma")
     
-    # todo这里配置上需要注意一个普遍性多实现的问题，对应 tile 有对应的坐标
-    window_base = Param.Addr(0x10_0100_0000, "...")
+    system = Param.System(Parent.any, "System this Compute Tile belongs to")
+    tile_id = Param.Unsigned(0, "Compute Tile index (0 .. N-1)")
+    base_addr = Param.Addr(0x1000000000, "Global DPA base address of this tile")
+    window_size = Param.MemorySize("16MiB", "Address window size per tile")
     
     
     

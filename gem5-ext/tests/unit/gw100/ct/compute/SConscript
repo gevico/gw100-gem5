@@ -8,4 +8,5 @@ GTest(
     with_tag('gw100 ct sram'),
     with_tag('gw100 ct sync'),
     with_tag('gw100 ct ctrl'),
+    with_tag('gw100 ct nidma'),        
 )
