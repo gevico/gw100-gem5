@@ -20,6 +20,7 @@ namespace gem5
 namespace gw100
 {
 
+/** 相应请求侧 */
 class CtWindowHandler
 {
   public:
@@ -49,7 +50,6 @@ class CtNocIf
     /** 向 dpa 发起一次写 */
     virtual void sendWrite(Addr dpa, unsigned len, const uint8_t *data,
                            CtNocWriteDone done) = 0;
-
 };
 
 class CtClockIf

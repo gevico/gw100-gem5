@@ -37,7 +37,7 @@ CtClock::wakeAt(Tick when)
         owner.reschedule(event, e);
 }
 
-/** pio 子函数实现 */
+/** pio 端口实现 */
 CtPioPort::CtPioPort(const std::string &name, ClockedObject &owner,
                      CtWindowHandler &window, Addr window_base)
     : QueuedResponsePort(name, queue),
@@ -71,6 +71,7 @@ CtPioPort::getAddrRanges() const
     return r;
 }
 
+/** pio 接收逻辑实现 */
 /** 时序调用，无论成功失败都需要按周期数进行返回处理 */
 bool
 CtPioPort::recvTimingReq(PacketPtr pkt)
@@ -112,30 +113,113 @@ CtPioPort::recvFunctional(PacketPtr pkt)
     }
 }
 
-/** 主类函数 */
+/** CtDmaPort 的端口实现 */
+CtDmaPort::CtDmaPort(const std::string &name, ClockedObject &owner)
+    : QueuedRequestPort(name, queue, snoop_queue),
+      owner(owner),
+      queue(owner,*this),
+      snoop_queue(owner, *this)
+{
+}
+
+bool
+CtDmaPort::canSend()const{
+    /** 初级的简单版本，在后续应该去进行队列的添加，QueuedRequestPort 不能解决所有问题 */
+    return true;
+}
+
+/** 发送方法的核心实现 */
+void
+CtDmaPort::sendRead(Addr dpa, unsigned len, CtNocReadDone done){
+    auto *back = new Callback();
+    back->read = std::move(done);
+    sendPacket(dpa, nullptr, len, false, back);
+}
+
+void
+CtDmaPort::sendWrite(Addr dpa, unsigned len, const uint8_t *data,CtNocWriteDone done){
+    auto *back = new Callback();
+    back->write = std::move(done);
+    sendPacket(dpa,data,len,true,back);
+}
+
+/** 接收方法的最新实现  */
+bool
+CtDmaPort::recvTimingResp(PacketPtr pkt)
+{
+    /** 从返回的 pkt 上弹出栈顶的 SenderState，并向下转型还原成 CallbackState* */
+    auto *back = dynamic_cast<Callback *>(pkt->popSenderState());
+    CtStatus st = pkt->isError() ? CtStatus::Reject : CtStatus::Ok;
+
+    /** 通知nidma */
+    if (back != nullptr) {
+        if (back->read) {
+            back->read(st, pkt->getConstPtr<uint8_t>());
+        }
+        if (back->write) {
+            back->write(st);
+        }
+        delete back;
+    }
+
+    delete pkt;
+    return true;
+}
+
+void
+CtDmaPort::sendPacket(Addr dpa, const uint8_t *data, unsigned len, bool is_write, Callback *back){
+    /** packet 对象的创建 */
+    RequestPtr req = std::make_shared<Request>(dpa, len, 0, Request::funcRequestorId);
+    MemCmd cmd = is_write ? MemCmd::WriteReq : MemCmd::ReadReq;
+    PacketPtr pkt = new Packet(req, cmd);
+    /** 在堆上开辟数据区 */
+    pkt->allocate();
+    if (is_write && data != nullptr) {
+        // 如果是写请求，把要写的数据 memcpy 进刚刚 allocate 出来的内部缓冲区里
+        pkt->setData(data);
+    }
+
+    /** 将 back 压入栈顶，通过栈的形式来处理跨周期的回调调用 */
+    pkt->pushSenderState(back);
+    schedTimingReq(pkt, owner.clockEdge());
+}
+
+/** 主类函数,初始化顺序要求和头文件中严格保证相同，分块展示也和头文件中保持一致 */
 Gw100Ct::Gw100Ct(const Params &p)
     : ClockedObject(p),
       windowBase(p.window_base),
       clock(*this, [this] { tick(); }),
+
       sram(clock),
       sync(clock),
       ctrl_ram(clock),
+      ct_fc32(),
+
       window(sram, sync,ctrl_ram, windowBase),
-      pio(name() + ".pio", *this, window, windowBase)
+      pio(name() + ".pio", *this, window, windowBase),
+      dma_port(name()+".request",*this),
+
+      ct_nidma(clock,dma_port,window),
+      ct_matrix(clock,window,sync,ct_fc32),
+      ct_vector(clock,window,sync,ct_fc32),
+      ct_ctrl(clock,ct_nidma,ct_matrix,ct_vector,ctrl_ram)
 {
 }
 
-/** todo 目前先占位，等 ni-dma 完成后处理 */
 void
 Gw100Ct::tick()
 {
+    ct_nidma.step();
+    ct_ctrl.step();
 }
 
 Port &
 Gw100Ct::getPort(const std::string &if_name, PortID idx)
 {
     if (if_name == "pio") {
-        return pio;
+    return pio;
+    } else if (if_name == "dma") { 
+        return dma_port;
     }
     return ClockedObject::getPort(if_name, idx);
 }
