@@ -1,0 +1,4 @@
+# nidma/: Compute Tile 的数据搬运和接口
+Import('*')
+
+Source('ct_nidma.cc',add_tags='gw100 ct nidma')

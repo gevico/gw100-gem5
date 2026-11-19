@@ -1,0 +1,4 @@
+# sync/: Compute Tile 的硬件同步器
+Import('*')
+
+Source('ct_sync.cc',add_tags='gw100 ct sync')
