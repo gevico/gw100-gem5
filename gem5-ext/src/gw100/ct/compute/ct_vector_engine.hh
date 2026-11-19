@@ -1,5 +1,5 @@
 /**
- * @file ct_matrix_engine.hh
+ * @file  ct_vector_engine.hh
  * @brief compute tile 的向量引擎
  */
 #ifndef __GW100_CT_VECTOR_CT_VECTOR_HH__

@@ -1,5 +1,5 @@
 /**
- * @file ct_ctrl_ram.hh
+ * @file  ct_ctrl_ram.cc
  * @brief compute tile 控制核的 ram 单元
  */
 
